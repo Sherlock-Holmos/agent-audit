@@ -1,0 +1,9 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: agent-service
+
+app:
+  gateway-base-url: ${GATEWAY_BASE_URL:http://localhost:8081}

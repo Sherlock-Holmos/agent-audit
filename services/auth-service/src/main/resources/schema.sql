@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS auth_user (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  username VARCHAR(128) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  nickname VARCHAR(128),
+  avatar_url LONGTEXT,
+  email VARCHAR(255),
+  phone VARCHAR(64),
+  department VARCHAR(128),
+  role VARCHAR(64) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  last_login_at DATETIME NULL,
+  UNIQUE KEY uk_auth_user_username (username)
+);
+
+ALTER TABLE auth_user ADD COLUMN IF NOT EXISTS nickname VARCHAR(128);
+ALTER TABLE auth_user ADD COLUMN IF NOT EXISTS avatar_url LONGTEXT;
+ALTER TABLE auth_user MODIFY COLUMN avatar_url LONGTEXT;
+ALTER TABLE auth_user ADD COLUMN IF NOT EXISTS email VARCHAR(255);
+ALTER TABLE auth_user ADD COLUMN IF NOT EXISTS phone VARCHAR(64);
+ALTER TABLE auth_user ADD COLUMN IF NOT EXISTS department VARCHAR(128);
