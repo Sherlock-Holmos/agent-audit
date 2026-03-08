@@ -1,0 +1,37 @@
+[
+  {
+    "product_code": "P-1001",
+    "product_name": "Wireless Mouse",
+    "category": "Accessories",
+    "brand": "Aster",
+    "list_price": 199.0
+  },
+  {
+    "product_code": "P-1002",
+    "product_name": "Mechanical Keyboard",
+    "category": "Accessories",
+    "brand": "Aster",
+    "list_price": 599.0
+  },
+  {
+    "product_code": "P-1003",
+    "product_name": "27inch Monitor",
+    "category": "Display",
+    "brand": "Nova",
+    "list_price": 999.0
+  },
+  {
+    "product_code": "P-2001",
+    "product_name": "USB-C Hub",
+    "category": "Adapters",
+    "brand": "LinkPro",
+    "list_price": 89.5
+  },
+  {
+    "product_code": "P-3001",
+    "product_name": "HDMI Cable",
+    "category": "Cables",
+    "brand": "LinkPro",
+    "list_price": 35.0
+  }
+]

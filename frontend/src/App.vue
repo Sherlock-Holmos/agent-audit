@@ -38,7 +38,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -77,6 +77,7 @@ try {
 function logout() {
   localStorage.removeItem('token')
   localStorage.removeItem('user')
+  user.value = {}
   router.replace('/login')
 }
 
@@ -127,9 +128,17 @@ async function deactivateAccount() {
   }
 }
 
-onMounted(() => {
-  loadProfile()
-})
+watch(
+  () => route.path,
+  (path) => {
+    if (path === '/login' || path === '/register') {
+      user.value = {}
+      return
+    }
+    loadProfile()
+  },
+  { immediate: true }
+)
 </script>
 
 <style>

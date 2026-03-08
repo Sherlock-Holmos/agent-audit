@@ -1,0 +1,7 @@
+{"event_id":"E0001","event_time":"2025-03-22T09:10:00+08:00","user_id":"C0001","event_type":"login","device":"ios","ip":"10.10.1.1"}
+{"event_id":"E0002","event_time":"2025-03-22T09:11:25+08:00","user_id":"C0001","event_type":"view_product","device":"ios","ip":"10.10.1.1","product_code":"P-1001"}
+{"event_id":"E0003","event_time":"2025-03-22T09:12:15+08:00","user_id":"C0001","event_type":"place_order","device":"ios","ip":"10.10.1.1","order_id":"O2025030001"}
+{"event_id":"E0004","event_time":"2025-03-23T14:31:03+08:00","user_id":"C0002","event_type":"login","device":"android","ip":"10.10.2.8"}
+{"event_id":"E0005","event_time":"2025-03-23T14:32:49+08:00","user_id":"C0002","event_type":"view_product","device":"android","ip":"10.10.2.8","product_code":"P-1003"}
+{"event_id":"E0006","event_time":"2025-03-23T14:35:01+08:00","user_id":"C0002","event_type":"place_order","device":"android","ip":"10.10.2.8","order_id":"O2025030002"}
+{"event_id":"E0007","event_time":"invalid-time","user_id":"C0009","event_type":"place_order","device":"web","ip":"10.10.9.9","order_id":"O2025030104"}

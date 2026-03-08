@@ -1,4 +1,4 @@
-package main.java.com.audit.data;
+package com.audit.data;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
