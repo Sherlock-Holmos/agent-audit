@@ -6,7 +6,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -22,6 +27,7 @@ import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -46,6 +52,7 @@ public class DataSourceService {
     ) {
         this.jdbcTemplate = jdbcTemplate;
         this.uploadRoot = Paths.get(uploadDir).toAbsolutePath().normalize();
+        ensureDbPasswordColumn();
     }
 
     public List<Map<String, Object>> list(String ownerUsername, String keyword, String type, String status) {
@@ -73,31 +80,43 @@ public class DataSourceService {
         Integer port = toInt(payload.get("port"));
         String databaseName = text(payload.get("databaseName"));
         String username = text(payload.get("username"));
+        String password = text(payload.get("password"));
         String remark = text(payload.get("remark"));
 
-        if (isBlank(name) || isBlank(dbType) || isBlank(host) || port == null || isBlank(databaseName) || isBlank(username)) {
+        if (isBlank(name) || isBlank(dbType) || isBlank(host) || port == null || isBlank(databaseName) || isBlank(username) || isBlank(password)) {
             throw new IllegalArgumentException("数据库数据源必填项缺失");
         }
+
+        String normalizedDbType = dbType.toUpperCase();
+        if (!Set.of("MYSQL", "POSTGRESQL", "ORACLE", "SQLSERVER").contains(normalizedDbType)) {
+            throw new IllegalArgumentException("暂不支持的数据库类型: " + dbType);
+        }
+
+        ensureDriverAvailable(normalizedDbType);
+
+        String jdbcUrl = buildJdbcUrl(normalizedDbType, host, port, databaseName);
+        testDatabaseConnection(jdbcUrl, username, password);
 
         String now = now();
         String sql = """
             INSERT INTO data_source_record(
-              owner_username, name, type, db_type, host, port, database_name, username,
+              owner_username, name, type, db_type, host, port, database_name, username, db_password,
               file_name, file_size, file_path, preview_rows, status, remark, created_at, updated_at
-            ) VALUES (?, ?, 'DATABASE', ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, 'ENABLED', ?, ?, ?)
+            ) VALUES (?, ?, 'DATABASE', ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, 'ENABLED', ?, ?, ?)
             """;
 
         Long id = insertWithGeneratedId(sql, ps -> {
             ps.setString(1, ownerUsername);
             ps.setString(2, name);
-            ps.setString(3, dbType.toUpperCase());
+            ps.setString(3, normalizedDbType);
             ps.setString(4, host);
             ps.setInt(5, port);
             ps.setString(6, databaseName);
             ps.setString(7, username);
-            ps.setString(8, remark);
-            ps.setString(9, now);
+            ps.setString(8, password);
+            ps.setString(9, remark);
             ps.setString(10, now);
+            ps.setString(11, now);
         });
 
         return getById(ownerUsername, id);
@@ -172,8 +191,22 @@ public class DataSourceService {
         String type = String.valueOf(item.get("type"));
 
         if ("DATABASE".equalsIgnoreCase(type)) {
-            String db = isBlank(String.valueOf(item.get("databaseName"))) ? "audit_db" : normalizeName(String.valueOf(item.get("databaseName")));
-            List<String> tables = List.of(db + "_issue", db + "_rectify", db + "_trace", db + "_archive");
+            Map<String, Object> dbConfig = getDatabaseConfig(ownerUsername, id);
+            String dbType = text(dbConfig.get("dbType")).toUpperCase();
+            String jdbcUrl = buildJdbcUrl(
+                dbType,
+                text(dbConfig.get("host")),
+                toInt(dbConfig.get("port")),
+                text(dbConfig.get("databaseName"))
+            );
+
+            List<String> tables = fetchTablesFromDatabase(
+                jdbcUrl,
+                text(dbConfig.get("username")),
+                text(dbConfig.get("password")),
+                text(dbConfig.get("databaseName")),
+                dbType
+            );
             List<Map<String, Object>> objects = new ArrayList<>();
             for (String table : tables) {
                 Map<String, Object> o = new HashMap<>();
@@ -316,6 +349,126 @@ public class DataSourceService {
 
     private static String normalizeName(String name) {
         return NON_ALNUM.matcher(name).replaceAll("_").toLowerCase();
+    }
+
+    private void testDatabaseConnection(String jdbcUrl, String username, String password) {
+        try (Connection connection = DriverManager.getConnection(jdbcUrl, username, password)) {
+            if (!connection.isValid(5)) {
+                throw new IllegalStateException("数据库连接测试失败，请检查地址与账号信息");
+            }
+        } catch (SQLException ex) {
+            throw new IllegalStateException("数据库连接失败: " + ex.getMessage());
+        }
+    }
+
+    private static String buildJdbcUrl(String dbType, String host, Integer port, String databaseName) {
+        if (port == null) {
+            throw new IllegalArgumentException("数据库端口不能为空");
+        }
+        return switch (dbType) {
+            case "MYSQL" -> "jdbc:mysql://" + host + ":" + port + "/" + databaseName
+                + "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&connectTimeout=5000&socketTimeout=5000";
+            case "POSTGRESQL" -> "jdbc:postgresql://" + host + ":" + port + "/" + databaseName
+                + "?connectTimeout=5&socketTimeout=5";
+            case "SQLSERVER" -> "jdbc:sqlserver://" + host + ":" + port
+                + ";databaseName=" + databaseName + ";encrypt=true;trustServerCertificate=true;loginTimeout=5";
+            case "ORACLE" -> "jdbc:oracle:thin:@//" + host + ":" + port + "/" + databaseName;
+            default -> throw new IllegalArgumentException("暂不支持的数据库类型: " + dbType);
+        };
+    }
+
+    private Map<String, Object> getDatabaseConfig(String ownerUsername, Long id) {
+        List<Map<String, Object>> rows = jdbcTemplate.query(
+            """
+            SELECT db_type, host, port, database_name, username, db_password
+              FROM data_source_record
+             WHERE owner_username=? AND id=? AND type='DATABASE'
+            """,
+            (rs, i) -> {
+                Map<String, Object> map = new HashMap<>();
+                map.put("dbType", nvl(rs.getString("db_type")));
+                map.put("host", nvl(rs.getString("host")));
+                map.put("port", rs.getObject("port") == null ? null : rs.getInt("port"));
+                map.put("databaseName", nvl(rs.getString("database_name")));
+                map.put("username", nvl(rs.getString("username")));
+                map.put("password", nvl(rs.getString("db_password")));
+                return map;
+            },
+            ownerUsername,
+            id
+        );
+
+        if (rows.isEmpty()) {
+            throw new IllegalArgumentException("数据库数据源不存在");
+        }
+        return rows.get(0);
+    }
+
+    private List<String> fetchTablesFromDatabase(
+        String jdbcUrl,
+        String username,
+        String password,
+        String databaseName,
+        String dbType
+    ) {
+        List<String> tables = new ArrayList<>();
+        try (Connection connection = DriverManager.getConnection(jdbcUrl, username, password)) {
+            DatabaseMetaData metaData = connection.getMetaData();
+            String catalog = null;
+            String schemaPattern = null;
+
+            if ("MYSQL".equalsIgnoreCase(dbType)) {
+                catalog = databaseName;
+            }
+            if ("POSTGRESQL".equalsIgnoreCase(dbType)) {
+                schemaPattern = "public";
+            }
+
+            try (ResultSet rs = metaData.getTables(catalog, schemaPattern, "%", new String[] {"TABLE"})) {
+                while (rs.next()) {
+                    String tableName = rs.getString("TABLE_NAME");
+                    if (!isBlank(tableName)) {
+                        tables.add(tableName);
+                    }
+                }
+            }
+        } catch (SQLException ex) {
+            throw new IllegalStateException("读取数据库对象失败: " + ex.getMessage());
+        }
+
+        if (tables.isEmpty()) {
+            throw new IllegalStateException("连接成功，但未读取到可用数据表");
+        }
+        return tables;
+    }
+
+    private void ensureDriverAvailable(String dbType) {
+        String driverClass = switch (dbType) {
+            case "MYSQL" -> "com.mysql.cj.jdbc.Driver";
+            case "POSTGRESQL" -> "org.postgresql.Driver";
+            case "ORACLE" -> "oracle.jdbc.OracleDriver";
+            case "SQLSERVER" -> "com.microsoft.sqlserver.jdbc.SQLServerDriver";
+            default -> null;
+        };
+        if (driverClass == null) {
+            return;
+        }
+        try {
+            Class.forName(driverClass);
+        } catch (ClassNotFoundException ex) {
+            throw new IllegalStateException("当前服务未安装 " + dbType + " JDBC 驱动，请联系管理员");
+        }
+    }
+
+    private void ensureDbPasswordColumn() {
+        try {
+            jdbcTemplate.execute("ALTER TABLE data_source_record ADD COLUMN db_password VARCHAR(512)");
+        } catch (DataAccessException ex) {
+            String message = ex.getMessage() == null ? "" : ex.getMessage().toLowerCase();
+            if (!message.contains("duplicate column") && !message.contains("already exists")) {
+                throw ex;
+            }
+        }
     }
 
     private static int detectPreviewRows(Path filePath, String ext) {

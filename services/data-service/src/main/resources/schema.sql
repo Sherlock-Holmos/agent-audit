@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS data_source_record (
   port INT,
   database_name VARCHAR(255),
   username VARCHAR(255),
+  db_password VARCHAR(512),
   file_name VARCHAR(512),
   file_size BIGINT,
   file_path VARCHAR(1024),
@@ -32,6 +33,8 @@ CREATE TABLE IF NOT EXISTS clean_rule_record (
   updated_at DATETIME NOT NULL,
   INDEX idx_clean_rule_owner (owner_username)
 );
+
+ALTER TABLE data_source_record ADD COLUMN IF NOT EXISTS db_password VARCHAR(512);
 
 CREATE TABLE IF NOT EXISTS clean_strategy_record (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,

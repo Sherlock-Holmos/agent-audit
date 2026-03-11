@@ -67,6 +67,11 @@ public class DataSourceController {
                 "code", 400,
                 "message", ex.getMessage()
             ));
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "code", 400,
+                "message", ex.getMessage()
+            ));
         }
     }
 
@@ -103,6 +108,11 @@ public class DataSourceController {
                 "data", dataSourceService.listSourceObjects(user(username), id)
             ));
         } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "code", 400,
+                "message", ex.getMessage()
+            ));
+        } catch (IllegalStateException ex) {
             return ResponseEntity.badRequest().body(Map.of(
                 "code", 400,
                 "message", ex.getMessage()
