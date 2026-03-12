@@ -40,6 +40,19 @@
           </el-form-item>
         </el-form>
 
+        <el-form v-else-if="currentNodeId === 'basic-appearance'" label-width="140px">
+          <el-form-item label="夜间模式">
+            <el-radio-group v-model="forms.appearance.themeMode">
+              <el-radio value="light">浅色模式</el-radio>
+              <el-radio value="dark">深色模式</el-radio>
+              <el-radio value="system">跟随系统</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="说明">
+            <span class="hint-text">选择“跟随系统”后，会根据操作系统深浅色设置自动切换。</span>
+          </el-form-item>
+        </el-form>
+
         <el-form v-else-if="currentNodeId === 'security-auth'" label-width="140px">
           <el-form-item label="登录失败阈值">
             <el-input-number v-model="forms.security.loginFailLimit" :min="3" :max="20" />
@@ -94,15 +107,22 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useAppStore } from '../store/app'
+import { storeToRefs } from 'pinia'
 
 const saving = ref(false)
 const currentNodeId = ref('basic-audit')
+const appStore = useAppStore()
+const { themeMode } = storeToRefs(appStore)
 
 const settingTree = [
   {
     id: 'basic',
     label: '基础设置',
-    children: [{ id: 'basic-audit', label: '系统与审计基础信息' }]
+    children: [
+      { id: 'basic-audit', label: '系统与审计基础信息' },
+      { id: 'basic-appearance', label: '主题与显示' }
+    ]
   },
   {
     id: 'security',
@@ -121,6 +141,7 @@ const settingTree = [
 
 const titleMap = {
   'basic-audit': '系统与审计基础信息',
+  'basic-appearance': '主题与显示',
   'security-auth': '认证与会话策略',
   'data-source': '数据源接入策略',
   'data-clean': '数据清洗策略'
@@ -131,6 +152,9 @@ const forms = reactive({
     systemName: '审计整改智能驾驶舱',
     defaultDeptCode: 'audit-dept-001',
     timezone: 'Asia/Shanghai'
+  },
+  appearance: {
+    themeMode: themeMode.value
   },
   security: {
     loginFailLimit: 5,
@@ -159,6 +183,9 @@ function handleNodeClick(node) {
 async function saveCurrent() {
   saving.value = true
   try {
+    if (currentNodeId.value === 'basic-appearance') {
+      appStore.setThemeMode(forms.appearance.themeMode)
+    }
     await new Promise((resolve) => setTimeout(resolve, 400))
     ElMessage.success(`${currentTitle.value}保存成功`)
   } finally {
@@ -180,5 +207,10 @@ async function saveCurrent() {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.hint-text {
+  color: #909399;
+  font-size: 13px;
 }
 </style>
