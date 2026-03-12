@@ -1,6 +1,6 @@
 <template>
   <el-row :gutter="16" class="settings-page">
-    <el-col :span="6">
+    <el-col :span="6" class="settings-col">
       <el-card shadow="never" class="settings-nav-card">
         <template #header>
           <span>设置导航</span>
@@ -16,8 +16,8 @@
       </el-card>
     </el-col>
 
-    <el-col :span="18">
-      <el-card shadow="never">
+    <el-col :span="18" class="settings-col">
+      <el-card shadow="never" class="settings-content-card">
         <template #header>
           <div class="settings-header">
             <span>{{ currentTitle }}</span>
@@ -199,7 +199,17 @@ async function saveCurrent() {
   min-height: calc(100vh - 140px);
 }
 
+.settings-col {
+  display: flex;
+}
+
 .settings-nav-card {
+  width: 100%;
+  min-height: calc(100vh - 140px);
+}
+
+.settings-content-card {
+  width: 100%;
   min-height: calc(100vh - 140px);
 }
 
