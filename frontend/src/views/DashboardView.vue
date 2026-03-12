@@ -1,5 +1,32 @@
 <template>
   <el-row :gutter="16">
+    <el-col :span="24" style="margin-bottom: 16px;">
+      <el-card>
+        <el-form inline>
+          <el-form-item label="分析数据集">
+            <el-select
+              v-model="selectedFusionTaskId"
+              placeholder="请选择融合结果"
+              clearable
+              filterable
+              style="width: 360px"
+              @change="handleFusionChange"
+            >
+              <el-option
+                v-for="item in fusionOptions"
+                :key="item.id"
+                :label="`${item.taskName} (${item.targetTable})`"
+                :value="item.id"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <span class="dataset-tip">默认会分析最近一次完成的融合任务</span>
+          </el-form-item>
+        </el-form>
+      </el-card>
+    </el-col>
+
     <el-col :span="8">
       <el-card>
         <template #header>整改率概览</template>
@@ -31,7 +58,7 @@
 
     <el-col :span="24" style="margin-top: 16px;">
       <el-card>
-        <template #header>部门整改热力图</template>
+        <template #header>融合内容质量热力图</template>
         <div ref="heatmapChartRef" style="height: 320px;"></div>
       </el-card>
     </el-col>
@@ -43,7 +70,7 @@
 import { nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
-import { fetchDashboard, fetchHeatmap, fetchTrend } from '../api/dashboard'
+import { fetchDashboard, fetchFusionOptions, fetchHeatmap, fetchTrend } from '../api/dashboard'
 
 const rateChartRef = ref()
 const trendChartRef = ref()
@@ -52,6 +79,8 @@ const heatmapChartRef = ref()
 let rateChart
 let trendChart
 let heatmapChart
+const selectedFusionTaskId = ref('')
+const fusionOptions = ref([])
 
 const threshold = reactive({
   overdueDays: 7,
@@ -121,14 +150,27 @@ const renderHeatmap = (heatData) => {
 }
 
 const loadData = async () => {
+  const fusionTaskId = selectedFusionTaskId.value || undefined
   const [dashboardRes, trendRes, heatmapRes] = await Promise.all([
-    fetchDashboard(),
-    fetchTrend(),
-    fetchHeatmap()
+    fetchDashboard(fusionTaskId),
+    fetchTrend(fusionTaskId),
+    fetchHeatmap(fusionTaskId)
   ])
   renderRateChart(dashboardRes.data)
   renderTrendChart(trendRes.data)
   renderHeatmap(heatmapRes.data)
+}
+
+const loadFusionOptions = async () => {
+  const { data } = await fetchFusionOptions()
+  fusionOptions.value = data.data || []
+  if (!selectedFusionTaskId.value && fusionOptions.value.length > 0) {
+    selectedFusionTaskId.value = fusionOptions.value[0].id
+  }
+}
+
+const handleFusionChange = async () => {
+  await loadData()
 }
 
 const saveThreshold = () => {
@@ -144,6 +186,7 @@ const handleResize = () => {
 onMounted(async () => {
   await nextTick()
   initCharts()
+  await loadFusionOptions()
   await loadData()
   window.addEventListener('resize', handleResize)
 })
@@ -155,3 +198,9 @@ onBeforeUnmount(() => {
   heatmapChart?.dispose()
 })
 </script>
+
+<style scoped>
+.dataset-tip {
+  color: #909399;
+}
+</style>
