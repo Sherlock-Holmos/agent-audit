@@ -1,0 +1,358 @@
+package com.audit.data.service;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+
+@Service
+public class DashboardService {
+
+    private static final Pattern SAFE_TABLE_PATTERN = Pattern.compile("^[a-zA-Z][a-zA-Z0-9_]{0,63}$");
+    private static final List<String> GROUP_KEYS = List.of(
+        "department", "dept", "province", "city", "channel", "status", "region", "type"
+    );
+
+    private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public DashboardService(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    public List<Map<String, Object>> listFusionOptions(String ownerUsername) {
+        return jdbcTemplate.query(
+            """
+            SELECT id, task_name, target_table, fusion_rows, updated_at
+              FROM fusion_task_record
+             WHERE owner_username=? AND status='COMPLETED'
+             ORDER BY id DESC
+            """,
+            (rs, i) -> {
+                Map<String, Object> item = new HashMap<>();
+                item.put("id", String.valueOf(rs.getLong("id")));
+                item.put("taskName", rs.getString("task_name"));
+                item.put("targetTable", rs.getString("target_table"));
+                item.put("fusionRows", rs.getInt("fusion_rows"));
+                item.put("updatedAt", rs.getTimestamp("updated_at") == null ? "" : rs.getTimestamp("updated_at").toString());
+                return item;
+            },
+            ownerUsername
+        );
+    }
+
+    public Map<String, Object> buildDashboard(String ownerUsername, Long fusionTaskId) {
+        TargetTableInfo target = resolveTargetTable(ownerUsername, fusionTaskId);
+        if (target == null) {
+            return Map.of(
+                "fusionTaskId", "",
+                "targetTable", "",
+                "completedRate", 0,
+                "overdueCount", 0,
+                "departmentRank", 0,
+                "totalRows", 0,
+                "message", "暂无可分析的融合结果"
+            );
+        }
+
+        String tableName = sanitizeTableName(target.targetTable);
+        if (!tableExists(tableName)) {
+            return Map.of(
+                "fusionTaskId", String.valueOf(target.fusionTaskId),
+                "targetTable", tableName,
+                "completedRate", 0,
+                "overdueCount", 0,
+                "departmentRank", 0,
+                "totalRows", 0,
+                "message", "融合结果表不存在，请重新执行融合任务"
+            );
+        }
+
+        Integer totalRows = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM " + tableName, Integer.class);
+        int total = totalRows == null ? 0 : totalRows;
+        if (total == 0) {
+            return Map.of(
+                "fusionTaskId", String.valueOf(target.fusionTaskId),
+                "targetTable", tableName,
+                "completedRate", 0,
+                "overdueCount", 0,
+                "departmentRank", 0,
+                "totalRows", 0,
+                "message", "融合结果为空"
+            );
+        }
+
+        Integer unknownRows = jdbcTemplate.queryForObject(
+            "SELECT COUNT(1) FROM " + tableName + " WHERE normalized_json LIKE '%\\\"UNKNOWN\\\"%'",
+            Integer.class
+        );
+        int unknown = unknownRows == null ? 0 : unknownRows;
+        int valid = Math.max(total - unknown, 0);
+        int completedRate = percent(valid, total);
+
+        int departmentRank;
+        List<Integer> allRows = jdbcTemplate.query(
+            "SELECT fusion_rows FROM fusion_task_record WHERE owner_username=? AND status='COMPLETED'",
+            (rs, i) -> rs.getInt("fusion_rows"),
+            ownerUsername
+        );
+        allRows.sort(Comparator.reverseOrder());
+        int currentRows = Math.max(target.fusionRows, total);
+        int idx = allRows.indexOf(currentRows);
+        departmentRank = idx >= 0 ? idx + 1 : allRows.size() + 1;
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("fusionTaskId", String.valueOf(target.fusionTaskId));
+        result.put("targetTable", tableName);
+        result.put("completedRate", completedRate);
+        result.put("overdueCount", unknown);
+        result.put("departmentRank", departmentRank);
+        result.put("totalRows", total);
+        return result;
+    }
+
+    public Map<String, Object> buildTrend(String ownerUsername, Long fusionTaskId) {
+        TargetTableInfo target = resolveTargetTable(ownerUsername, fusionTaskId);
+        if (target == null || !tableExists(sanitizeTableName(target.targetTable))) {
+            return emptyTrend();
+        }
+
+        String tableName = sanitizeTableName(target.targetTable);
+        List<Map<String, Object>> rows = jdbcTemplate.query(
+            """
+             SELECT DATE_FORMAT(created_at, '%%m-%%d') AS day_label,
+                   COUNT(1) AS total_count,
+                 SUM(CASE WHEN normalized_json LIKE '%%\\"UNKNOWN\\"%%' THEN 1 ELSE 0 END) AS unknown_count
+              FROM %s
+             GROUP BY DATE(created_at), DATE_FORMAT(created_at, '%%m-%%d')
+             ORDER BY DATE(created_at) DESC
+             LIMIT 7
+            """.formatted(tableName),
+            (rs, i) -> {
+                Map<String, Object> item = new HashMap<>();
+                item.put("day", rs.getString("day_label"));
+                item.put("total", rs.getInt("total_count"));
+                item.put("unknown", rs.getInt("unknown_count"));
+                return item;
+            }
+        );
+
+        if (rows.isEmpty()) {
+            return emptyTrend();
+        }
+
+        rows.sort(Comparator.comparing(row -> String.valueOf(row.get("day"))));
+        List<String> dates = new ArrayList<>();
+        List<Integer> rates = new ArrayList<>();
+        List<Integer> predicted = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            int total = ((Number) row.get("total")).intValue();
+            int unknown = ((Number) row.get("unknown")).intValue();
+            int done = Math.max(total - unknown, 0);
+            int rate = percent(done, total);
+            dates.add(String.valueOf(row.get("day")));
+            rates.add(rate);
+        }
+
+        for (int i = 0; i < rates.size(); i++) {
+            int base = rates.get(i);
+            int next = i == rates.size() - 1 ? base : rates.get(i + 1);
+            predicted.add((int) Math.min(100, Math.round((base * 0.6 + next * 0.4 + 2))));
+        }
+
+        return Map.of(
+            "fusionTaskId", String.valueOf(target.fusionTaskId),
+            "targetTable", tableName,
+            "dates", dates,
+            "rates", rates,
+            "predicted", predicted
+        );
+    }
+
+    public Map<String, Object> buildHeatmap(String ownerUsername, Long fusionTaskId) {
+        TargetTableInfo target = resolveTargetTable(ownerUsername, fusionTaskId);
+        if (target == null || !tableExists(sanitizeTableName(target.targetTable))) {
+            return Map.of("departments", List.of(), "metrics", List.of(), "values", List.of());
+        }
+
+        String tableName = sanitizeTableName(target.targetTable);
+        List<Map<String, Object>> sourceRows = jdbcTemplate.query(
+            "SELECT object_name, normalized_json FROM " + tableName + " LIMIT 50000",
+            (rs, i) -> {
+                Map<String, Object> item = new HashMap<>();
+                item.put("objectName", rs.getString("object_name"));
+                item.put("normalizedJson", rs.getString("normalized_json"));
+                return item;
+            }
+        );
+
+        if (sourceRows.isEmpty()) {
+            return Map.of("departments", List.of(), "metrics", List.of(), "values", List.of());
+        }
+
+        Map<String, GroupStats> grouped = new HashMap<>();
+        for (Map<String, Object> row : sourceRows) {
+            String objectName = String.valueOf(row.get("objectName"));
+            String normalizedJson = String.valueOf(row.get("normalizedJson"));
+            Map<String, Object> payload = parseJsonObject(normalizedJson);
+            String groupLabel = chooseGroupLabel(payload, objectName);
+
+            GroupStats stats = grouped.computeIfAbsent(groupLabel, key -> new GroupStats());
+            stats.total += 1;
+            if (normalizedJson.contains("\\\"UNKNOWN\\\"")) {
+                stats.unknown += 1;
+            }
+            stats.distinctPayload.add(normalizedJson);
+        }
+
+        List<Map.Entry<String, GroupStats>> rows = grouped.entrySet().stream()
+            .sorted((a, b) -> Integer.compare(b.getValue().total, a.getValue().total))
+            .limit(8)
+            .toList();
+
+        List<String> departments = new ArrayList<>();
+        List<String> metrics = List.of("完成率", "空值率", "重复率", "闭环率");
+        List<List<Integer>> values = new ArrayList<>();
+
+        for (int i = 0; i < rows.size(); i++) {
+            Map.Entry<String, GroupStats> row = rows.get(i);
+            GroupStats stats = row.getValue();
+            departments.add(row.getKey());
+            int total = stats.total;
+            int unknown = stats.unknown;
+            int distinct = stats.distinctPayload.size();
+
+            int completion = percent(Math.max(total - unknown, 0), total);
+            int unknownRate = percent(unknown, total);
+            int duplicateRate = total == 0 ? 0 : percent(Math.max(total - distinct, 0), total);
+            int closureRate = Math.max(Math.min(completion - duplicateRate / 2, 100), 0);
+
+            values.add(List.of(i, 0, completion));
+            values.add(List.of(i, 1, unknownRate));
+            values.add(List.of(i, 2, duplicateRate));
+            values.add(List.of(i, 3, closureRate));
+        }
+
+        return Map.of(
+            "fusionTaskId", String.valueOf(target.fusionTaskId),
+            "targetTable", tableName,
+            "departments", departments,
+            "metrics", metrics,
+            "values", values
+        );
+    }
+
+    private Map<String, Object> parseJsonObject(String json) {
+        try {
+            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
+        } catch (Exception ex) {
+            return Map.of();
+        }
+    }
+
+    private String chooseGroupLabel(Map<String, Object> payload, String fallback) {
+        for (String key : GROUP_KEYS) {
+            String value = findValueByKey(payload, key);
+            if (value != null && !value.isBlank() && !"UNKNOWN".equalsIgnoreCase(value)) {
+                return value;
+            }
+        }
+        return fallback;
+    }
+
+    private String findValueByKey(Map<String, Object> payload, String targetKey) {
+        String normalizedTarget = normalizeKey(targetKey);
+        for (Map.Entry<String, Object> entry : payload.entrySet()) {
+            if (normalizeKey(entry.getKey()).equals(normalizedTarget)) {
+                return entry.getValue() == null ? null : String.valueOf(entry.getValue()).trim();
+            }
+        }
+        return null;
+    }
+
+    private String normalizeKey(String key) {
+        return key == null ? "" : key.replace("_", "").replace("-", "").toLowerCase();
+    }
+
+    private Map<String, Object> emptyTrend() {
+        return Map.of(
+            "dates", List.of("周一", "周二", "周三", "周四", "周五", "周六", "周日"),
+            "rates", List.of(0, 0, 0, 0, 0, 0, 0),
+            "predicted", List.of(0, 0, 0, 0, 0, 0, 0)
+        );
+    }
+
+    private TargetTableInfo resolveTargetTable(String ownerUsername, Long fusionTaskId) {
+        List<TargetTableInfo> rows;
+        if (fusionTaskId == null) {
+            rows = jdbcTemplate.query(
+                """
+                SELECT id, target_table, fusion_rows
+                  FROM fusion_task_record
+                 WHERE owner_username=? AND status='COMPLETED'
+                 ORDER BY id DESC
+                 LIMIT 1
+                """,
+                (rs, i) -> new TargetTableInfo(rs.getLong("id"), rs.getString("target_table"), rs.getInt("fusion_rows")),
+                ownerUsername
+            );
+        } else {
+            rows = jdbcTemplate.query(
+                """
+                SELECT id, target_table, fusion_rows
+                  FROM fusion_task_record
+                 WHERE owner_username=? AND id=? AND status='COMPLETED'
+                 LIMIT 1
+                """,
+                (rs, i) -> new TargetTableInfo(rs.getLong("id"), rs.getString("target_table"), rs.getInt("fusion_rows")),
+                ownerUsername,
+                fusionTaskId
+            );
+        }
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    private boolean tableExists(String tableName) {
+        Integer count = jdbcTemplate.queryForObject(
+            "SELECT COUNT(1) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?",
+            Integer.class,
+            tableName
+        );
+        return count != null && count > 0;
+    }
+
+    private String sanitizeTableName(String tableName) {
+        if (tableName == null || !SAFE_TABLE_PATTERN.matcher(tableName).matches()) {
+            throw new IllegalArgumentException("目标表名不合法");
+        }
+        return tableName;
+    }
+
+    private int percent(int part, int total) {
+        if (total <= 0) return 0;
+        return BigDecimal.valueOf(part)
+            .multiply(BigDecimal.valueOf(100))
+            .divide(BigDecimal.valueOf(total), 0, RoundingMode.HALF_UP)
+            .intValue();
+    }
+
+    private static class GroupStats {
+        int total;
+        int unknown;
+        Set<String> distinctPayload = new HashSet<>();
+    }
+
+    private record TargetTableInfo(Long fusionTaskId, String targetTable, Integer fusionRows) {
+    }
+}

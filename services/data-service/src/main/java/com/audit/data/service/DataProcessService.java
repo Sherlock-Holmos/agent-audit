@@ -2,6 +2,12 @@ package com.audit.data.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -9,12 +15,12 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Set;
+import java.util.regex.Pattern;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -25,6 +31,8 @@ public class DataProcessService {
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
+    private static final Pattern SAFE_TABLE_PATTERN = Pattern.compile("^[a-zA-Z0-9_]+$");
+    private static final Set<String> READY_STATUSES = Set.of("READY", "COMPLETED", "FAILED");
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
@@ -242,11 +250,48 @@ public class DataProcessService {
     }
 
     public Map<String, Object> runCleanTask(String ownerUsername, Long id) {
-        int affected = jdbcTemplate.update(
-            "UPDATE clean_task_record SET status='COMPLETED', cleaned_rows=?, updated_at=? WHERE owner_username=? AND id=?",
-            ThreadLocalRandom.current().nextInt(50, 551), now(), ownerUsername, id
+        Map<String, Object> task = getCleanTaskById(ownerUsername, id);
+        String currentStatus = String.valueOf(task.get("status"));
+        if (!READY_STATUSES.contains(currentStatus.toUpperCase())) {
+            throw new IllegalArgumentException("当前任务状态不允许执行");
+        }
+
+        String outputTable = sanitizeTableName(String.valueOf(task.get("standardTable")));
+        List<Map<String, Object>> cleanObjects = castMapList(task.get("cleanObjects"));
+        String strategyCode = text(task.get("strategy"));
+        List<String> ruleNames = castStringList(task.get("cleanRuleNames"));
+
+        jdbcTemplate.update(
+            "UPDATE clean_task_record SET status='RUNNING', updated_at=? WHERE owner_username=? AND id=?",
+            now(), ownerUsername, id
         );
-        if (affected == 0) throw new IllegalArgumentException("清洗任务不存在");
+
+        int cleanedRows;
+        try {
+            recreateStandardTable(outputTable);
+            loadObjectsIntoStandardTable(ownerUsername, id, cleanObjects, outputTable);
+            applyCleanStrategy(outputTable, strategyCode, ruleNames);
+
+            Integer count = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM " + outputTable, Integer.class);
+            cleanedRows = count == null ? 0 : count;
+
+            jdbcTemplate.update(
+                "UPDATE clean_task_record SET status='COMPLETED', cleaned_rows=?, updated_at=? WHERE owner_username=? AND id=?",
+                cleanedRows,
+                now(),
+                ownerUsername,
+                id
+            );
+        } catch (RuntimeException ex) {
+            jdbcTemplate.update(
+                "UPDATE clean_task_record SET status='FAILED', updated_at=? WHERE owner_username=? AND id=?",
+                now(),
+                ownerUsername,
+                id
+            );
+            throw ex;
+        }
+
         return getCleanTaskById(ownerUsername, id);
     }
 
@@ -313,11 +358,43 @@ public class DataProcessService {
     }
 
     public Map<String, Object> runFusionTask(String ownerUsername, Long id) {
-        int affected = jdbcTemplate.update(
-            "UPDATE fusion_task_record SET status='COMPLETED', fusion_rows=?, updated_at=? WHERE owner_username=? AND id=?",
-            ThreadLocalRandom.current().nextInt(200, 1201), now(), ownerUsername, id
+        Map<String, Object> task = getFusionTaskById(ownerUsername, id);
+        String currentStatus = String.valueOf(task.get("status"));
+        if (!READY_STATUSES.contains(currentStatus.toUpperCase())) {
+            throw new IllegalArgumentException("当前任务状态不允许执行");
+        }
+
+        String targetTable = sanitizeTableName(String.valueOf(task.get("targetTable")));
+        List<String> standardTables = castStringList(task.get("standardTables"));
+        if (standardTables.isEmpty()) {
+            throw new IllegalArgumentException("缺少可融合的标准表");
+        }
+
+        jdbcTemplate.update(
+            "UPDATE fusion_task_record SET status='RUNNING', updated_at=? WHERE owner_username=? AND id=?",
+            now(), ownerUsername, id
         );
-        if (affected == 0) throw new IllegalArgumentException("融合任务不存在");
+
+        int fusionRows;
+        try {
+            recreateFusionTable(targetTable);
+            fusionRows = mergeStandardTablesToTarget(ownerUsername, id, targetTable, standardTables);
+
+            jdbcTemplate.update(
+                "UPDATE fusion_task_record SET status='COMPLETED', fusion_rows=?, updated_at=? WHERE owner_username=? AND id=?",
+                fusionRows,
+                now(),
+                ownerUsername,
+                id
+            );
+        } catch (RuntimeException ex) {
+            jdbcTemplate.update(
+                "UPDATE fusion_task_record SET status='FAILED', updated_at=? WHERE owner_username=? AND id=?",
+                now(), ownerUsername, id
+            );
+            throw ex;
+        }
+
         return getFusionTaskById(ownerUsername, id);
     }
 
@@ -327,33 +404,122 @@ public class DataProcessService {
     }
 
     private void ensureDefaultCleanConfig(String ownerUsername) {
-        Integer rules = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM clean_rule_record WHERE owner_username=?", Integer.class, ownerUsername);
-        if (rules != null && rules == 0) {
-            String now = now();
-            jdbcTemplate.update(
-                "INSERT INTO clean_rule_record(owner_username,name,category,file_name,content,enabled,remark,created_at,updated_at) VALUES(?, '空值填充规则', 'SYSTEM', '-', 'fill_null_with_default', 1, '系统默认规则', ?, ?)",
-                ownerUsername, now, now
-            );
-            jdbcTemplate.update(
-                "INSERT INTO clean_rule_record(owner_username,name,category,file_name,content,enabled,remark,created_at,updated_at) VALUES(?, '字段标准化规则', 'SYSTEM', '-', 'normalize_fields', 1, '系统默认规则', ?, ?)",
-                ownerUsername, now, now
-            );
+        ensureSystemRule(ownerUsername, "空值填充规则", "fill_null_with_default");
+        ensureSystemRule(ownerUsername, "字段标准化规则", "normalize_fields");
+        cleanupDuplicateSystemRules(ownerUsername);
+
+        ensureSystemStrategy(ownerUsername, "去重+空值补齐", "DEDUP_AND_FILL");
+        ensureSystemStrategy(ownerUsername, "字段标准化", "STANDARDIZE");
+        ensureSystemStrategy(ownerUsername, "异常值剔除", "OUTLIER_REMOVE");
+        cleanupDuplicateSystemStrategies(ownerUsername);
+    }
+
+    private void ensureSystemRule(String ownerUsername, String name, String content) {
+        Integer count = jdbcTemplate.queryForObject(
+            "SELECT COUNT(1) FROM clean_rule_record WHERE owner_username=? AND category='SYSTEM' AND name=? AND content=?",
+            Integer.class,
+            ownerUsername,
+            name,
+            content
+        );
+        if (count != null && count > 0) {
+            return;
         }
 
-        Integer strategies = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM clean_strategy_record WHERE owner_username=?", Integer.class, ownerUsername);
-        if (strategies != null && strategies == 0) {
-            String now = now();
-            jdbcTemplate.update(
-                "INSERT INTO clean_strategy_record(owner_username,name,code,built_in,enabled,created_at,updated_at) VALUES(?, '去重+空值补齐', 'DEDUP_AND_FILL', 1, 1, ?, ?)",
-                ownerUsername, now, now
+        String now = now();
+        jdbcTemplate.update(
+            "INSERT INTO clean_rule_record(owner_username,name,category,file_name,content,enabled,remark,created_at,updated_at) VALUES(?, ?, 'SYSTEM', '-', ?, 1, '系统默认规则', ?, ?)",
+            ownerUsername,
+            name,
+            content,
+            now,
+            now
+        );
+    }
+
+    private void cleanupDuplicateSystemRules(String ownerUsername) {
+        List<Long> duplicateIds = jdbcTemplate.query(
+            """
+            SELECT r.id
+              FROM clean_rule_record r
+              JOIN (
+                    SELECT owner_username, name, content, MIN(id) AS keep_id, COUNT(1) AS cnt
+                      FROM clean_rule_record
+                     WHERE owner_username=? AND category='SYSTEM'
+                     GROUP BY owner_username, name, content
+                    HAVING COUNT(1) > 1
+                   ) dup
+                ON dup.owner_username = r.owner_username
+               AND dup.name = r.name
+               AND dup.content = r.content
+             WHERE r.id <> dup.keep_id
+            """,
+            (rs, i) -> rs.getLong("id"),
+            ownerUsername
+        );
+        if (!duplicateIds.isEmpty()) {
+            jdbcTemplate.batchUpdate(
+                "DELETE FROM clean_rule_record WHERE id=? AND owner_username=?",
+                duplicateIds,
+                duplicateIds.size(),
+                (ps, id) -> {
+                    ps.setLong(1, id);
+                    ps.setString(2, ownerUsername);
+                }
             );
-            jdbcTemplate.update(
-                "INSERT INTO clean_strategy_record(owner_username,name,code,built_in,enabled,created_at,updated_at) VALUES(?, '字段标准化', 'STANDARDIZE', 1, 1, ?, ?)",
-                ownerUsername, now, now
-            );
-            jdbcTemplate.update(
-                "INSERT INTO clean_strategy_record(owner_username,name,code,built_in,enabled,created_at,updated_at) VALUES(?, '异常值剔除', 'OUTLIER_REMOVE', 1, 1, ?, ?)",
-                ownerUsername, now, now
+        }
+    }
+
+    private void ensureSystemStrategy(String ownerUsername, String name, String code) {
+        Integer count = jdbcTemplate.queryForObject(
+            "SELECT COUNT(1) FROM clean_strategy_record WHERE owner_username=? AND built_in=1 AND code=?",
+            Integer.class,
+            ownerUsername,
+            code
+        );
+        if (count != null && count > 0) {
+            return;
+        }
+
+        String now = now();
+        jdbcTemplate.update(
+            "INSERT INTO clean_strategy_record(owner_username,name,code,built_in,enabled,created_at,updated_at) VALUES(?,?,?,1,1,?,?)",
+            ownerUsername,
+            name,
+            code,
+            now,
+            now
+        );
+    }
+
+    private void cleanupDuplicateSystemStrategies(String ownerUsername) {
+        List<Long> duplicateIds = jdbcTemplate.query(
+            """
+            SELECT s.id
+              FROM clean_strategy_record s
+              JOIN (
+                    SELECT owner_username, code, MIN(id) AS keep_id, COUNT(1) AS cnt
+                      FROM clean_strategy_record
+                     WHERE owner_username=? AND built_in=1
+                     GROUP BY owner_username, code
+                    HAVING COUNT(1) > 1
+                   ) dup
+                ON dup.owner_username = s.owner_username
+               AND dup.code = s.code
+             WHERE s.id <> dup.keep_id
+            """,
+            (rs, i) -> rs.getLong("id"),
+            ownerUsername
+        );
+        if (!duplicateIds.isEmpty()) {
+            jdbcTemplate.batchUpdate(
+                "DELETE FROM clean_strategy_record WHERE id=? AND owner_username=?",
+                duplicateIds,
+                duplicateIds.size(),
+                (ps, id) -> {
+                    ps.setLong(1, id);
+                    ps.setString(2, ownerUsername);
+                }
             );
         }
     }
@@ -536,5 +702,260 @@ public class DataProcessService {
     private static String formatDateTime(Timestamp ts) {
         if (ts == null) return "";
         return DATE_TIME_FORMATTER.format(ts.toInstant());
+    }
+
+    private void recreateStandardTable(String tableName) {
+        jdbcTemplate.execute("DROP TABLE IF EXISTS " + tableName);
+        jdbcTemplate.execute(
+            """
+            CREATE TABLE %s (
+              id BIGINT PRIMARY KEY AUTO_INCREMENT,
+              task_id BIGINT NOT NULL,
+              source_id BIGINT NOT NULL,
+              object_name VARCHAR(255) NOT NULL,
+              row_no INT NOT NULL,
+              raw_json LONGTEXT NOT NULL,
+              normalized_json LONGTEXT NOT NULL,
+              created_at DATETIME NOT NULL
+            )
+            """.formatted(tableName)
+        );
+    }
+
+    private void recreateFusionTable(String tableName) {
+        jdbcTemplate.execute("DROP TABLE IF EXISTS " + tableName);
+        jdbcTemplate.execute(
+            """
+            CREATE TABLE %s (
+              id BIGINT PRIMARY KEY AUTO_INCREMENT,
+              fusion_task_id BIGINT NOT NULL,
+              clean_task_id BIGINT NOT NULL,
+              source_id BIGINT NOT NULL,
+              object_name VARCHAR(255) NOT NULL,
+              row_no INT NOT NULL,
+              raw_json LONGTEXT NOT NULL,
+              normalized_json LONGTEXT NOT NULL,
+              source_standard_table VARCHAR(255) NOT NULL,
+              created_at DATETIME NOT NULL
+            )
+            """.formatted(tableName)
+        );
+    }
+
+    private void loadObjectsIntoStandardTable(String ownerUsername, Long taskId, List<Map<String, Object>> cleanObjects, String outputTable) {
+        for (Map<String, Object> object : cleanObjects) {
+            Long sourceId = toLong(object.get("sourceId"));
+            String objectName = text(object.get("objectName"));
+            if (sourceId == null || isBlank(objectName)) {
+                throw new IllegalArgumentException("清洗对象信息不完整");
+            }
+            Map<String, Object> source = getSourceById(ownerUsername, sourceId);
+            String sourceType = text(source.get("type")).toUpperCase();
+
+            List<String> rows = switch (sourceType) {
+                case "DATABASE" -> readDatabaseRows(objectName);
+                case "FILE" -> readFileRows(text(source.get("filePath")), text(source.get("fileName")));
+                default -> throw new IllegalArgumentException("不支持的数据源类型: " + sourceType);
+            };
+
+            int rowNo = 1;
+            for (String row : rows) {
+                jdbcTemplate.update(
+                    "INSERT INTO " + outputTable + "(task_id,source_id,object_name,row_no,raw_json,normalized_json,created_at) VALUES(?,?,?,?,?,?,?)",
+                    taskId,
+                    sourceId,
+                    objectName,
+                    rowNo++,
+                    row,
+                    row,
+                    now()
+                );
+            }
+        }
+    }
+
+    private List<String> readDatabaseRows(String objectName) {
+        String tableName = sanitizeTableName(objectName);
+        List<Map<String, Object>> records = jdbcTemplate.queryForList("SELECT * FROM " + tableName + " LIMIT 10000");
+        List<String> rows = new ArrayList<>();
+        for (Map<String, Object> record : records) {
+            rows.add(toJson(record));
+        }
+        return rows;
+    }
+
+    private List<String> readFileRows(String filePath, String fileName) {
+        if (isBlank(filePath)) {
+            throw new IllegalArgumentException("文件数据源缺少文件路径");
+        }
+        Path path = Paths.get(filePath);
+        if (!Files.exists(path)) {
+            throw new IllegalArgumentException("文件不存在: " + filePath);
+        }
+
+        String lower = nvl(fileName).toLowerCase();
+        if (lower.endsWith(".csv") || lower.endsWith(".txt")) {
+            return readTextStructuredRows(path, lower.endsWith(".txt") ? '|' : ',');
+        }
+        if (lower.endsWith(".json")) {
+            return readJsonRows(path);
+        }
+        if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
+            throw new IllegalArgumentException("当前版本暂不支持解析 Excel 清洗，请先转为 csv/txt/json");
+        }
+        throw new IllegalArgumentException("不支持的文件类型");
+    }
+
+    private List<String> readTextStructuredRows(Path path, char delimiter) {
+        try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+            String headerLine = reader.readLine();
+            if (headerLine == null) return List.of();
+            String[] headers = splitLine(headerLine, delimiter);
+            List<String> rows = new ArrayList<>();
+            String line;
+            while ((line = reader.readLine()) != null && rows.size() < 10000) {
+                String[] values = splitLine(line, delimiter);
+                Map<String, Object> row = new HashMap<>();
+                for (int i = 0; i < headers.length; i++) {
+                    String key = headers[i].trim();
+                    if (key.isEmpty()) key = "col_" + (i + 1);
+                    row.put(key, i < values.length ? values[i].trim() : "");
+                }
+                rows.add(toJson(row));
+            }
+            return rows;
+        } catch (IOException ex) {
+            throw new IllegalArgumentException("读取文件失败: " + ex.getMessage());
+        }
+    }
+
+    private List<String> readJsonRows(Path path) {
+        try {
+            String content = Files.readString(path, StandardCharsets.UTF_8).trim();
+            if (content.startsWith("[")) {
+                List<Map<String, Object>> list = objectMapper.readValue(content, new TypeReference<>() {});
+                List<String> rows = new ArrayList<>();
+                for (Map<String, Object> item : list) {
+                    rows.add(toJson(item));
+                }
+                return rows;
+            }
+
+            List<String> rows = new ArrayList<>();
+            try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+                String line;
+                while ((line = reader.readLine()) != null && rows.size() < 10000) {
+                    String trim = line.trim();
+                    if (!trim.isEmpty()) rows.add(trim);
+                }
+            }
+            return rows;
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("解析 JSON 文件失败: " + ex.getMessage());
+        }
+    }
+
+    private void applyCleanStrategy(String outputTable, String strategyCode, List<String> ruleNames) {
+        String normalized = strategyCode.toUpperCase();
+
+        if (normalized.contains("DEDUP")) {
+            jdbcTemplate.update(
+                "DELETE t1 FROM " + outputTable + " t1 JOIN " + outputTable + " t2 ON t1.id > t2.id AND t1.normalized_json = t2.normalized_json"
+            );
+        }
+
+        if (normalized.contains("STANDARD")) {
+            jdbcTemplate.update("UPDATE " + outputTable + " SET normalized_json=LOWER(normalized_json)");
+        }
+
+        if (normalized.contains("OUTLIER")) {
+            jdbcTemplate.update("DELETE FROM " + outputTable + " WHERE CHAR_LENGTH(normalized_json) > 8000");
+        }
+
+        if (ruleNames.stream().anyMatch(name -> name.contains("空值"))) {
+            jdbcTemplate.update(
+                "UPDATE " + outputTable + " SET normalized_json=REPLACE(normalized_json, ':\"\"', ':\"UNKNOWN\"')"
+            );
+        }
+    }
+
+    private int mergeStandardTablesToTarget(String ownerUsername, Long fusionTaskId, String targetTable, List<String> standardTables) {
+        int total = 0;
+        for (String table : standardTables) {
+            String safeStandardTable = sanitizeTableName(table);
+            Map<String, Object> cleanTask = findCleanTaskByStandardTable(ownerUsername, safeStandardTable);
+            Long cleanTaskId = toLong(cleanTask.get("id"));
+            if (cleanTaskId == null) {
+                throw new IllegalArgumentException("清洗任务缺失: " + safeStandardTable);
+            }
+
+            int inserted = jdbcTemplate.update(
+                """
+                INSERT INTO %s(fusion_task_id,clean_task_id,source_id,object_name,row_no,raw_json,normalized_json,source_standard_table,created_at)
+                SELECT ?, ?, source_id, object_name, row_no, raw_json, normalized_json, ?, ?
+                  FROM %s
+                """.formatted(targetTable, safeStandardTable),
+                fusionTaskId,
+                cleanTaskId,
+                safeStandardTable,
+                now()
+            );
+            total += inserted;
+        }
+        return total;
+    }
+
+    private Map<String, Object> findCleanTaskByStandardTable(String ownerUsername, String standardTable) {
+        List<Map<String, Object>> rows = jdbcTemplate.query(
+            "SELECT id,task_name,status FROM clean_task_record WHERE owner_username=? AND standard_table=? ORDER BY id DESC",
+            (rs, i) -> {
+                Map<String, Object> row = new HashMap<>();
+                row.put("id", rs.getLong("id"));
+                row.put("taskName", rs.getString("task_name"));
+                row.put("status", rs.getString("status"));
+                return row;
+            },
+            ownerUsername,
+            standardTable
+        );
+        if (rows.isEmpty()) {
+            throw new IllegalArgumentException("未找到对应清洗结果表: " + standardTable);
+        }
+        if (!"COMPLETED".equalsIgnoreCase(String.valueOf(rows.get(0).get("status")))) {
+            throw new IllegalArgumentException("清洗任务未完成: " + rows.get(0).get("taskName"));
+        }
+        return rows.get(0);
+    }
+
+    private Map<String, Object> getSourceById(String ownerUsername, Long sourceId) {
+        List<Map<String, Object>> rows = jdbcTemplate.query(
+            "SELECT id,type,file_name,file_path FROM data_source_record WHERE owner_username=? AND id=?",
+            (rs, i) -> {
+                Map<String, Object> row = new HashMap<>();
+                row.put("id", rs.getLong("id"));
+                row.put("type", rs.getString("type"));
+                row.put("fileName", nvl(rs.getString("file_name")));
+                row.put("filePath", nvl(rs.getString("file_path")));
+                return row;
+            },
+            ownerUsername,
+            sourceId
+        );
+        if (rows.isEmpty()) {
+            throw new IllegalArgumentException("数据源不存在: " + sourceId);
+        }
+        return rows.get(0);
+    }
+
+    private String sanitizeTableName(String tableName) {
+        String normalized = text(tableName);
+        if (!SAFE_TABLE_PATTERN.matcher(normalized).matches()) {
+            throw new IllegalArgumentException("表名不合法: " + tableName);
+        }
+        return normalized;
+    }
+
+    private String[] splitLine(String line, char delimiter) {
+        return line.split(Pattern.quote(String.valueOf(delimiter)), -1);
     }
 }

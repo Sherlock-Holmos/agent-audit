@@ -6,7 +6,7 @@
       @update:filters="handleFilterChange"
       @search="loadData"
       @reset="handleReset"
-      @manage-rules="ruleDialogVisible = true"
+      @manage-rules="openRuleManagement"
       @create="dialogVisible = true"
     />
 
@@ -25,16 +25,12 @@
       :strategy-options="strategyOptions"
       @submit="handleSubmit"
     />
-
-    <CleanRuleDialog
-      v-model="ruleDialogVisible"
-      @updated="loadRules"
-    />
   </div>
 </template>
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listCleanRules, listCleanStrategies } from '../api/cleanrule'
 import { listDataSourceObjects, listDataSources } from '../api/datasource'
@@ -42,12 +38,11 @@ import { createCleanTask, deleteCleanTask, listCleanTasks, runCleanTask } from '
 import CleanToolbar from '../components/dataclean/CleanToolbar.vue'
 import CleanTable from '../components/dataclean/CleanTable.vue'
 import CleanFormDialog from '../components/dataclean/CleanFormDialog.vue'
-import CleanRuleDialog from '../components/dataclean/CleanRuleDialog.vue'
 
+const router = useRouter()
 const loading = ref(false)
 const submitting = ref(false)
 const dialogVisible = ref(false)
-const ruleDialogVisible = ref(false)
 const tasks = ref([])
 const sourceOptions = ref([])
 const objectOptions = ref([])
@@ -163,6 +158,10 @@ async function handleDelete(id) {
   } catch (error) {
     ElMessage.error(error?.response?.data?.message || error?.message || '删除失败')
   }
+}
+
+function openRuleManagement() {
+  router.push('/datasource/clean-rules')
 }
 
 function repairName(name, item) {

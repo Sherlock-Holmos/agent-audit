@@ -464,11 +464,37 @@ public class DataSourceService {
         try {
             jdbcTemplate.execute("ALTER TABLE data_source_record ADD COLUMN db_password VARCHAR(512)");
         } catch (DataAccessException ex) {
-            String message = ex.getMessage() == null ? "" : ex.getMessage().toLowerCase();
-            if (!message.contains("duplicate column") && !message.contains("already exists")) {
+            if (!isDuplicateColumnError(ex)) {
                 throw ex;
             }
         }
+    }
+
+    private boolean isDuplicateColumnError(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null) {
+                String normalized = message.toLowerCase();
+                if (normalized.contains("duplicate column") ||
+                    normalized.contains("already exists") ||
+                    normalized.contains("column already exists")) {
+                    return true;
+                }
+            }
+
+            if (current instanceof SQLException sqlEx) {
+                if (sqlEx.getErrorCode() == 1060) {
+                    return true;
+                }
+                String sqlState = sqlEx.getSQLState();
+                if ("42S21".equalsIgnoreCase(sqlState)) {
+                    return true;
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private static int detectPreviewRows(Path filePath, String ext) {
