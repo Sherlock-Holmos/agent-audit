@@ -88,6 +88,7 @@ const menuList = ref([
     children: [
       { title: '数据源管理', path: '/datasource' },
       { title: '数据清洗', path: '/datasource/clean' },
+      { title: '清洗规则管理', path: '/datasource/clean-rules' },
       { title: '数据融合', path: '/datasource/fusion' }
     ]
   },
@@ -173,35 +174,43 @@ watch(
 }
 
 .menu-item-main:hover {
-  background: #ecf5ff;
+  background: var(--menu-hover-bg);
+}
+
+.menu-item-main:hover .title,
+.menu-item-main:hover .icon,
+.menu-item-main:hover .arrow {
+  color: var(--menu-hover-text-color);
 }
 
 .menu-item.active .menu-item-main {
-  background: #e6f4ff;
+  background: var(--menu-active-bg);
+}
+
+.menu-item.active .menu-item-main .title,
+.menu-item.active .menu-item-main .icon,
+.menu-item.active .menu-item-main .arrow {
+  color: var(--menu-active-text-color) !important;
 }
 
 .icon {
   margin-left: 12px;
   font-size: 18px;
-  color: #606266;
+  color: var(--menu-icon-color);
   flex-shrink: 0;
-}
-
-.menu-item.active .icon {
-  color: #409eff;
 }
 
 .title {
   margin-left: 10px;
   font-size: 14px;
-  color: #303133;
+  color: var(--menu-text-color);
   white-space: nowrap;
 }
 
 .arrow {
   margin-left: auto;
   margin-right: 10px;
-  color: #909399;
+  color: var(--menu-arrow-color);
   transition: transform 0.2s ease;
 }
 
@@ -224,20 +233,24 @@ watch(
 }
 
 .submenu-item:hover {
-  background: #f0f7ff;
+  background: var(--submenu-hover-bg);
+}
+
+.submenu-item:hover .submenu-title {
+  color: var(--menu-hover-text-color);
 }
 
 .submenu-item.active {
-  background: #e6f4ff;
+  background: var(--menu-active-bg);
 }
 
 .submenu-title {
   font-size: 13px;
-  color: #606266;
+  color: var(--submenu-text-color);
 }
 
 .submenu-item.active .submenu-title {
-  color: #409eff;
+  color: var(--menu-active-text-color);
 }
 
 .fade-slide-enter-active,
@@ -280,7 +293,7 @@ watch(
 .collapsed-submenu-title {
   padding: 4px 12px 8px;
   font-size: 12px;
-  color: #909399;
+  color: var(--collapsed-submenu-title-color);
 }
 
 .collapsed-submenu-item {
@@ -290,16 +303,17 @@ watch(
   border-radius: 6px;
   margin: 2px 6px;
   font-size: 13px;
-  color: #606266;
+  color: var(--submenu-text-color);
   cursor: pointer;
 }
 
 .collapsed-submenu-item:hover {
-  background: #f0f7ff;
+  background: var(--submenu-hover-bg);
+  color: var(--menu-hover-text-color);
 }
 
 .collapsed-submenu-item.active {
-  background: #e6f4ff;
-  color: #409eff;
+  background: var(--menu-active-bg);
+  color: var(--menu-active-text-color);
 }
 </style>

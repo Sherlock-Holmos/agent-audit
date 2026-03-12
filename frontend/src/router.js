@@ -32,6 +32,12 @@ export const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/datasource/clean-rules',
+    name: 'datasource-clean-rules',
+    component: () => import('./views/DatasourceCleanRuleView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/datasource/fusion',
     name: 'datasource-fusion',
     component: () => import('./views/DatasourceFusionView.vue'),
