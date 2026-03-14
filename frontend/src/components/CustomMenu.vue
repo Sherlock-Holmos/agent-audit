@@ -70,7 +70,7 @@
 import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import { ArrowRight, DataBoard, Coin, Cpu, Setting } from '@element-plus/icons-vue'
+import { ArrowRight, DataBoard, Coin, Cpu, Setting, QuestionFilled } from '@element-plus/icons-vue'
 import { useAppStore } from '../store/app'
 
 const appStore = useAppStore()
@@ -93,7 +93,16 @@ const menuList = ref([
     ]
   },
   { title: 'AI分析', path: '/ai', icon: Cpu },
-  { title: '设置', path: '/settings', icon: Setting }
+  {
+    title: '设置',
+    path: '/settings',
+    icon: Setting,
+    open: false,
+    children: [
+      { title: '系统设置', path: '/settings' },
+      { title: '帮助中心', path: '/help' }
+    ]
+  }
 ])
 
 function isActive(path) {

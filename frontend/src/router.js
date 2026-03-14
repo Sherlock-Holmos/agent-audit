@@ -54,6 +54,12 @@ export const routes = [
     redirect: '/settings'
   },
   {
+    path: '/help',
+    name: 'help',
+    component: () => import('./views/HelpView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/ai',
     name: 'ai',
     component:  () => import('./views/AIView.vue'),
