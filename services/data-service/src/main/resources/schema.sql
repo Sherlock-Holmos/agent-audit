@@ -88,3 +88,36 @@ CREATE TABLE IF NOT EXISTS fusion_task_record (
   updated_at DATETIME NOT NULL,
   INDEX idx_fusion_task_owner (owner_username)
 );
+
+CREATE INDEX idx_clean_task_owner_status_updated ON clean_task_record(owner_username, status, updated_at);
+CREATE INDEX idx_fusion_task_owner_status_updated ON fusion_task_record(owner_username, status, updated_at);
+
+CREATE TABLE IF NOT EXISTS process_job_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  job_id VARCHAR(64) NOT NULL,
+  owner_username VARCHAR(128) NOT NULL,
+  task_type VARCHAR(32) NOT NULL,
+  task_ref_id BIGINT NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  error_message VARCHAR(1024),
+  result_json LONGTEXT,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE KEY uk_process_job_id (job_id),
+  INDEX idx_process_job_owner (owner_username),
+  INDEX idx_process_job_owner_status (owner_username, status)
+);
+
+CREATE TABLE IF NOT EXISTS task_idempotency_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_username VARCHAR(128) NOT NULL,
+  task_type VARCHAR(32) NOT NULL,
+  task_ref_id BIGINT NOT NULL,
+  idempotency_key VARCHAR(128) NOT NULL,
+  job_id VARCHAR(64) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE KEY uk_task_idempotency (owner_username, task_type, task_ref_id, idempotency_key),
+  INDEX idx_task_idempotency_job (job_id)
+);
