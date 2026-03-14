@@ -3,10 +3,19 @@
     <el-card shadow="never" style="margin-bottom: 12px">
       <template #header>清洗规则管理</template>
       <el-form :inline="true" :model="uploadForm" label-width="90px">
+        <el-form-item label="录入方式">
+          <el-radio-group v-model="entryMode">
+            <el-radio value="file">文件上传</el-radio>
+            <el-radio value="online">在线编写</el-radio>
+          </el-radio-group>
+        </el-form-item>
+      </el-form>
+
+      <el-form :inline="true" :model="uploadForm" label-width="90px">
         <el-form-item label="规则名称">
           <el-input v-model="uploadForm.name" placeholder="例如：字段映射标准化" style="width: 220px" />
         </el-form-item>
-        <el-form-item label="规则文件">
+        <el-form-item v-if="entryMode === 'file'" label="规则文件">
           <el-upload
             :auto-upload="false"
             :show-file-list="true"
@@ -17,6 +26,15 @@
           >
             <el-button>选择文件</el-button>
           </el-upload>
+        </el-form-item>
+        <el-form-item v-else label="在线规则">
+          <el-input
+            v-model="uploadForm.onlineContent"
+            type="textarea"
+            :rows="5"
+            placeholder="请输入规则内容，如字段映射、标准化表达式或简单规则定义"
+            style="width: 520px"
+          />
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="uploadForm.remark" placeholder="可选" style="width: 180px" />
@@ -120,13 +138,15 @@ const loading = ref(false)
 const uploading = ref(false)
 const rules = ref([])
 const rawFile = ref(null)
+const entryMode = ref('file')
 const loadingStrategies = ref(false)
 const creatingStrategy = ref(false)
 const strategies = ref([])
 
 const uploadForm = reactive({
   name: '',
-  remark: ''
+  remark: '',
+  onlineContent: ''
 })
 
 const strategyForm = reactive({
@@ -137,6 +157,7 @@ const strategyForm = reactive({
 function resetUploadForm() {
   uploadForm.name = ''
   uploadForm.remark = ''
+  uploadForm.onlineContent = ''
   rawFile.value = null
 }
 
@@ -176,17 +197,33 @@ async function submitUpload() {
     ElMessage.warning('请输入规则名称')
     return
   }
-  if (!rawFile.value) {
-    ElMessage.warning('请选择规则文件')
-    return
-  }
 
   uploading.value = true
   try {
-    const content = await readFileText(rawFile.value)
+    let fileName = ''
+    let content = ''
+
+    if (entryMode.value === 'file') {
+      if (!rawFile.value) {
+        ElMessage.warning('请选择规则文件')
+        uploading.value = false
+        return
+      }
+      fileName = rawFile.value.name
+      content = await readFileText(rawFile.value)
+    } else {
+      if (!uploadForm.onlineContent.trim()) {
+        ElMessage.warning('请输入在线规则内容')
+        uploading.value = false
+        return
+      }
+      fileName = `${uploadForm.name.trim().replace(/\s+/g, '_')}.txt`
+      content = uploadForm.onlineContent.trim()
+    }
+
     await uploadCleanRule({
       name: uploadForm.name.trim(),
-      fileName: rawFile.value.name,
+      fileName,
       content,
       remark: uploadForm.remark.trim()
     })
