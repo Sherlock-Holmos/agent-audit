@@ -35,25 +35,29 @@
     :submitting="profileSubmitting"
     @submit="saveProfile"
   />
+
+  <FloatingAssistant v-if="!isAuthPage" />
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import CustomMenu from './components/CustomMenu.vue'
 import UserAvatarMenu from './components/user/UserAvatarMenu.vue'
 import UserProfileDialog from './components/user/UserProfileDialog.vue'
+import FloatingAssistant from './components/assistant/FloatingAssistant.vue'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { useAppStore } from './store/app'
 import { storeToRefs } from 'pinia'
 import { deactivateMyAccountApi, getMyProfileApi, updateMyProfileApi } from './api/auth'
 
 const appStore = useAppStore()
-const { isCollapse } = storeToRefs(appStore)
+const { isCollapse, themeMode } = storeToRefs(appStore)
 const route = useRoute()
 const router = useRouter()
+let systemThemeMediaQuery
 
 const isAuthPage = computed(() => ['/login', '/register'].includes(route.path))
 
@@ -64,6 +68,12 @@ const mainStyle = computed(() => ({
 }))
 function toggleCollapse() {
   appStore.toggleCollapse()
+}
+
+function handleSystemThemeChange() {
+  if (themeMode.value === 'system') {
+    appStore.applyTheme()
+  }
 }
 
 const user = ref({})
@@ -139,6 +149,23 @@ watch(
   },
   { immediate: true }
 )
+
+watch(
+  () => themeMode.value,
+  () => {
+    appStore.applyTheme()
+  },
+  { immediate: true }
+)
+
+onMounted(() => {
+  systemThemeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+  systemThemeMediaQuery.addEventListener('change', handleSystemThemeChange)
+})
+
+onBeforeUnmount(() => {
+  systemThemeMediaQuery?.removeEventListener('change', handleSystemThemeChange)
+})
 </script>
 
 <style>
@@ -183,6 +210,16 @@ watch(
   background: #f5f7fa;
   height: 100vh;
   box-shadow: 2px 0 8px #eee;
+  --menu-text-color: #303133;
+  --menu-icon-color: #606266;
+  --menu-arrow-color: #909399;
+  --submenu-text-color: #606266;
+  --collapsed-submenu-title-color: #909399;
+  --menu-hover-bg: #ecf5ff;
+  --menu-hover-text-color: #1f2d3d;
+  --menu-active-bg: #e6f4ff;
+  --menu-active-text-color: #1f2d3d;
+  --submenu-hover-bg: #f0f7ff;
   transition: width 0.2s;
   position: relative;
   overflow: hidden;
@@ -245,5 +282,45 @@ watch(
 .sidebar-title {
   display: inline-block;
   white-space: nowrap;
+}
+
+.dark-theme .sidebar-fixed {
+  background: #1d2430;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.4);
+  --menu-text-color: #ffffff;
+  --menu-icon-color: #ffffff;
+  --menu-arrow-color: #ffffff;
+  --submenu-text-color: #ffffff;
+  --collapsed-submenu-title-color: #ffffff;
+  --menu-hover-bg: #e6f4ff;
+  --menu-hover-text-color: #000000;
+  --menu-active-bg: #e6f4ff;
+  --menu-active-text-color: #000000;
+  --submenu-hover-bg: #e6f4ff;
+}
+
+.dark-theme .header-fixed {
+  background: #131a24;
+  border-bottom-color: #2c3a4f;
+  color: #e5eaf3;
+}
+
+.dark-theme .main-scroll {
+  background: #101722;
+  color: #dfe6ef;
+}
+
+.dark-theme .collapse-btn {
+  background: #253246;
+  box-shadow: none;
+  color: #dfe6ef;
+}
+
+.dark-theme .collapse-btn:hover {
+  background: #30425b;
+}
+
+.dark-theme .sidebar-user:hover {
+  background: #2a3a50;
 }
 </style>
