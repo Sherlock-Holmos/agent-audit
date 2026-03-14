@@ -5,7 +5,12 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Map;
 import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
@@ -20,28 +25,54 @@ import reactor.core.publisher.Mono;
 @Component
 public class JwtAuthFilter implements GlobalFilter, Ordered {
 
+    private static final String TRACE_ID_HEADER = "X-Trace-Id";
+    private static final long WINDOW_MS = Duration.ofMinutes(1).toMillis();
     private static final List<String> WHITE_LIST = List.of(
         "/api/auth/login",
         "/api/auth/register",
-        "/actuator/health"
+        "/actuator/health",
+        "/actuator/info",
+        "/actuator/prometheus"
     );
 
     private final SecretKey secretKey;
+    private final Map<String, WindowCounter> userCounters = new ConcurrentHashMap<>();
+    private final Map<String, WindowCounter> ipCounters = new ConcurrentHashMap<>();
+    private final int userRateLimitPerMinute;
+    private final int ipRateLimitPerMinute;
 
-    public JwtAuthFilter(@Value("${auth.jwt.secret}") String secret) {
+    public JwtAuthFilter(
+        @Value("${auth.jwt.secret}") String secret,
+        @Value("${app.gateway.rate-limit-per-minute:120}") int userRateLimitPerMinute,
+        @Value("${app.gateway.ip-rate-limit-per-minute:240}") int ipRateLimitPerMinute
+    ) {
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.userRateLimitPerMinute = Math.max(userRateLimitPerMinute, 1);
+        this.ipRateLimitPerMinute = Math.max(ipRateLimitPerMinute, 1);
     }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
-
-        if (WHITE_LIST.stream().anyMatch(path::startsWith)) {
-            return chain.filter(exchange);
+        String traceId = request.getHeaders().getFirst(TRACE_ID_HEADER);
+        if (traceId == null || traceId.isBlank()) {
+            traceId = UUID.randomUUID().toString();
         }
 
-        String auth = request.getHeaders().getFirst("Authorization");
+        ServerHttpRequest traceMutated = request.mutate().header(TRACE_ID_HEADER, traceId).build();
+        exchange.getResponse().getHeaders().add(TRACE_ID_HEADER, traceId);
+
+        if (WHITE_LIST.stream().anyMatch(path::startsWith)) {
+            return chain.filter(exchange.mutate().request(traceMutated).build());
+        }
+
+        String clientIp = extractClientIp(traceMutated);
+        if (exceed(ipCounters, clientIp, ipRateLimitPerMinute)) {
+            return tooManyRequests(exchange, "访问过于频繁，请稍后重试");
+        }
+
+        String auth = traceMutated.getHeaders().getFirst("Authorization");
         if (auth == null || !auth.startsWith("Bearer ")) {
             return unauthorized(exchange, "缺少或非法Authorization头");
         }
@@ -54,8 +85,13 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
             return unauthorized(exchange, "Token无效或已过期");
         }
 
-        ServerHttpRequest mutated = request.mutate()
-            .header("X-User-Name", claims.getSubject())
+        String userName = claims.getSubject();
+        if (exceed(userCounters, userName, userRateLimitPerMinute)) {
+            return tooManyRequests(exchange, "用户请求过于频繁，请稍后重试");
+        }
+
+        ServerHttpRequest mutated = traceMutated.mutate()
+            .header("X-User-Name", userName)
             .header("X-User-Role", String.valueOf(claims.getOrDefault("role", "AUDITOR")))
             .header("X-User-Dept", "audit-dept-001")
             .build();
@@ -67,6 +103,45 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
         exchange.getResponse().getHeaders().add("X-Auth-Error", message);
         return exchange.getResponse().setComplete();
+    }
+
+    private Mono<Void> tooManyRequests(ServerWebExchange exchange, String message) {
+        exchange.getResponse().setStatusCode(HttpStatus.TOO_MANY_REQUESTS);
+        exchange.getResponse().getHeaders().add("X-Rate-Limit-Error", message);
+        exchange.getResponse().getHeaders().add("Retry-After", "60");
+        return exchange.getResponse().setComplete();
+    }
+
+    private boolean exceed(Map<String, WindowCounter> counters, String key, int maxAllowed) {
+        long now = System.currentTimeMillis();
+        WindowCounter counter = counters.computeIfAbsent(key, ignored -> new WindowCounter(now));
+        synchronized (counter) {
+            if (now - counter.windowStartMs >= WINDOW_MS) {
+                counter.windowStartMs = now;
+                counter.count.set(0);
+            }
+            return counter.count.incrementAndGet() > maxAllowed;
+        }
+    }
+
+    private String extractClientIp(ServerHttpRequest request) {
+        String xff = request.getHeaders().getFirst("X-Forwarded-For");
+        if (xff != null && !xff.isBlank()) {
+            return xff.split(",")[0].trim();
+        }
+        if (request.getRemoteAddress() == null || request.getRemoteAddress().getAddress() == null) {
+            return "unknown";
+        }
+        return request.getRemoteAddress().getAddress().getHostAddress();
+    }
+
+    private static final class WindowCounter {
+        private long windowStartMs;
+        private final AtomicInteger count = new AtomicInteger(0);
+
+        private WindowCounter(long windowStartMs) {
+            this.windowStartMs = windowStartMs;
+        }
     }
 
     @Override
