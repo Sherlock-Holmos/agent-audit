@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS clean_strategy_record (
   owner_username VARCHAR(128) NOT NULL,
   name VARCHAR(255) NOT NULL,
   code VARCHAR(64) NOT NULL,
+  content TEXT,
+  remark VARCHAR(512),
   built_in TINYINT(1) NOT NULL,
   enabled TINYINT(1) NOT NULL,
   created_at DATETIME NOT NULL,
@@ -48,6 +50,9 @@ CREATE TABLE IF NOT EXISTS clean_strategy_record (
   UNIQUE KEY uk_clean_strategy_owner_code (owner_username, code),
   INDEX idx_clean_strategy_owner (owner_username)
 );
+
+ALTER TABLE clean_strategy_record ADD COLUMN IF NOT EXISTS content TEXT;
+ALTER TABLE clean_strategy_record ADD COLUMN IF NOT EXISTS remark VARCHAR(512);
 
 CREATE TABLE IF NOT EXISTS clean_task_record (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
