@@ -83,6 +83,39 @@ public class DataProcessController {
         }
     }
 
+    @GetMapping("/clean/rules/{id}")
+    public ResponseEntity<Map<String, Object>> getCleanRuleDetail(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @PathVariable Long id
+    ) {
+        try {
+            return ResponseEntity.ok(Map.of(
+                "code", 0,
+                "message", "ok",
+                "data", dataProcessService.getCleanRuleDetail(user(username), id)
+            ));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
+        }
+    }
+
+    @PatchMapping("/clean/rules/{id}")
+    public ResponseEntity<Map<String, Object>> updateCleanRule(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @PathVariable Long id,
+        @RequestBody Map<String, Object> payload
+    ) {
+        try {
+            return ResponseEntity.ok(Map.of(
+                "code", 0,
+                "message", "更新成功",
+                "data", dataProcessService.updateCleanRule(user(username), id, payload)
+            ));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
+        }
+    }
+
     @DeleteMapping("/clean/rules/{id}")
     public ResponseEntity<Map<String, Object>> deleteCleanRule(
         @RequestHeader(value = "X-User-Name", required = false) String username,
@@ -117,6 +150,39 @@ public class DataProcessController {
                 "code", 0,
                 "message", "创建成功",
                 "data", dataProcessService.createCleanStrategy(user(username), payload)
+            ));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
+        }
+    }
+
+    @GetMapping("/clean/strategies/{id}")
+    public ResponseEntity<Map<String, Object>> getCleanStrategyDetail(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @PathVariable Long id
+    ) {
+        try {
+            return ResponseEntity.ok(Map.of(
+                "code", 0,
+                "message", "ok",
+                "data", dataProcessService.getCleanStrategyDetail(user(username), id)
+            ));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
+        }
+    }
+
+    @PatchMapping("/clean/strategies/{id}")
+    public ResponseEntity<Map<String, Object>> updateCleanStrategy(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @PathVariable Long id,
+        @RequestBody Map<String, Object> payload
+    ) {
+        try {
+            return ResponseEntity.ok(Map.of(
+                "code", 0,
+                "message", "更新成功",
+                "data", dataProcessService.updateCleanStrategy(user(username), id, payload)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));

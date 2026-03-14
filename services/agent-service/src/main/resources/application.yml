@@ -4,6 +4,15 @@ server:
 spring:
   application:
     name: agent-service
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      timeout: ${SPRING_DATA_REDIS_TIMEOUT:2s}
 
 app:
-  gateway-base-url: ${GATEWAY_BASE_URL:http://localhost:8081}
+  data-base-url: ${DATA_BASE_URL:http://localhost:8082}
+  agent:
+    session-ttl-minutes: ${AGENT_SESSION_TTL_MINUTES:360}
+    max-session-turns: ${AGENT_MAX_SESSION_TURNS:20}
+    rate-limit-per-minute: ${AGENT_RATE_LIMIT_PER_MINUTE:30}

@@ -9,6 +9,11 @@ server:
 spring:
   application:
     name: data-service
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      timeout: ${SPRING_DATA_REDIS_TIMEOUT:2s}
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3307/agent_audit?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
     username: ${SPRING_DATASOURCE_USERNAME:root}

@@ -16,11 +16,13 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -37,11 +39,19 @@ public class DataProcessService {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final DataSourceService dataSourceService;
+    private final DashboardService dashboardService;
 
-    public DataProcessService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper, DataSourceService dataSourceService) {
+    public DataProcessService(
+        JdbcTemplate jdbcTemplate,
+        ObjectMapper objectMapper,
+        DataSourceService dataSourceService,
+        DashboardService dashboardService
+    ) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.dataSourceService = dataSourceService;
+        this.dashboardService = dashboardService;
+        ensureCleanStrategyColumns();
     }
 
     public List<Map<String, Object>> listCleanRules(String ownerUsername) {
@@ -98,6 +108,56 @@ public class DataProcessService {
         return Map.of("id", String.valueOf(id), "enabled", enabled);
     }
 
+    public Map<String, Object> getCleanRuleDetail(String ownerUsername, Long id) {
+        List<Map<String, Object>> rows = jdbcTemplate.query(
+            "SELECT id,name,category,file_name,content,enabled,remark,updated_at FROM clean_rule_record WHERE owner_username=? AND id=?",
+            (rs, i) -> {
+                Map<String, Object> row = new HashMap<>();
+                row.put("id", String.valueOf(rs.getLong("id")));
+                row.put("name", rs.getString("name"));
+                row.put("category", rs.getString("category"));
+                row.put("fileName", nvl(rs.getString("file_name")));
+                row.put("content", nvl(rs.getString("content")));
+                row.put("enabled", rs.getBoolean("enabled"));
+                row.put("remark", nvl(rs.getString("remark")));
+                row.put("updatedAt", formatDateTime(rs.getTimestamp("updated_at")));
+                return row;
+            },
+            ownerUsername,
+            id
+        );
+        if (rows.isEmpty()) throw new IllegalArgumentException("规则不存在");
+        return rows.get(0);
+    }
+
+    public Map<String, Object> updateCleanRule(String ownerUsername, Long id, Map<String, Object> payload) {
+        Map<String, Object> existing = getCleanRuleDetail(ownerUsername, id);
+        if ("SYSTEM".equalsIgnoreCase(String.valueOf(existing.get("category")))) {
+            throw new IllegalArgumentException("系统规则不允许编辑");
+        }
+
+        String name = text(payload.get("name"));
+        String fileName = text(payload.get("fileName"));
+        String content = text(payload.get("content"));
+        String remark = text(payload.get("remark"));
+        if (isBlank(name) || isBlank(fileName) || isBlank(content)) {
+            throw new IllegalArgumentException("规则名称、文件和内容不能为空");
+        }
+
+        int updated = jdbcTemplate.update(
+            "UPDATE clean_rule_record SET name=?, file_name=?, content=?, remark=?, updated_at=? WHERE owner_username=? AND id=?",
+            name,
+            fileName,
+            content,
+            remark,
+            now(),
+            ownerUsername,
+            id
+        );
+        if (updated == 0) throw new IllegalArgumentException("规则不存在");
+        return getCleanRuleDetail(ownerUsername, id);
+    }
+
     public void deleteCleanRule(String ownerUsername, Long id) {
         Integer cnt = jdbcTemplate.queryForObject(
             "SELECT COUNT(1) FROM clean_rule_record WHERE owner_username=? AND id=? AND category='SYSTEM'",
@@ -114,12 +174,14 @@ public class DataProcessService {
     public List<Map<String, Object>> listCleanStrategies(String ownerUsername) {
         ensureDefaultCleanConfig(ownerUsername);
         return jdbcTemplate.query(
-            "SELECT id,name,code,built_in,enabled,updated_at FROM clean_strategy_record WHERE owner_username=? ORDER BY updated_at DESC,id DESC",
+            "SELECT id,name,code,content,remark,built_in,enabled,updated_at FROM clean_strategy_record WHERE owner_username=? ORDER BY updated_at DESC,id DESC",
             (rs, i) -> {
                 Map<String, Object> row = new HashMap<>();
                 row.put("id", String.valueOf(rs.getLong("id")));
                 row.put("name", rs.getString("name"));
                 row.put("code", rs.getString("code"));
+                row.put("content", nvl(rs.getString("content")));
+                row.put("remark", nvl(rs.getString("remark")));
                 row.put("builtIn", rs.getBoolean("built_in"));
                 row.put("enabled", rs.getBoolean("enabled"));
                 row.put("updatedAt", formatDateTime(rs.getTimestamp("updated_at")));
@@ -132,6 +194,8 @@ public class DataProcessService {
     public Map<String, Object> createCleanStrategy(String ownerUsername, Map<String, Object> payload) {
         String name = text(payload.get("name"));
         String code = text(payload.get("code"));
+        String content = text(payload.get("content"));
+        String remark = text(payload.get("remark"));
         if (isBlank(name) || isBlank(code)) throw new IllegalArgumentException("策略名称和编码不能为空");
 
         Integer exists = jdbcTemplate.queryForObject(
@@ -144,10 +208,12 @@ public class DataProcessService {
 
         String now = now();
         Long id = insertAndGetId(
-            "INSERT INTO clean_strategy_record(owner_username,name,code,built_in,enabled,created_at,updated_at) VALUES(?,?,?,0,1,?,?)",
+            "INSERT INTO clean_strategy_record(owner_username,name,code,content,remark,built_in,enabled,created_at,updated_at) VALUES(?,?,?,?,?,0,1,?,?)",
             ownerUsername,
             name,
             code,
+            content,
+            remark,
             now,
             now
         );
@@ -156,6 +222,8 @@ public class DataProcessService {
             "id", String.valueOf(id),
             "name", name,
             "code", code,
+            "content", content,
+            "remark", remark,
             "builtIn", false,
             "enabled", true,
             "updatedAt", now
@@ -169,6 +237,67 @@ public class DataProcessService {
         );
         if (updated == 0) throw new IllegalArgumentException("策略不存在");
         return Map.of("id", String.valueOf(id), "enabled", enabled);
+    }
+
+    public Map<String, Object> getCleanStrategyDetail(String ownerUsername, Long id) {
+        List<Map<String, Object>> rows = jdbcTemplate.query(
+            "SELECT id,name,code,content,remark,built_in,enabled,updated_at FROM clean_strategy_record WHERE owner_username=? AND id=?",
+            (rs, i) -> {
+                Map<String, Object> row = new HashMap<>();
+                row.put("id", String.valueOf(rs.getLong("id")));
+                row.put("name", rs.getString("name"));
+                row.put("code", rs.getString("code"));
+                row.put("content", nvl(rs.getString("content")));
+                row.put("remark", nvl(rs.getString("remark")));
+                row.put("builtIn", rs.getBoolean("built_in"));
+                row.put("enabled", rs.getBoolean("enabled"));
+                row.put("updatedAt", formatDateTime(rs.getTimestamp("updated_at")));
+                return row;
+            },
+            ownerUsername,
+            id
+        );
+        if (rows.isEmpty()) throw new IllegalArgumentException("策略不存在");
+        return rows.get(0);
+    }
+
+    public Map<String, Object> updateCleanStrategy(String ownerUsername, Long id, Map<String, Object> payload) {
+        Map<String, Object> existing = getCleanStrategyDetail(ownerUsername, id);
+        if (Boolean.TRUE.equals(existing.get("builtIn"))) {
+            throw new IllegalArgumentException("系统策略不允许编辑");
+        }
+
+        String name = text(payload.get("name"));
+        String code = text(payload.get("code"));
+        String content = text(payload.get("content"));
+        String remark = text(payload.get("remark"));
+        if (isBlank(name) || isBlank(code)) {
+            throw new IllegalArgumentException("策略名称和编码不能为空");
+        }
+
+        Integer duplicate = jdbcTemplate.queryForObject(
+            "SELECT COUNT(1) FROM clean_strategy_record WHERE owner_username=? AND code=? AND id<>?",
+            Integer.class,
+            ownerUsername,
+            code,
+            id
+        );
+        if (duplicate != null && duplicate > 0) {
+            throw new IllegalArgumentException("策略编码已存在");
+        }
+
+        int updated = jdbcTemplate.update(
+            "UPDATE clean_strategy_record SET name=?, code=?, content=?, remark=?, updated_at=? WHERE owner_username=? AND id=?",
+            name,
+            code,
+            content,
+            remark,
+            now(),
+            ownerUsername,
+            id
+        );
+        if (updated == 0) throw new IllegalArgumentException("策略不存在");
+        return getCleanStrategyDetail(ownerUsername, id);
     }
 
     public void deleteCleanStrategy(String ownerUsername, Long id) {
@@ -246,7 +375,9 @@ public class DataProcessService {
             now
         );
 
-        return getCleanTaskById(ownerUsername, id);
+        Map<String, Object> created = getCleanTaskById(ownerUsername, id);
+        invalidateDashboardCache(ownerUsername);
+        return created;
     }
 
     public Map<String, Object> runCleanTask(String ownerUsername, Long id) {
@@ -270,7 +401,7 @@ public class DataProcessService {
         try {
             recreateStandardTable(outputTable);
             loadObjectsIntoStandardTable(ownerUsername, id, cleanObjects, outputTable);
-            applyCleanStrategy(outputTable, strategyCode, ruleNames);
+            applyCleanStrategy(ownerUsername, outputTable, strategyCode, ruleNames);
 
             Integer count = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM " + outputTable, Integer.class);
             cleanedRows = count == null ? 0 : count;
@@ -292,12 +423,15 @@ public class DataProcessService {
             throw ex;
         }
 
-        return getCleanTaskById(ownerUsername, id);
+        Map<String, Object> completed = getCleanTaskById(ownerUsername, id);
+        invalidateDashboardCache(ownerUsername);
+        return completed;
     }
 
     public void deleteCleanTask(String ownerUsername, Long id) {
         int affected = jdbcTemplate.update("DELETE FROM clean_task_record WHERE owner_username=? AND id=?", ownerUsername, id);
         if (affected == 0) throw new IllegalArgumentException("清洗任务不存在");
+        invalidateDashboardCache(ownerUsername);
     }
 
     public List<Map<String, Object>> listFusionTasks(String ownerUsername, String keyword, String status) {
@@ -354,7 +488,9 @@ public class DataProcessService {
             now
         );
 
-        return getFusionTaskById(ownerUsername, id);
+        Map<String, Object> created = getFusionTaskById(ownerUsername, id);
+        invalidateDashboardCache(ownerUsername);
+        return created;
     }
 
     public Map<String, Object> runFusionTask(String ownerUsername, Long id) {
@@ -395,12 +531,19 @@ public class DataProcessService {
             throw ex;
         }
 
-        return getFusionTaskById(ownerUsername, id);
+        Map<String, Object> completed = getFusionTaskById(ownerUsername, id);
+        invalidateDashboardCache(ownerUsername);
+        return completed;
     }
 
     public void deleteFusionTask(String ownerUsername, Long id) {
         int affected = jdbcTemplate.update("DELETE FROM fusion_task_record WHERE owner_username=? AND id=?", ownerUsername, id);
         if (affected == 0) throw new IllegalArgumentException("融合任务不存在");
+        invalidateDashboardCache(ownerUsername);
+    }
+
+    private void invalidateDashboardCache(String ownerUsername) {
+        dashboardService.invalidateOwnerCache(ownerUsername);
     }
 
     private void ensureDefaultCleanConfig(String ownerUsername) {
@@ -483,13 +626,59 @@ public class DataProcessService {
 
         String now = now();
         jdbcTemplate.update(
-            "INSERT INTO clean_strategy_record(owner_username,name,code,built_in,enabled,created_at,updated_at) VALUES(?,?,?,1,1,?,?)",
+            "INSERT INTO clean_strategy_record(owner_username,name,code,content,remark,built_in,enabled,created_at,updated_at) VALUES(?,?,?,?,?,1,1,?,?)",
             ownerUsername,
             name,
             code,
+            "",
+            "系统默认策略",
             now,
             now
         );
+    }
+
+    private void ensureCleanStrategyColumns() {
+        try {
+            jdbcTemplate.execute("ALTER TABLE clean_strategy_record ADD COLUMN content TEXT");
+        } catch (DataAccessException ex) {
+            if (!isDuplicateColumnError(ex)) {
+                throw ex;
+            }
+        }
+
+        try {
+            jdbcTemplate.execute("ALTER TABLE clean_strategy_record ADD COLUMN remark VARCHAR(512)");
+        } catch (DataAccessException ex) {
+            if (!isDuplicateColumnError(ex)) {
+                throw ex;
+            }
+        }
+    }
+
+    private boolean isDuplicateColumnError(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null) {
+                String normalized = message.toLowerCase();
+                if (normalized.contains("duplicate column") ||
+                    normalized.contains("already exists") ||
+                    normalized.contains("column already exists")) {
+                    return true;
+                }
+            }
+            if (current instanceof SQLException sqlEx) {
+                if (sqlEx.getErrorCode() == 1060) {
+                    return true;
+                }
+                String sqlState = sqlEx.getSQLState();
+                if ("42S21".equalsIgnoreCase(sqlState)) {
+                    return true;
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private void cleanupDuplicateSystemStrategies(String ownerUsername) {
@@ -855,7 +1044,7 @@ public class DataProcessService {
         }
     }
 
-    private void applyCleanStrategy(String outputTable, String strategyCode, List<String> ruleNames) {
+    private void applyCleanStrategy(String ownerUsername, String outputTable, String strategyCode, List<String> ruleNames) {
         String normalized = strategyCode.toUpperCase();
 
         if (normalized.contains("DEDUP")) {
@@ -872,11 +1061,250 @@ public class DataProcessService {
             jdbcTemplate.update("DELETE FROM " + outputTable + " WHERE CHAR_LENGTH(normalized_json) > 8000");
         }
 
-        if (ruleNames.stream().anyMatch(name -> name.contains("空值"))) {
-            jdbcTemplate.update(
-                "UPDATE " + outputTable + " SET normalized_json=REPLACE(normalized_json, ':\"\"', ':\"UNKNOWN\"')"
-            );
+        List<RuleAction> actions = loadRuleActions(ownerUsername, ruleNames);
+        if (!actions.isEmpty()) {
+            applyRuleActionsToRows(outputTable, actions);
+        } else if (ruleNames.stream().anyMatch(name -> name.contains("空值"))) {
+            // Backward compatibility for historical tasks that only rely on rule names.
+            jdbcTemplate.update("UPDATE " + outputTable + " SET normalized_json=REPLACE(normalized_json, ':\"\"', ':\"UNKNOWN\"')");
         }
+    }
+
+    private List<RuleAction> loadRuleActions(String ownerUsername, List<String> ruleNames) {
+        if (ruleNames == null || ruleNames.isEmpty()) {
+            return List.of();
+        }
+
+        Set<String> uniqueNames = new LinkedHashSet<>();
+        for (String name : ruleNames) {
+            if (!isBlank(name)) {
+                uniqueNames.add(name);
+            }
+        }
+        if (uniqueNames.isEmpty()) {
+            return List.of();
+        }
+
+        String placeholders = String.join(",", uniqueNames.stream().map(it -> "?").toList());
+        List<Object> args = new ArrayList<>();
+        args.add(ownerUsername);
+        args.addAll(uniqueNames);
+
+        String sql = "SELECT name,content FROM clean_rule_record WHERE owner_username=? AND enabled=1 AND name IN (" + placeholders + ") ORDER BY id ASC";
+        List<Map<String, Object>> rows = jdbcTemplate.query(
+            sql,
+            (rs, i) -> Map.of("name", nvl(rs.getString("name")), "content", nvl(rs.getString("content"))),
+            args.toArray()
+        );
+
+        List<RuleAction> actions = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            String ruleName = text(row.get("name"));
+            String content = text(row.get("content"));
+            actions.addAll(parseRuleActions(content));
+
+            if (ruleName.contains("空值") && actions.stream().noneMatch(action -> "fill_null".equals(action.type))) {
+                actions.add(new RuleAction("fill_null", "*", "UNKNOWN", "", ""));
+            }
+        }
+        return actions;
+    }
+
+    private List<RuleAction> parseRuleActions(String content) {
+        if (isBlank(content)) {
+            return List.of();
+        }
+
+        String trimmed = content.trim();
+        List<RuleAction> actions = new ArrayList<>();
+
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+            try {
+                if (trimmed.startsWith("{")) {
+                    Map<String, Object> obj = objectMapper.readValue(trimmed, new TypeReference<>() {});
+                    Object rootActions = obj.get("actions");
+                    if (rootActions instanceof List<?> list) {
+                        actions.addAll(parseActionList(list));
+                    } else {
+                        RuleAction single = parseActionMap(obj);
+                        if (single != null) actions.add(single);
+                    }
+                } else {
+                    List<Map<String, Object>> list = objectMapper.readValue(trimmed, new TypeReference<>() {});
+                    actions.addAll(parseActionList(new ArrayList<>(list)));
+                }
+            } catch (Exception ignore) {
+                // Fall back to line-based parsing below.
+            }
+        }
+
+        if (!actions.isEmpty()) {
+            return actions;
+        }
+
+        String[] lines = trimmed.split("\\r?\\n");
+        for (String rawLine : lines) {
+            String line = rawLine.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+
+            String[] parts = line.split("\\|", -1);
+            String type = parts[0].trim().toLowerCase();
+            if (type.isEmpty()) {
+                continue;
+            }
+
+            String field = parts.length > 1 && !parts[1].isBlank() ? parts[1].trim() : "*";
+            String value = parts.length > 2 ? parts[2].trim() : "";
+            String from = parts.length > 2 ? parts[2].trim() : "";
+            String to = parts.length > 3 ? parts[3].trim() : "";
+            actions.add(new RuleAction(type, field, value, from, to));
+        }
+
+        if (actions.isEmpty() && (trimmed.contains("空值") || trimmed.contains("fill_null"))) {
+            actions.add(new RuleAction("fill_null", "*", "UNKNOWN", "", ""));
+        }
+        return actions;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<RuleAction> parseActionList(List<?> list) {
+        List<RuleAction> actions = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> map) {
+                RuleAction action = parseActionMap((Map<String, Object>) map);
+                if (action != null) actions.add(action);
+            }
+        }
+        return actions;
+    }
+
+    private RuleAction parseActionMap(Map<String, Object> map) {
+        String type = text(map.get("type")).toLowerCase();
+        if (isBlank(type)) {
+            return null;
+        }
+        String field = text(map.get("field"));
+        if (isBlank(field)) {
+            field = "*";
+        }
+        String value = text(map.get("value"));
+        String from = text(map.get("from"));
+        String to = text(map.get("to"));
+        return new RuleAction(type, field, value, from, to);
+    }
+
+    private void applyRuleActionsToRows(String outputTable, List<RuleAction> actions) {
+        List<Map<String, Object>> rows = jdbcTemplate.query(
+            "SELECT id, normalized_json FROM " + outputTable + " ORDER BY id ASC",
+            (rs, i) -> Map.of("id", rs.getLong("id"), "json", nvl(rs.getString("normalized_json")))
+        );
+
+        for (Map<String, Object> row : rows) {
+            Long id = toLong(row.get("id"));
+            String json = text(row.get("json"));
+            if (id == null || isBlank(json)) {
+                continue;
+            }
+
+            Map<String, Object> obj;
+            try {
+                obj = objectMapper.readValue(json, new TypeReference<>() {});
+            } catch (Exception ex) {
+                continue;
+            }
+
+            boolean changed = false;
+            for (RuleAction action : actions) {
+                changed = applyRuleAction(obj, action) || changed;
+            }
+
+            if (changed) {
+                jdbcTemplate.update(
+                    "UPDATE " + outputTable + " SET normalized_json=? WHERE id=?",
+                    toJson(obj),
+                    id
+                );
+            }
+        }
+    }
+
+    private boolean applyRuleAction(Map<String, Object> obj, RuleAction action) {
+        String field = isBlank(action.field) ? "*" : action.field;
+        String type = action.type;
+
+        if ("remove_field".equals(type)) {
+            if ("*".equals(field)) {
+                return false;
+            }
+            return obj.remove(field) != null;
+        }
+
+        if ("*".equals(field)) {
+            boolean changed = false;
+            for (String key : new ArrayList<>(obj.keySet())) {
+                changed = applyRuleToField(obj, key, action) || changed;
+            }
+            return changed;
+        }
+
+        return applyRuleToField(obj, field, action);
+    }
+
+    private boolean applyRuleToField(Map<String, Object> obj, String field, RuleAction action) {
+        Object current = obj.get(field);
+        String currentText = current == null ? "" : String.valueOf(current);
+
+        return switch (action.type) {
+            case "fill_null" -> {
+                if (current == null || currentText.isBlank()) {
+                    obj.put(field, isBlank(action.value) ? "UNKNOWN" : action.value);
+                    yield true;
+                }
+                yield false;
+            }
+            case "trim" -> {
+                if (current == null) yield false;
+                String trimmed = currentText.trim();
+                if (!trimmed.equals(currentText)) {
+                    obj.put(field, trimmed);
+                    yield true;
+                }
+                yield false;
+            }
+            case "lowercase" -> {
+                if (current == null) yield false;
+                String lowered = currentText.toLowerCase();
+                if (!lowered.equals(currentText)) {
+                    obj.put(field, lowered);
+                    yield true;
+                }
+                yield false;
+            }
+            case "uppercase" -> {
+                if (current == null) yield false;
+                String uppered = currentText.toUpperCase();
+                if (!uppered.equals(currentText)) {
+                    obj.put(field, uppered);
+                    yield true;
+                }
+                yield false;
+            }
+            case "replace" -> {
+                if (current == null || isBlank(action.from)) yield false;
+                String replaced = currentText.replace(action.from, nvl(action.to));
+                if (!replaced.equals(currentText)) {
+                    obj.put(field, replaced);
+                    yield true;
+                }
+                yield false;
+            }
+            default -> false;
+        };
+    }
+
+    private record RuleAction(String type, String field, String value, String from, String to) {
     }
 
     private int mergeStandardTablesToTarget(String ownerUsername, Long fusionTaskId, String targetTable, List<String> standardTables) {

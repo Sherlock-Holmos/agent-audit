@@ -2,6 +2,7 @@ package com.audit.data.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -19,6 +20,11 @@ import org.springframework.stereotype.Service;
 @Service
 public class DashboardService {
 
+    private static final String DASHBOARD_CACHE_PREFIX = "dashboard:";
+    private static final Duration DASHBOARD_TTL = Duration.ofSeconds(60);
+    private static final Duration TREND_TTL = Duration.ofSeconds(90);
+    private static final Duration HEATMAP_TTL = Duration.ofSeconds(120);
+    private static final Duration FUSION_OPTIONS_TTL = Duration.ofSeconds(45);
     private static final Pattern SAFE_TABLE_PATTERN = Pattern.compile("^[a-zA-Z][a-zA-Z0-9_]{0,63}$");
     private static final List<String> GROUP_KEYS = List.of(
         "department", "dept", "province", "city", "channel", "status", "region", "type"
@@ -26,12 +32,24 @@ public class DashboardService {
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final RedisCacheService redisCacheService;
 
-    public DashboardService(JdbcTemplate jdbcTemplate) {
+    public DashboardService(JdbcTemplate jdbcTemplate, RedisCacheService redisCacheService) {
         this.jdbcTemplate = jdbcTemplate;
+        this.redisCacheService = redisCacheService;
     }
 
     public List<Map<String, Object>> listFusionOptions(String ownerUsername) {
+        String key = cacheKey(ownerUsername, "fusion-options");
+        return redisCacheService.getOrCompute(
+            key,
+            FUSION_OPTIONS_TTL,
+            new TypeReference<List<Map<String, Object>>>() {},
+            () -> listFusionOptionsInternal(ownerUsername)
+        );
+    }
+
+    private List<Map<String, Object>> listFusionOptionsInternal(String ownerUsername) {
         return jdbcTemplate.query(
             """
             SELECT id, task_name, target_table, fusion_rows, updated_at
@@ -53,6 +71,16 @@ public class DashboardService {
     }
 
     public Map<String, Object> buildDashboard(String ownerUsername, Long fusionTaskId) {
+        String key = cacheKey(ownerUsername, "dashboard:" + fusionKeySuffix(fusionTaskId));
+        return redisCacheService.getOrCompute(
+            key,
+            DASHBOARD_TTL,
+            new TypeReference<Map<String, Object>>() {},
+            () -> buildDashboardInternal(ownerUsername, fusionTaskId)
+        );
+    }
+
+    private Map<String, Object> buildDashboardInternal(String ownerUsername, Long fusionTaskId) {
         TargetTableInfo target = resolveTargetTable(ownerUsername, fusionTaskId);
         if (target == null) {
             return Map.of(
@@ -123,6 +151,16 @@ public class DashboardService {
     }
 
     public Map<String, Object> buildTrend(String ownerUsername, Long fusionTaskId) {
+        String key = cacheKey(ownerUsername, "trend:" + fusionKeySuffix(fusionTaskId));
+        return redisCacheService.getOrCompute(
+            key,
+            TREND_TTL,
+            new TypeReference<Map<String, Object>>() {},
+            () -> buildTrendInternal(ownerUsername, fusionTaskId)
+        );
+    }
+
+    private Map<String, Object> buildTrendInternal(String ownerUsername, Long fusionTaskId) {
         TargetTableInfo target = resolveTargetTable(ownerUsername, fusionTaskId);
         if (target == null || !tableExists(sanitizeTableName(target.targetTable))) {
             return emptyTrend();
@@ -181,6 +219,16 @@ public class DashboardService {
     }
 
     public Map<String, Object> buildHeatmap(String ownerUsername, Long fusionTaskId) {
+        String key = cacheKey(ownerUsername, "heatmap:" + fusionKeySuffix(fusionTaskId));
+        return redisCacheService.getOrCompute(
+            key,
+            HEATMAP_TTL,
+            new TypeReference<Map<String, Object>>() {},
+            () -> buildHeatmapInternal(ownerUsername, fusionTaskId)
+        );
+    }
+
+    private Map<String, Object> buildHeatmapInternal(String ownerUsername, Long fusionTaskId) {
         TargetTableInfo target = resolveTargetTable(ownerUsername, fusionTaskId);
         if (target == null || !tableExists(sanitizeTableName(target.targetTable))) {
             return Map.of("departments", List.of(), "metrics", List.of(), "values", List.of());
@@ -283,6 +331,18 @@ public class DashboardService {
 
     private String normalizeKey(String key) {
         return key == null ? "" : key.replace("_", "").replace("-", "").toLowerCase();
+    }
+
+    public void invalidateOwnerCache(String ownerUsername) {
+        redisCacheService.evictByPrefix(DASHBOARD_CACHE_PREFIX + ownerUsername + ":");
+    }
+
+    private String cacheKey(String ownerUsername, String suffix) {
+        return DASHBOARD_CACHE_PREFIX + ownerUsername + ":" + suffix;
+    }
+
+    private String fusionKeySuffix(Long fusionTaskId) {
+        return fusionTaskId == null ? "latest" : String.valueOf(fusionTaskId);
     }
 
     private Map<String, Object> emptyTrend() {
