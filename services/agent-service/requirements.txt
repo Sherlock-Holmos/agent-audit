@@ -1,0 +1,15 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+langchain==0.3.14
+langchain-core==0.3.29
+langchain-openai==0.3.1
+langchain-community==0.3.14
+redis==5.2.1
+httpx==0.28.1
+prometheus-client==0.21.1
+pydantic-settings==2.7.0
+
+# Optional — uncomment when enabling RAG vector store:
+# langchain-chroma==0.1.4
+# langchain-pgvector==0.3.0
+# chromadb==0.5.23
