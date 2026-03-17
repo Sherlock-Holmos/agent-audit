@@ -5,6 +5,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
+import { createRafThrottle } from '../../../utils/perf'
 
 const props = defineProps({
   departments: {
@@ -23,6 +24,12 @@ const props = defineProps({
 
 const chartRef = ref()
 let chart
+const handleResize = createRafThrottle(() => {
+  chart?.resize()
+})
+const scheduleRender = createRafThrottle(() => {
+  render()
+})
 
 const rankRows = computed(() => {
   const completionMetricIndex = props.metrics.findIndex((it) => it === '完成率')
@@ -36,13 +43,23 @@ const rankRows = computed(() => {
 
 function render() {
   if (!chart) return
+
+  const maxNameLength = rankRows.value.reduce((max, row) => Math.max(max, String(row.name || '').length), 0)
+  const axisLabelWidth = Math.min(180, Math.max(80, maxNameLength * 10))
+
   chart.setOption({
-    grid: { left: 80, right: 22, top: 12, bottom: 18 },
+    grid: { left: 8, right: 22, top: 12, bottom: 18, containLabel: true },
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
       backgroundColor: 'rgba(6,22,45,0.9)',
-      borderColor: '#2f74ff'
+      borderColor: '#2f74ff',
+      formatter: (params) => {
+        const hit = Array.isArray(params) ? params[0] : params
+        if (!hit) return ''
+        const row = rankRows.value[hit.dataIndex]
+        return `${row?.name || '-'}<br/>完成率：${hit.value}%`
+      }
     },
     xAxis: {
       type: 'value',
@@ -54,7 +71,12 @@ function render() {
       type: 'category',
       inverse: true,
       data: rankRows.value.map((it) => it.name),
-      axisLabel: { color: '#a9d2ff', fontSize: 12 }
+      axisLabel: {
+        color: '#a9d2ff',
+        fontSize: 12,
+        width: axisLabelWidth,
+        overflow: 'truncate'
+      }
     },
     series: [
       {
@@ -76,11 +98,7 @@ function render() {
         }
       }
     ]
-  })
-}
-
-function handleResize() {
-  chart?.resize()
+  }, { notMerge: true, lazyUpdate: true, silent: true })
 }
 
 onMounted(() => {
@@ -91,14 +109,15 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
+  handleResize.cancel()
+  scheduleRender.cancel()
   chart?.dispose()
   chart = undefined
 })
 
 watch(
   () => [props.departments, props.metrics, props.values],
-  () => render(),
-  { deep: true }
+  () => scheduleRender()
 )
 </script>
 

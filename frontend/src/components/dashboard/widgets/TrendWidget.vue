@@ -5,6 +5,7 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
+import { createRafThrottle } from '../../../utils/perf'
 
 const props = defineProps({
   dates: {
@@ -23,12 +24,18 @@ const props = defineProps({
 
 const chartRef = ref()
 let chart
+const handleResize = createRafThrottle(() => {
+  chart?.resize()
+})
+const scheduleRender = createRafThrottle(() => {
+  render()
+})
 
 function render() {
   if (!chart) return
   chart.setOption({
     color: ['#3bd8ff', '#80ffa5'],
-    grid: { left: 36, right: 16, top: 34, bottom: 24 },
+    grid: { left: 12, right: 16, top: 34, bottom: 24, containLabel: true },
     legend: {
       top: 4,
       textStyle: { color: '#8fc6ff', fontSize: 12 }
@@ -42,7 +49,7 @@ function render() {
       type: 'category',
       data: props.dates,
       axisLine: { lineStyle: { color: '#245f9f' } },
-      axisLabel: { color: '#8fc6ff' }
+      axisLabel: { color: '#8fc6ff', hideOverlap: true }
     },
     yAxis: {
       type: 'value',
@@ -77,11 +84,7 @@ function render() {
         lineStyle: { type: 'dashed' }
       }
     ]
-  })
-}
-
-function handleResize() {
-  chart?.resize()
+  }, { notMerge: true, lazyUpdate: true, silent: true })
 }
 
 onMounted(() => {
@@ -92,14 +95,15 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
+  handleResize.cancel()
+  scheduleRender.cancel()
   chart?.dispose()
   chart = undefined
 })
 
 watch(
   () => [props.dates, props.rates, props.predicted],
-  () => render(),
-  { deep: true }
+  () => scheduleRender()
 )
 </script>
 

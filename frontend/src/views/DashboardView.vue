@@ -24,7 +24,7 @@
             :value="item.id"
           />
         </el-select>
-        <el-button class="ghost-btn" @click="loadAllData">手动刷新</el-button>
+        <el-button class="ghost-btn" @click="handleManualRefresh">手动刷新</el-button>
         <el-button class="ghost-btn" @click="layoutDrawerVisible = true">布局定制</el-button>
         <div class="clock-wrap">
           <span class="clock-date">{{ timeLabel.date }}</span>
@@ -108,24 +108,29 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { fetchDashboard, fetchFusionOptions, fetchHeatmap, fetchTrend } from '../api/dashboard'
 import { storeToRefs } from 'pinia'
 import KpiCard from '../components/dashboard/KpiCard.vue'
 import CockpitPanel from '../components/dashboard/CockpitPanel.vue'
 import LayoutCustomizer from '../components/dashboard/LayoutCustomizer.vue'
-import GaugeWidget from '../components/dashboard/widgets/GaugeWidget.vue'
-import TrendWidget from '../components/dashboard/widgets/TrendWidget.vue'
-import RankWidget from '../components/dashboard/widgets/RankWidget.vue'
-import HeatmapWidget from '../components/dashboard/widgets/HeatmapWidget.vue'
-import MetricProgressWidget from '../components/dashboard/widgets/MetricProgressWidget.vue'
-import ThresholdConfigWidget from '../components/dashboard/widgets/ThresholdConfigWidget.vue'
 import { useDashboardLayoutStore } from '../store/dashboardLayout'
+
+const GaugeWidget = defineAsyncComponent(() => import('../components/dashboard/widgets/GaugeWidget.vue'))
+const TrendWidget = defineAsyncComponent(() => import('../components/dashboard/widgets/TrendWidget.vue'))
+const RankWidget = defineAsyncComponent(() => import('../components/dashboard/widgets/RankWidget.vue'))
+const HeatmapWidget = defineAsyncComponent(() => import('../components/dashboard/widgets/HeatmapWidget.vue'))
+const MetricProgressWidget = defineAsyncComponent(() => import('../components/dashboard/widgets/MetricProgressWidget.vue'))
+const ThresholdConfigWidget = defineAsyncComponent(() => import('../components/dashboard/widgets/ThresholdConfigWidget.vue'))
 
 let clockTimer
 let autoRefreshTimer
 const layoutDrawerVisible = ref(false)
+const loadingData = ref(false)
+const pendingReload = ref(false)
+const requestVersion = ref(0)
+const lastWarningMessage = ref('')
 
 const dashboardLayoutStore = useDashboardLayoutStore()
 const { sortedWidgetLayout: widgetLayout, sortedKpiLayout: kpiLayout } = storeToRefs(dashboardLayoutStore)
@@ -254,37 +259,60 @@ function updateClock() {
 }
 
 
-async function loadFusionOptions() {
-  const { data } = await fetchFusionOptions()
+async function loadFusionOptions(options = {}) {
+  const { data } = await fetchFusionOptions(options)
   fusionOptions.value = data.data || []
   if (!selectedFusionTaskId.value && fusionOptions.value.length > 0) {
     selectedFusionTaskId.value = fusionOptions.value[0].id
   }
 }
 
-async function loadAllData() {
+async function loadAllData(options = {}) {
+  const forceRefresh = Boolean(options.forceRefresh)
+  if (loadingData.value) {
+    pendingReload.value = pendingReload.value || forceRefresh
+    return
+  }
+
+  loadingData.value = true
+  const currentVersion = ++requestVersion.value
   try {
     const fusionTaskId = selectedFusionTaskId.value || undefined
     const [dashboardRes, trendRes, heatmapRes] = await Promise.all([
-      fetchDashboard(fusionTaskId),
-      fetchTrend(fusionTaskId),
-      fetchHeatmap(fusionTaskId)
+      fetchDashboard(fusionTaskId, { forceRefresh }),
+      fetchTrend(fusionTaskId, { forceRefresh }),
+      fetchHeatmap(fusionTaskId, { forceRefresh })
     ])
+
+    if (currentVersion !== requestVersion.value) {
+      return
+    }
 
     Object.assign(dashboardData, dashboardRes.data || {})
     Object.assign(trendData, trendRes.data || { dates: [], rates: [], predicted: [] })
     Object.assign(heatData, heatmapRes.data || { departments: [], metrics: [], values: [] })
 
-    if (dashboardData.message) {
+    if (dashboardData.message && dashboardData.message !== lastWarningMessage.value) {
+      lastWarningMessage.value = dashboardData.message
       ElMessage.warning(dashboardData.message)
     }
   } catch (error) {
     ElMessage.error(error?.response?.data?.message || error?.message || '大屏数据加载失败')
+  } finally {
+    loadingData.value = false
+    if (pendingReload.value) {
+      pendingReload.value = false
+      await loadAllData({ forceRefresh: true })
+    }
   }
 }
 
 async function handleFusionChange() {
-  await loadAllData()
+  await loadAllData({ forceRefresh: true })
+}
+
+async function handleManualRefresh() {
+  await loadAllData({ forceRefresh: true })
 }
 
 function saveThreshold() {
@@ -319,17 +347,35 @@ function reorderWidget(dragKey, targetKey) {
   dashboardLayoutStore.reorderWidget(dragKey, targetKey)
 }
 
+function startAutoRefresh() {
+  if (autoRefreshTimer) {
+    window.clearInterval(autoRefreshTimer)
+  }
+  autoRefreshTimer = window.setInterval(() => {
+    if (document.visibilityState !== 'visible') return
+    loadAllData({ forceRefresh: true })
+  }, 60000)
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    loadAllData({ forceRefresh: true })
+  }
+}
+
 onMounted(async () => {
   updateClock()
   clockTimer = window.setInterval(updateClock, 1000)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 
   await loadFusionOptions()
   await loadAllData()
 
-  autoRefreshTimer = window.setInterval(loadAllData, 60000)
+  startAutoRefresh()
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   if (clockTimer) window.clearInterval(clockTimer)
   if (autoRefreshTimer) window.clearInterval(autoRefreshTimer)
 })

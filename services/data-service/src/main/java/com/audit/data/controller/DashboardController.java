@@ -1,6 +1,6 @@
 package com.audit.data.controller;
 
-import com.audit.data.service.DashboardService;
+import com.audit.data.service.IDashboardService;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -12,9 +12,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/data")
 public class DashboardController {
 
-    private final DashboardService dashboardService;
+    private final IDashboardService dashboardService;
 
-    public DashboardController(DashboardService dashboardService) {
+    public DashboardController(IDashboardService dashboardService) {
         this.dashboardService = dashboardService;
     }
 

@@ -11,10 +11,14 @@ from app.metrics import (
 )
 from app.services.session import session_service
 from app.services.dashboard import fetch_dashboard
-from app.services.agent import run_agent
+from app.services.agent_impl import AgentServiceImpl
+from app.services.iagent import IAgentService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# 单例 agent 服务
+_agent_service: IAgentService = AgentServiceImpl()
 
 
 class ChatRequest(BaseModel):
@@ -63,7 +67,7 @@ async def chat(
         dashboard.get("completedRate", "N/A"),
     )
 
-    answer = await run_agent(payload.question, history, dashboard)
+    answer = await _agent_service.run_agent(payload.question, history, dashboard)
     await session_service.append_turn(username, payload.question, answer)
 
     elapsed = time.perf_counter() - t_start

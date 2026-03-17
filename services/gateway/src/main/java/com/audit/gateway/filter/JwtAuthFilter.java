@@ -1,17 +1,8 @@
 package com.audit.gateway.filter;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.JwtException;
-import io.jsonwebtoken.security.Keys;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.Map;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
-import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
@@ -26,7 +17,6 @@ import reactor.core.publisher.Mono;
 public class JwtAuthFilter implements GlobalFilter, Ordered {
 
     private static final String TRACE_ID_HEADER = "X-Trace-Id";
-    private static final long WINDOW_MS = Duration.ofMinutes(1).toMillis();
     private static final List<String> WHITE_LIST = List.of(
         "/api/auth/login",
         "/api/auth/register",
@@ -35,18 +25,19 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         "/actuator/prometheus"
     );
 
-    private final SecretKey secretKey;
-    private final Map<String, WindowCounter> userCounters = new ConcurrentHashMap<>();
-    private final Map<String, WindowCounter> ipCounters = new ConcurrentHashMap<>();
+    private final ITokenProvider tokenProvider;
+    private final IRateLimitProvider rateLimitProvider;
     private final int userRateLimitPerMinute;
     private final int ipRateLimitPerMinute;
 
     public JwtAuthFilter(
-        @Value("${auth.jwt.secret}") String secret,
+        ITokenProvider tokenProvider,
+        IRateLimitProvider rateLimitProvider,
         @Value("${app.gateway.rate-limit-per-minute:120}") int userRateLimitPerMinute,
         @Value("${app.gateway.ip-rate-limit-per-minute:240}") int ipRateLimitPerMinute
     ) {
-        this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.tokenProvider = tokenProvider;
+        this.rateLimitProvider = rateLimitProvider;
         this.userRateLimitPerMinute = Math.max(userRateLimitPerMinute, 1);
         this.ipRateLimitPerMinute = Math.max(ipRateLimitPerMinute, 1);
     }
@@ -68,7 +59,7 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         }
 
         String clientIp = extractClientIp(traceMutated);
-        if (exceed(ipCounters, clientIp, ipRateLimitPerMinute)) {
+        if (rateLimitProvider.isIpExceeded(clientIp, ipRateLimitPerMinute)) {
             return tooManyRequests(exchange, "访问过于频繁，请稍后重试");
         }
 
@@ -78,21 +69,22 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         }
 
         String token = auth.substring(7);
-        Claims claims;
+        String userName;
+        String userRole;
         try {
-            claims = Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token).getPayload();
+            userName = tokenProvider.validateAndExtractUsername(token);
+            userRole = tokenProvider.extractRole(token);
         } catch (JwtException ex) {
             return unauthorized(exchange, "Token无效或已过期");
         }
 
-        String userName = claims.getSubject();
-        if (exceed(userCounters, userName, userRateLimitPerMinute)) {
+        if (rateLimitProvider.isExceeded(userName, userRateLimitPerMinute)) {
             return tooManyRequests(exchange, "用户请求过于频繁，请稍后重试");
         }
 
         ServerHttpRequest mutated = traceMutated.mutate()
             .header("X-User-Name", userName)
-            .header("X-User-Role", String.valueOf(claims.getOrDefault("role", "AUDITOR")))
+            .header("X-User-Role", userRole)
             .header("X-User-Dept", "audit-dept-001")
             .build();
 
@@ -112,18 +104,6 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         return exchange.getResponse().setComplete();
     }
 
-    private boolean exceed(Map<String, WindowCounter> counters, String key, int maxAllowed) {
-        long now = System.currentTimeMillis();
-        WindowCounter counter = counters.computeIfAbsent(key, ignored -> new WindowCounter(now));
-        synchronized (counter) {
-            if (now - counter.windowStartMs >= WINDOW_MS) {
-                counter.windowStartMs = now;
-                counter.count.set(0);
-            }
-            return counter.count.incrementAndGet() > maxAllowed;
-        }
-    }
-
     private String extractClientIp(ServerHttpRequest request) {
         String xff = request.getHeaders().getFirst("X-Forwarded-For");
         if (xff != null && !xff.isBlank()) {
@@ -133,15 +113,6 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
             return "unknown";
         }
         return request.getRemoteAddress().getAddress().getHostAddress();
-    }
-
-    private static final class WindowCounter {
-        private long windowStartMs;
-        private final AtomicInteger count = new AtomicInteger(0);
-
-        private WindowCounter(long windowStartMs) {
-            this.windowStartMs = windowStartMs;
-        }
     }
 
     @Override

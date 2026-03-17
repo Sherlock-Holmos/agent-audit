@@ -23,8 +23,11 @@
         </template>
       </el-table-column>
       <el-table-column prop="updatedAt" label="更新时间" width="180" />
-      <el-table-column label="操作" width="150" align="center" fixed="right">
+      <el-table-column label="操作" width="220" align="center" fixed="right">
         <template #default="scope">
+          <el-button type="primary" link @click="$emit('preview', scope.row)">
+            结果解释
+          </el-button>
           <el-button type="primary" link :disabled="scope.row.status === 'COMPLETED'" @click="$emit('run', scope.row.id)">
             执行
           </el-button>
@@ -53,7 +56,7 @@ defineProps({
   }
 })
 
-defineEmits(['run', 'delete'])
+defineEmits(['preview', 'run', 'delete'])
 </script>
 
 <style scoped>

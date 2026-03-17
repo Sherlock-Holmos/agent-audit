@@ -28,7 +28,16 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+app:
+  gateway:
+    rate-limit-per-minute: ${GATEWAY_RATE_LIMIT_PER_MINUTE:120}
+    ip-rate-limit-per-minute: ${GATEWAY_IP_RATE_LIMIT_PER_MINUTE:240}
 
 auth:
   jwt:

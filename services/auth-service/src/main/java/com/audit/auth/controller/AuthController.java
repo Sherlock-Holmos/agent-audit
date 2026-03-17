@@ -1,7 +1,7 @@
 package com.audit.auth.controller;
 
-import com.audit.auth.service.AuthUserService;
-import com.audit.auth.service.JwtService;
+import com.audit.auth.service.IAuthUserService;
+import com.audit.auth.service.IJwtService;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,10 +18,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    private final AuthUserService authUserService;
-    private final JwtService jwtService;
+    private final IAuthUserService authUserService;
+    private final IJwtService jwtService;
 
-    public AuthController(AuthUserService authUserService, JwtService jwtService) {
+    public AuthController(IAuthUserService authUserService, IJwtService jwtService) {
         this.authUserService = authUserService;
         this.jwtService = jwtService;
     }

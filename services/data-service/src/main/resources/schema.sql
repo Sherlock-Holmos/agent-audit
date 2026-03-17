@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS fusion_task_record (
   clean_task_names_json TEXT NOT NULL,
   standard_tables_json TEXT NOT NULL,
   strategy VARCHAR(64) NOT NULL,
+  fusion_config_json TEXT,
   status VARCHAR(32) NOT NULL,
   fusion_rows INT NOT NULL,
   remark VARCHAR(512),
@@ -88,6 +89,8 @@ CREATE TABLE IF NOT EXISTS fusion_task_record (
   updated_at DATETIME NOT NULL,
   INDEX idx_fusion_task_owner (owner_username)
 );
+
+ALTER TABLE fusion_task_record ADD COLUMN IF NOT EXISTS fusion_config_json TEXT;
 
 CREATE INDEX idx_clean_task_owner_status_updated ON clean_task_record(owner_username, status, updated_at);
 CREATE INDEX idx_fusion_task_owner_status_updated ON fusion_task_record(owner_username, status, updated_at);

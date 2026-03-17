@@ -1,6 +1,6 @@
 package com.audit.data.controller;
 
-import com.audit.data.service.DataSourceService;
+import com.audit.data.service.IDataSourceService;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -19,9 +19,9 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api/data/sources")
 public class DataSourceController {
 
-    private final DataSourceService dataSourceService;
+    private final IDataSourceService dataSourceService;
 
-    public DataSourceController(DataSourceService dataSourceService) {
+    public DataSourceController(IDataSourceService dataSourceService) {
         this.dataSourceService = dataSourceService;
     }
 

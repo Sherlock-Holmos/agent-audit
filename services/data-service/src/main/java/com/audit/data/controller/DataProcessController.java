@@ -1,6 +1,7 @@
 package com.audit.data.controller;
 
-import com.audit.data.service.DataProcessService;
+import com.audit.data.service.IDataProcessService;
+import com.audit.data.service.IDataProcessAsyncService;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -18,10 +19,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/data")
 public class DataProcessController {
 
-    private final DataProcessService dataProcessService;
+    private final IDataProcessService dataProcessService;
+    private final IDataProcessAsyncService dataProcessAsyncService;
 
-    public DataProcessController(DataProcessService dataProcessService) {
+    public DataProcessController(IDataProcessService dataProcessService, IDataProcessAsyncService dataProcessAsyncService) {
         this.dataProcessService = dataProcessService;
+        this.dataProcessAsyncService = dataProcessAsyncService;
     }
 
     @GetMapping("/clean/tasks")
@@ -258,6 +261,23 @@ public class DataProcessController {
         }
     }
 
+    @PostMapping("/clean/tasks/{id}/run-async")
+    public ResponseEntity<Map<String, Object>> runCleanTaskAsync(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+        @PathVariable Long id
+    ) {
+        try {
+            return ResponseEntity.ok(Map.of(
+                "code", 0,
+                "message", "任务已提交",
+                "data", dataProcessAsyncService.startCleanTask(user(username), id, idempotencyKey)
+            ));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
+        }
+    }
+
     @DeleteMapping("/clean/tasks/{id}")
     public ResponseEntity<Map<String, Object>> deleteCleanTask(
         @RequestHeader(value = "X-User-Name", required = false) String username,
@@ -325,6 +345,59 @@ public class DataProcessController {
                 "code", 400,
                 "message", ex.getMessage()
             ));
+        }
+    }
+
+    @GetMapping("/fusion/tasks/{id}/preview")
+    public ResponseEntity<Map<String, Object>> previewFusionTask(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @PathVariable Long id,
+        @RequestParam(required = false) Integer limit
+    ) {
+        try {
+            return ResponseEntity.ok(Map.of(
+                "code", 0,
+                "message", "ok",
+                "data", dataProcessService.previewFusionTask(user(username), id, limit)
+            ));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "code", 400,
+                "message", ex.getMessage()
+            ));
+        }
+    }
+
+    @PostMapping("/fusion/tasks/{id}/run-async")
+    public ResponseEntity<Map<String, Object>> runFusionTaskAsync(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+        @PathVariable Long id
+    ) {
+        try {
+            return ResponseEntity.ok(Map.of(
+                "code", 0,
+                "message", "任务已提交",
+                "data", dataProcessAsyncService.startFusionTask(user(username), id, idempotencyKey)
+            ));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
+        }
+    }
+
+    @GetMapping("/jobs/{jobId}")
+    public ResponseEntity<Map<String, Object>> getJobStatus(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @PathVariable String jobId
+    ) {
+        try {
+            return ResponseEntity.ok(Map.of(
+                "code", 0,
+                "message", "ok",
+                "data", dataProcessAsyncService.getJobStatus(user(username), jobId)
+            ));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
         }
     }
 

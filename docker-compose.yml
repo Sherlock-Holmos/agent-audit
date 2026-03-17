@@ -65,9 +65,23 @@ services:
     build: ./services/agent-service
     container_name: audit-agent-service
     environment:
-      SPRING_PROFILES_ACTIVE: docker
+      # data-service 地址
       DATA_BASE_URL: http://data-service:8082
-      SPRING_DATA_REDIS_HOST: redis
+      # Redis 连接
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      # LLM 提供商：mock | openai | azure
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-08-01-preview}
+      # RAG 向量数据库（预留）
+      VECTOR_STORE_TYPE: ${VECTOR_STORE_TYPE:-none}
+      CHROMA_HOST: ${CHROMA_HOST:-chroma}
+      CHROMA_PORT: ${CHROMA_PORT:-8000}
     depends_on:
       - data-service
       - redis
@@ -101,6 +115,33 @@ services:
     container_name: audit-redis
     ports:
       - "6379:6379"
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: audit-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - gateway
+      - data-service
+      - agent-service
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.4
+    container_name: audit-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
     restart: unless-stopped
 
 volumes:

@@ -30,6 +30,21 @@
           <el-option label="规则匹配融合" value="RULE_MATCH" />
         </el-select>
       </el-form-item>
+      <el-form-item v-if="form.strategy === 'KEY_ALIGN' || form.strategy === 'TIME_WINDOW'" label="主键字段">
+        <el-input v-model="form.keyField" placeholder="例如：issue_id（留空自动识别）" />
+      </el-form-item>
+      <el-form-item v-if="form.strategy === 'TIME_WINDOW'" label="时间字段">
+        <el-input v-model="form.timeField" placeholder="例如：event_time（留空自动识别）" />
+      </el-form-item>
+      <el-form-item v-if="form.strategy === 'TIME_WINDOW'" label="窗口分钟">
+        <el-input-number v-model="form.windowMinutes" :min="1" :max="10080" />
+      </el-form-item>
+      <el-form-item v-if="form.strategy === 'RULE_MATCH'" label="匹配字段">
+        <el-input
+          v-model="form.matchFieldsText"
+          placeholder="例如：name,mobile,email（逗号分隔，留空用默认）"
+        />
+      </el-form-item>
       <el-form-item label="备注">
         <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="100" show-word-limit />
       </el-form-item>
@@ -68,6 +83,10 @@ const form = reactive({
   targetTable: '',
   cleanTaskIds: [],
   strategy: 'KEY_ALIGN',
+  keyField: '',
+  timeField: '',
+  windowMinutes: 60,
+  matchFieldsText: '',
   remark: ''
 })
 
@@ -84,6 +103,10 @@ function resetForm() {
     targetTable: '',
     cleanTaskIds: [],
     strategy: 'KEY_ALIGN',
+    keyField: '',
+    timeField: '',
+    windowMinutes: 60,
+    matchFieldsText: '',
     remark: ''
   })
   formRef.value?.clearValidate()
@@ -105,9 +128,33 @@ function handleClose() {
 async function submit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
+
+  const fusionConfig = {}
+  if (form.keyField.trim()) {
+    fusionConfig.keyField = form.keyField.trim()
+  }
+  if (form.strategy === 'TIME_WINDOW') {
+    if (form.timeField.trim()) {
+      fusionConfig.timeField = form.timeField.trim()
+    }
+    if (form.windowMinutes) {
+      fusionConfig.windowMinutes = Number(form.windowMinutes)
+    }
+  }
+  if (form.strategy === 'RULE_MATCH') {
+    const matchFields = form.matchFieldsText
+      .split(',')
+      .map((it) => it.trim())
+      .filter(Boolean)
+    if (matchFields.length) {
+      fusionConfig.matchFields = matchFields
+    }
+  }
+
   emit('submit', {
     ...form,
-    cleanTaskIds: [...form.cleanTaskIds]
+    cleanTaskIds: [...form.cleanTaskIds],
+    fusionConfig
   })
 }
 </script>

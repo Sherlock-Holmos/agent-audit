@@ -1,3 +1,5 @@
+"""Redis 会话服务实现"""
+
 import json
 import logging
 from datetime import datetime, timezone
@@ -6,6 +8,7 @@ from typing import Optional
 import redis.asyncio as aioredis
 
 from app.config import settings
+from app.services.isession import ISessionManager
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +22,7 @@ def _safe_user(username: str) -> str:
     return username.strip().lower()
 
 
-class SessionService:
+class SessionService(ISessionManager):
     """Redis 会话服务：限流配额 + 多轮对话历史。"""
 
     def __init__(self) -> None:

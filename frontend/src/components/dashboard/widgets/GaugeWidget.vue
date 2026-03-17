@@ -5,6 +5,7 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
+import { createRafThrottle } from '../../../utils/perf'
 
 const props = defineProps({
   value: {
@@ -15,6 +16,9 @@ const props = defineProps({
 
 const chartRef = ref()
 let chart
+const handleResize = createRafThrottle(() => {
+  chart?.resize()
+})
 
 function render() {
   if (!chart) return
@@ -84,10 +88,6 @@ function render() {
   })
 }
 
-function handleResize() {
-  chart?.resize()
-}
-
 onMounted(() => {
   chart = echarts.init(chartRef.value)
   render()
@@ -96,6 +96,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
+  handleResize.cancel()
   chart?.dispose()
   chart = undefined
 })
