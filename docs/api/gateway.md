@@ -1,34 +1,45 @@
-# Gateway 服务接口与网关规则
+# Gateway 服务接口与治理规则
 
-## 服务职责
+## 1. 服务职责
 - 统一 API 入口（`/api/**`）
-- JWT 鉴权、用户上下文注入
-- 路由分发到各微服务
+- JWT 鉴权与用户上下文注入
+- 用户/IP 双维度限流
+- Trace 头透传（`X-Trace-Id`）
 
-## 基础信息
-- 本地地址：`http://localhost:8081`
-- 当前已配置路由：
+## 2. 基础信息
+- 地址：`http://localhost:8081`
+- 路由：
   - `/api/auth/**` -> auth-service
   - `/api/data/**` -> data-service
   - `/api/agent/**` -> agent-service
   - `/api/config/**` -> config-service
 
-## 鉴权与白名单
-- 白名单（免鉴权）：
+## 3. 鉴权与白名单
+- 白名单：
   - `POST /api/auth/login`
   - `POST /api/auth/register`
   - `GET /actuator/health`
-- 其他接口需携带：`Authorization: Bearer <token>`
-- 认证失败：HTTP `401`，并附加响应头 `X-Auth-Error`
+  - `GET /actuator/info`
+  - `GET /actuator/prometheus`
+- 非白名单请求需携带：`Authorization: Bearer <token>`
+- 鉴权失败：`401`，并返回 `X-Auth-Error`
 
-## 网关注入头（已实现）
+## 4. 限流策略
+- 限流维度：用户、IP
+- 窗口：60 秒
+- 默认阈值：
+  - 用户：`120 req/min`
+  - IP：`240 req/min`
+- 超限返回：`429`，并附加 `Retry-After: 60`
+
+## 5. 上下文注入头
 - `X-User-Name`
 - `X-User-Role`
 - `X-User-Dept`
+- `X-Trace-Id`
 
-## 规划接口/能力（待实现）
-- `GET /api/gateway/health/routes`：路由可用性检测
-- `GET /api/gateway/metrics/auth`：鉴权统计（成功率、拒绝次数）
-- `POST /api/gateway/cache/invalidate`：网关配置缓存刷新
-- 限流策略：按用户、部门、IP 维度限流
-- 灰度路由：按 header 或用户组分流
+## 6. 运维端点
+- `GET /actuator/health`
+- `GET /actuator/info`
+- `GET /actuator/metrics`
+- `GET /actuator/prometheus`
