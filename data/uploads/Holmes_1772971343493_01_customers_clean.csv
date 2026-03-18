@@ -1,7 +1,0 @@
-customer_id,full_name,email,phone,city,province,register_date,status
-C0001,Li Wei,li.wei@example.com,13800000001,Shanghai,Shanghai,2025-01-15,ACTIVE
-C0002,Wang Fang,wang.fang@example.com,13800000002,Beijing,Beijing,2025-02-03,ACTIVE
-C0003,Zhang Min,zhang.min@example.com,13800000003,Shenzhen,Guangdong,2025-02-17,INACTIVE
-C0004,Chen Jie,chen.jie@example.com,13800000004,Hangzhou,Zhejiang,2025-03-01,ACTIVE
-C0005,Liu Yan,liu.yan@example.com,13800000005,Chengdu,Sichuan,2025-03-11,ACTIVE
-C0006,Zhao Rui,zhao.rui@example.com,13800000006,Wuhan,Hubei,2025-03-20,ACTIVE
