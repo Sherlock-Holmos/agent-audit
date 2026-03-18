@@ -1,4 +1,4 @@
-package com.audit.auth.service.impl;
+package com.audit.auth.service;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;

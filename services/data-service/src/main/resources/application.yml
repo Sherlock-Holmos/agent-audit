@@ -43,3 +43,4 @@ app:
     queue-capacity: ${TASK_QUEUE_CAPACITY:100}
   datasource:
     upload-dir: ../../data/uploads
+    staging-schema: ${APP_DATASOURCE_STAGING_SCHEMA:agent_audit_staging}

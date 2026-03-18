@@ -1,4 +1,4 @@
-package com.audit.config.service.impl;
+package com.audit.config.service;
 
 import java.util.Map;
 import org.springframework.stereotype.Service;
@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 public class ConfigServiceImpl implements IConfigService {
 
     /**
-     * 审计阈值常量定�?
+     * 审计阈值常量定义
      */
     private static final int OVERDUE_DAYS = 7;
     private static final int MIN_RATE = 85;

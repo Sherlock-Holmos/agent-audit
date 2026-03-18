@@ -35,7 +35,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
-public class DataSourceService {
+public class DataSourceService implements IDataSourceService {
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
@@ -182,6 +182,12 @@ public class DataSourceService {
     }
 
     public void delete(String ownerUsername, Long id) {
+        Map<String, Object> source = getById(ownerUsername, id);
+        String sourceType = text(source.get("type"));
+        if ("FILE".equalsIgnoreCase(sourceType)) {
+            deleteUploadedFileIfExists(text(source.get("filePath")));
+        }
+
         int count = jdbcTemplate.update("DELETE FROM data_source_record WHERE owner_username=? AND id=?", ownerUsername, id);
         if (count == 0) throw new IllegalArgumentException("数据源不存在");
     }
@@ -349,6 +355,21 @@ public class DataSourceService {
 
     private static String normalizeName(String name) {
         return NON_ALNUM.matcher(name).replaceAll("_").toLowerCase();
+    }
+
+    private void deleteUploadedFileIfExists(String filePath) {
+        if (isBlank(filePath)) return;
+
+        Path target = Paths.get(filePath).toAbsolutePath().normalize();
+        if (!target.startsWith(uploadRoot)) {
+            throw new IllegalArgumentException("文件路径非法，拒绝删除");
+        }
+
+        try {
+            Files.deleteIfExists(target);
+        } catch (IOException ex) {
+            throw new IllegalStateException("文件删除失败: " + ex.getMessage(), ex);
+        }
     }
 
     private void testDatabaseConnection(String jdbcUrl, String username, String password) {

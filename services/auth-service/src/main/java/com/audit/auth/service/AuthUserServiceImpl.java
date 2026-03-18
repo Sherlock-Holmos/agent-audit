@@ -1,4 +1,4 @@
-package com.audit.auth.service.impl;
+package com.audit.auth.service;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -83,7 +83,7 @@ public class AuthUserServiceImpl implements IAuthUserService {
 
         Map<String, Object> user = rows.get(0);
         if (!"ENABLED".equalsIgnoreCase(String.valueOf(user.get("status")))) {
-            throw new IllegalStateException("用户已停�?);
+            throw new IllegalStateException("用户已停用");
         }
 
         String passwordHash = String.valueOf(user.get("passwordHash"));
@@ -128,11 +128,11 @@ public class AuthUserServiceImpl implements IAuthUserService {
             username
         );
         if (rows.isEmpty()) {
-            throw new IllegalArgumentException("用户不存�?);
+            throw new IllegalArgumentException("用户不存在");
         }
         Map<String, Object> user = rows.get(0);
         if (!"ENABLED".equalsIgnoreCase(String.valueOf(user.get("status")))) {
-            throw new IllegalStateException("用户已停�?);
+            throw new IllegalStateException("用户已停用");
         }
         user.remove("status");
         return user;
@@ -147,7 +147,7 @@ public class AuthUserServiceImpl implements IAuthUserService {
         String department = text(payload.get("department"));
 
         if (avatarUrl.length() > 8_000_000) {
-            throw new IllegalArgumentException("头像图片过大，请压缩后重�?);
+            throw new IllegalArgumentException("头像图片过大，请压缩后重试");
         }
 
         if (isBlank(nickname)) {
@@ -167,10 +167,10 @@ public class AuthUserServiceImpl implements IAuthUserService {
                 username
             );
         } catch (DataIntegrityViolationException ex) {
-            throw new IllegalArgumentException("头像图片过大，请压缩后重�?);
+            throw new IllegalArgumentException("头像图片过大，请压缩后重试");
         }
         if (updated == 0) {
-            throw new IllegalArgumentException("用户不存�?);
+            throw new IllegalArgumentException("用户不存在");
         }
         return getProfileByUsername(username);
     }
@@ -183,7 +183,7 @@ public class AuthUserServiceImpl implements IAuthUserService {
             username
         );
         if (updated == 0) {
-            throw new IllegalArgumentException("用户不存�?);
+            throw new IllegalArgumentException("用户不存在");
         }
     }
 
@@ -194,7 +194,7 @@ public class AuthUserServiceImpl implements IAuthUserService {
         jdbcTemplate.update(
             "INSERT INTO auth_user(username,password_hash,nickname,role,status,created_at,updated_at) VALUES('admin',?,?,?, 'ENABLED', ?, ?)",
             passwordEncoder.encode("admin123"),
-            "管理�?,
+            "管理员",
             "ADMIN",
             now,
             now

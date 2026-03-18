@@ -1,6 +1,6 @@
 package com.audit.config.controller;
 
-import com.audit.config.service.IConfigService;
+import com.audit.config.application.IConfigApplicationService;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -10,14 +10,14 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/config")
 public class ConfigController {
 
-    private final IConfigService configService;
+    private final IConfigApplicationService configApplicationService;
 
-    public ConfigController(IConfigService configService) {
-        this.configService = configService;
+    public ConfigController(IConfigApplicationService configApplicationService) {
+        this.configApplicationService = configApplicationService;
     }
 
     @GetMapping("/threshold")
     public Map<String, Object> threshold() {
-        return configService.getThresholdConfig();
+        return configApplicationService.getThresholdConfig();
     }
 }

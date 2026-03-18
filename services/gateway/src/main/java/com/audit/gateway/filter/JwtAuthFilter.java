@@ -1,8 +1,8 @@
 package com.audit.gateway.filter;
 
+import com.audit.gateway.application.GatewayAuthContext;
+import com.audit.gateway.application.IGatewaySecurityApplicationService;
 import io.jsonwebtoken.JwtException;
-import java.util.List;
-import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
@@ -17,27 +17,16 @@ import reactor.core.publisher.Mono;
 public class JwtAuthFilter implements GlobalFilter, Ordered {
 
     private static final String TRACE_ID_HEADER = "X-Trace-Id";
-    private static final List<String> WHITE_LIST = List.of(
-        "/api/auth/login",
-        "/api/auth/register",
-        "/actuator/health",
-        "/actuator/info",
-        "/actuator/prometheus"
-    );
-
-    private final ITokenProvider tokenProvider;
-    private final IRateLimitProvider rateLimitProvider;
+    private final IGatewaySecurityApplicationService securityApplicationService;
     private final int userRateLimitPerMinute;
     private final int ipRateLimitPerMinute;
 
     public JwtAuthFilter(
-        ITokenProvider tokenProvider,
-        IRateLimitProvider rateLimitProvider,
+        IGatewaySecurityApplicationService securityApplicationService,
         @Value("${app.gateway.rate-limit-per-minute:120}") int userRateLimitPerMinute,
         @Value("${app.gateway.ip-rate-limit-per-minute:240}") int ipRateLimitPerMinute
     ) {
-        this.tokenProvider = tokenProvider;
-        this.rateLimitProvider = rateLimitProvider;
+        this.securityApplicationService = securityApplicationService;
         this.userRateLimitPerMinute = Math.max(userRateLimitPerMinute, 1);
         this.ipRateLimitPerMinute = Math.max(ipRateLimitPerMinute, 1);
     }
@@ -47,44 +36,36 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
         String traceId = request.getHeaders().getFirst(TRACE_ID_HEADER);
-        if (traceId == null || traceId.isBlank()) {
-            traceId = UUID.randomUUID().toString();
-        }
+        traceId = securityApplicationService.ensureTraceId(traceId);
 
         ServerHttpRequest traceMutated = request.mutate().header(TRACE_ID_HEADER, traceId).build();
         exchange.getResponse().getHeaders().add(TRACE_ID_HEADER, traceId);
 
-        if (WHITE_LIST.stream().anyMatch(path::startsWith)) {
+        if (securityApplicationService.isWhitelisted(path)) {
             return chain.filter(exchange.mutate().request(traceMutated).build());
         }
 
         String clientIp = extractClientIp(traceMutated);
-        if (rateLimitProvider.isIpExceeded(clientIp, ipRateLimitPerMinute)) {
+        if (securityApplicationService.isIpRateLimited(clientIp, ipRateLimitPerMinute)) {
             return tooManyRequests(exchange, "访问过于频繁，请稍后重试");
         }
 
-        String auth = traceMutated.getHeaders().getFirst("Authorization");
-        if (auth == null || !auth.startsWith("Bearer ")) {
-            return unauthorized(exchange, "缺少或非法Authorization头");
-        }
-
-        String token = auth.substring(7);
-        String userName;
-        String userRole;
+        GatewayAuthContext authContext;
         try {
-            userName = tokenProvider.validateAndExtractUsername(token);
-            userRole = tokenProvider.extractRole(token);
+            authContext = securityApplicationService.authenticate(traceMutated.getHeaders().getFirst("Authorization"));
+        } catch (IllegalArgumentException ex) {
+            return unauthorized(exchange, ex.getMessage());
         } catch (JwtException ex) {
             return unauthorized(exchange, "Token无效或已过期");
         }
 
-        if (rateLimitProvider.isExceeded(userName, userRateLimitPerMinute)) {
+        if (securityApplicationService.isUserRateLimited(authContext.getUsername(), userRateLimitPerMinute)) {
             return tooManyRequests(exchange, "用户请求过于频繁，请稍后重试");
         }
 
         ServerHttpRequest mutated = traceMutated.mutate()
-            .header("X-User-Name", userName)
-            .header("X-User-Role", userRole)
+            .header("X-User-Name", authContext.getUsername())
+            .header("X-User-Role", authContext.getRole())
             .header("X-User-Dept", "audit-dept-001")
             .build();
 

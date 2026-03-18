@@ -52,6 +52,7 @@ services:
       SPRING_DATASOURCE_PASSWORD: password
       SPRING_DATA_REDIS_HOST: redis
       APP_DATASOURCE_UPLOAD_DIR: /app/uploads
+      APP_DATASOURCE_STAGING_SCHEMA: agent_audit_staging
     depends_on:
       - mysql
       - redis

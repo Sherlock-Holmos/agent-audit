@@ -14,11 +14,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
-public class DashboardService {
+public class DashboardService implements IDashboardService {
 
     private static final String DASHBOARD_CACHE_PREFIX = "dashboard:";
     private static final Duration DASHBOARD_TTL = Duration.ofSeconds(60);
@@ -26,6 +27,7 @@ public class DashboardService {
     private static final Duration HEATMAP_TTL = Duration.ofSeconds(120);
     private static final Duration FUSION_OPTIONS_TTL = Duration.ofSeconds(45);
     private static final Pattern SAFE_TABLE_PATTERN = Pattern.compile("^[a-zA-Z][a-zA-Z0-9_]{0,63}$");
+    private static final Pattern SAFE_SCHEMA_PATTERN = Pattern.compile("^[a-zA-Z0-9_]+$");
     private static final List<String> GROUP_KEYS = List.of(
         "department", "dept", "province", "city", "channel", "status", "region", "type"
     );
@@ -33,10 +35,16 @@ public class DashboardService {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final RedisCacheService redisCacheService;
+    private final String stagingSchema;
 
-    public DashboardService(JdbcTemplate jdbcTemplate, RedisCacheService redisCacheService) {
+    public DashboardService(
+        JdbcTemplate jdbcTemplate,
+        RedisCacheService redisCacheService,
+        @Value("${app.datasource.staging-schema:agent_audit_staging}") String stagingSchema
+    ) {
         this.jdbcTemplate = jdbcTemplate;
         this.redisCacheService = redisCacheService;
+        this.stagingSchema = sanitizeSchemaName(stagingSchema);
     }
 
     public List<Map<String, Object>> listFusionOptions(String ownerUsername) {
@@ -95,6 +103,7 @@ public class DashboardService {
         }
 
         String tableName = sanitizeTableName(target.targetTable);
+        String tableRef = stagingTableRef(tableName);
         if (!tableExists(tableName)) {
             return Map.of(
                 "fusionTaskId", String.valueOf(target.fusionTaskId),
@@ -107,7 +116,7 @@ public class DashboardService {
             );
         }
 
-        Integer totalRows = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM " + tableName, Integer.class);
+        Integer totalRows = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM " + tableRef, Integer.class);
         int total = totalRows == null ? 0 : totalRows;
         if (total == 0) {
             return Map.of(
@@ -122,7 +131,7 @@ public class DashboardService {
         }
 
         Integer unknownRows = jdbcTemplate.queryForObject(
-            "SELECT COUNT(1) FROM " + tableName + " WHERE normalized_json LIKE '%\\\"UNKNOWN\\\"%'",
+            "SELECT COUNT(1) FROM " + tableRef + " WHERE normalized_json LIKE '%\\\"UNKNOWN\\\"%'",
             Integer.class
         );
         int unknown = unknownRows == null ? 0 : unknownRows;
@@ -167,16 +176,17 @@ public class DashboardService {
         }
 
         String tableName = sanitizeTableName(target.targetTable);
+        String tableRef = stagingTableRef(tableName);
         List<Map<String, Object>> rows = jdbcTemplate.query(
             """
              SELECT DATE_FORMAT(created_at, '%%m-%%d') AS day_label,
                    COUNT(1) AS total_count,
                  SUM(CASE WHEN normalized_json LIKE '%%\\"UNKNOWN\\"%%' THEN 1 ELSE 0 END) AS unknown_count
-              FROM %s
+             FROM %s
              GROUP BY DATE(created_at), DATE_FORMAT(created_at, '%%m-%%d')
              ORDER BY DATE(created_at) DESC
              LIMIT 7
-            """.formatted(tableName),
+            """.formatted(tableRef),
             (rs, i) -> {
                 Map<String, Object> item = new HashMap<>();
                 item.put("day", rs.getString("day_label"));
@@ -235,8 +245,9 @@ public class DashboardService {
         }
 
         String tableName = sanitizeTableName(target.targetTable);
+        String tableRef = stagingTableRef(tableName);
         List<Map<String, Object>> sourceRows = jdbcTemplate.query(
-            "SELECT object_name, normalized_json FROM " + tableName + " LIMIT 50000",
+            "SELECT object_name, normalized_json FROM " + tableRef + " LIMIT 50000",
             (rs, i) -> {
                 Map<String, Object> item = new HashMap<>();
                 item.put("objectName", rs.getString("object_name"));
@@ -385,11 +396,24 @@ public class DashboardService {
 
     private boolean tableExists(String tableName) {
         Integer count = jdbcTemplate.queryForObject(
-            "SELECT COUNT(1) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?",
+            "SELECT COUNT(1) FROM information_schema.tables WHERE table_schema=? AND table_name=?",
             Integer.class,
+            stagingSchema,
             tableName
         );
         return count != null && count > 0;
+    }
+
+    private String stagingTableRef(String tableName) {
+        return stagingSchema + "." + tableName;
+    }
+
+    private String sanitizeSchemaName(String schemaName) {
+        String normalized = schemaName == null ? "" : schemaName.trim();
+        if (!SAFE_SCHEMA_PATTERN.matcher(normalized).matches()) {
+            throw new IllegalArgumentException("staging schema 配置不合法");
+        }
+        return normalized;
     }
 
     private String sanitizeTableName(String tableName) {

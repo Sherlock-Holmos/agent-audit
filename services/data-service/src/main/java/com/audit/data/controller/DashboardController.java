@@ -1,6 +1,6 @@
 package com.audit.data.controller;
 
-import com.audit.data.service.IDashboardService;
+import com.audit.data.application.IDashboardApplicationService;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -12,10 +12,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/data")
 public class DashboardController {
 
-    private final IDashboardService dashboardService;
+    private final IDashboardApplicationService dashboardApplicationService;
 
-    public DashboardController(IDashboardService dashboardService) {
-        this.dashboardService = dashboardService;
+    public DashboardController(IDashboardApplicationService dashboardApplicationService) {
+        this.dashboardApplicationService = dashboardApplicationService;
     }
 
     @GetMapping("/dashboard")
@@ -23,7 +23,7 @@ public class DashboardController {
         @RequestHeader(value = "X-User-Name", required = false) String username,
         @RequestParam(required = false) Long fusionTaskId
     ) {
-        return dashboardService.buildDashboard(user(username), fusionTaskId);
+        return dashboardApplicationService.dashboard(username, fusionTaskId);
     }
 
     @GetMapping("/trend")
@@ -31,7 +31,7 @@ public class DashboardController {
         @RequestHeader(value = "X-User-Name", required = false) String username,
         @RequestParam(required = false) Long fusionTaskId
     ) {
-        return dashboardService.buildTrend(user(username), fusionTaskId);
+        return dashboardApplicationService.trend(username, fusionTaskId);
     }
 
     @GetMapping("/heatmap")
@@ -39,7 +39,7 @@ public class DashboardController {
         @RequestHeader(value = "X-User-Name", required = false) String username,
         @RequestParam(required = false) Long fusionTaskId
     ) {
-        return dashboardService.buildHeatmap(user(username), fusionTaskId);
+        return dashboardApplicationService.heatmap(username, fusionTaskId);
     }
 
     @GetMapping("/dashboard/fusion-options")
@@ -49,11 +49,7 @@ public class DashboardController {
         return Map.of(
             "code", 0,
             "message", "ok",
-            "data", dashboardService.listFusionOptions(user(username))
+            "data", dashboardApplicationService.listFusionOptions(username)
         );
-    }
-
-    private String user(String username) {
-        return (username == null || username.isBlank()) ? "anonymous" : username;
     }
 }

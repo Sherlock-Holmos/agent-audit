@@ -1,6 +1,6 @@
 package com.audit.data.controller;
 
-import com.audit.data.service.IDataSourceService;
+import com.audit.data.application.IDataSourceApplicationService;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -19,10 +19,10 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api/data/sources")
 public class DataSourceController {
 
-    private final IDataSourceService dataSourceService;
+    private final IDataSourceApplicationService dataSourceApplicationService;
 
-    public DataSourceController(IDataSourceService dataSourceService) {
-        this.dataSourceService = dataSourceService;
+    public DataSourceController(IDataSourceApplicationService dataSourceApplicationService) {
+        this.dataSourceApplicationService = dataSourceApplicationService;
     }
 
     @GetMapping
@@ -36,7 +36,7 @@ public class DataSourceController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "ok",
-                "data", dataSourceService.list(user(username), keyword, type, status)
+                "data", dataSourceApplicationService.list(username, keyword, type, status)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -60,7 +60,7 @@ public class DataSourceController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "创建成功",
-                "data", dataSourceService.createDatabase(user(username), payload)
+                "data", dataSourceApplicationService.createDatabase(username, payload)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -86,7 +86,7 @@ public class DataSourceController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "导入成功",
-                "data", dataSourceService.createFile(user(username), name, remark, file)
+                "data", dataSourceApplicationService.createFile(username, name, remark, file)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -105,7 +105,7 @@ public class DataSourceController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "ok",
-                "data", dataSourceService.listSourceObjects(user(username), id)
+                "data", dataSourceApplicationService.listSourceObjects(username, id)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -130,7 +130,7 @@ public class DataSourceController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "更新成功",
-                "data", dataSourceService.updateStatus(user(username), id, payload.getOrDefault("status", ""))
+                "data", dataSourceApplicationService.updateStatus(username, id, payload.getOrDefault("status", ""))
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -146,7 +146,7 @@ public class DataSourceController {
         @PathVariable Long id
     ) {
         try {
-            dataSourceService.delete(user(username), id);
+            dataSourceApplicationService.delete(username, id);
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "删除成功"
@@ -159,7 +159,4 @@ public class DataSourceController {
         }
     }
 
-    private String user(String username) {
-        return (username == null || username.isBlank()) ? "anonymous" : username;
-    }
 }

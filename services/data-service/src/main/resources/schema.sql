@@ -1,3 +1,5 @@
+CREATE SCHEMA IF NOT EXISTS agent_audit_staging;
+
 CREATE TABLE IF NOT EXISTS data_source_record (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   owner_username VARCHAR(128) NOT NULL,

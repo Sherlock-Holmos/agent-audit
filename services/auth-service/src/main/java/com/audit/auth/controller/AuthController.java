@@ -1,7 +1,6 @@
 package com.audit.auth.controller;
 
-import com.audit.auth.service.IAuthUserService;
-import com.audit.auth.service.IJwtService;
+import com.audit.auth.application.IAuthApplicationService;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,12 +17,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    private final IAuthUserService authUserService;
-    private final IJwtService jwtService;
+    private final IAuthApplicationService authApplicationService;
 
-    public AuthController(IAuthUserService authUserService, IJwtService jwtService) {
-        this.authUserService = authUserService;
-        this.jwtService = jwtService;
+    public AuthController(IAuthApplicationService authApplicationService) {
+        this.authApplicationService = authApplicationService;
     }
 
     @PostMapping("/register")
@@ -38,7 +35,7 @@ public class AuthController {
             ));
         }
         try {
-            Map<String, Object> user = authUserService.register(username, password);
+            Map<String, Object> user = authApplicationService.register(username, password);
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "注册成功",
@@ -64,15 +61,10 @@ public class AuthController {
             ));
         }
         try {
-            Map<String, Object> userInfo = authUserService.authenticate(username, password);
-            String token = jwtService.generateToken(username, String.valueOf(userInfo.get("role")));
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "登录成功",
-                "data", Map.of(
-                    "token", token,
-                    "user", userInfo
-                )
+                "data", authApplicationService.login(username, password)
             ));
         } catch (IllegalStateException | IllegalArgumentException ex) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
@@ -86,7 +78,7 @@ public class AuthController {
     public ResponseEntity<Map<String, Object>> me(
         @RequestHeader(value = "Authorization", required = false) String authorization
     ) {
-        String username = resolveUsername(authorization);
+        String username = authApplicationService.resolveUsername(authorization);
         if (username == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("code", 401, "message", "未登录"));
         }
@@ -94,7 +86,7 @@ public class AuthController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "ok",
-                "data", authUserService.getProfileByUsername(username)
+                "data", authApplicationService.getProfile(username)
             ));
         } catch (IllegalStateException ex) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("code", 401, "message", ex.getMessage()));
@@ -106,7 +98,7 @@ public class AuthController {
         @RequestHeader(value = "Authorization", required = false) String authorization,
         @RequestBody Map<String, Object> payload
     ) {
-        String username = resolveUsername(authorization);
+        String username = authApplicationService.resolveUsername(authorization);
         if (username == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("code", 401, "message", "未登录"));
         }
@@ -114,7 +106,7 @@ public class AuthController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "更新成功",
-                "data", authUserService.updateProfile(username, payload)
+                "data", authApplicationService.updateProfile(username, payload)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
@@ -125,23 +117,11 @@ public class AuthController {
     public ResponseEntity<Map<String, Object>> deactivateMe(
         @RequestHeader(value = "Authorization", required = false) String authorization
     ) {
-        String username = resolveUsername(authorization);
+        String username = authApplicationService.resolveUsername(authorization);
         if (username == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("code", 401, "message", "未登录"));
         }
-        authUserService.deactivate(username);
+        authApplicationService.deactivate(username);
         return ResponseEntity.ok(Map.of("code", 0, "message", "账号已注销"));
-    }
-
-    private String resolveUsername(String authorization) {
-        if (authorization == null || !authorization.startsWith("Bearer ")) {
-            return null;
-        }
-        String token = authorization.substring(7);
-        try {
-            return jwtService.parseUsername(token);
-        } catch (Exception ex) {
-            return null;
-        }
     }
 }

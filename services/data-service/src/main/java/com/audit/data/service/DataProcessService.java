@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -29,28 +30,33 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
 
 @Service
-public class DataProcessService {
+public class DataProcessService implements IDataProcessService {
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
     private static final Pattern SAFE_TABLE_PATTERN = Pattern.compile("^[a-zA-Z0-9_]+$");
+    private static final Pattern SAFE_SCHEMA_PATTERN = Pattern.compile("^[a-zA-Z0-9_]+$");
     private static final Set<String> READY_STATUSES = Set.of("READY", "COMPLETED", "FAILED");
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final DataSourceService dataSourceService;
     private final DashboardService dashboardService;
+    private final String stagingSchema;
 
     public DataProcessService(
         JdbcTemplate jdbcTemplate,
         ObjectMapper objectMapper,
         DataSourceService dataSourceService,
-        DashboardService dashboardService
+        DashboardService dashboardService,
+        @Value("${app.datasource.staging-schema:agent_audit_staging}") String stagingSchema
     ) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.dataSourceService = dataSourceService;
         this.dashboardService = dashboardService;
+        this.stagingSchema = sanitizeSchemaName(stagingSchema);
+        ensureStagingSchema();
         ensureCleanStrategyColumns();
     }
 
@@ -388,6 +394,7 @@ public class DataProcessService {
         }
 
         String outputTable = sanitizeTableName(String.valueOf(task.get("standardTable")));
+        String outputTableRef = stagingTableRef(outputTable);
         List<Map<String, Object>> cleanObjects = castMapList(task.get("cleanObjects"));
         String strategyCode = text(task.get("strategy"));
         List<String> ruleNames = castStringList(task.get("cleanRuleNames"));
@@ -400,10 +407,10 @@ public class DataProcessService {
         int cleanedRows;
         try {
             recreateStandardTable(outputTable);
-            loadObjectsIntoStandardTable(ownerUsername, id, cleanObjects, outputTable);
-            applyCleanStrategy(ownerUsername, outputTable, strategyCode, ruleNames);
+            loadObjectsIntoStandardTable(ownerUsername, id, cleanObjects, outputTableRef);
+            applyCleanStrategy(ownerUsername, outputTableRef, strategyCode, ruleNames);
 
-            Integer count = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM " + outputTable, Integer.class);
+            Integer count = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM " + outputTableRef, Integer.class);
             cleanedRows = count == null ? 0 : count;
 
             jdbcTemplate.update(
@@ -429,8 +436,27 @@ public class DataProcessService {
     }
 
     public void deleteCleanTask(String ownerUsername, Long id) {
+        Map<String, Object> task = getCleanTaskById(ownerUsername, id);
+        String standardTable = text(task.get("standardTable"));
+
+        // 级联删除依赖该清洗任务的融合任务，并清理融合目标表
+        List<Map<String, Object>> fusionTasks = jdbcTemplate.query(
+            "SELECT * FROM fusion_task_record WHERE owner_username=?",
+            (rs, i) -> fusionTaskRow(rs),
+            ownerUsername
+        );
+        for (Map<String, Object> fusionTask : fusionTasks) {
+            List<Long> cleanTaskIds = castLongList(fusionTask.get("cleanTaskIds"));
+            Long fusionTaskId = toLong(fusionTask.get("id"));
+            if (fusionTaskId != null && cleanTaskIds.contains(id)) {
+                deleteFusionTask(ownerUsername, fusionTaskId);
+            }
+        }
+
         int affected = jdbcTemplate.update("DELETE FROM clean_task_record WHERE owner_username=? AND id=?", ownerUsername, id);
         if (affected == 0) throw new IllegalArgumentException("清洗任务不存在");
+
+        dropStandardTableIfUnused(ownerUsername, standardTable);
         invalidateDashboardCache(ownerUsername);
     }
 
@@ -501,6 +527,7 @@ public class DataProcessService {
         }
 
         String targetTable = sanitizeTableName(String.valueOf(task.get("targetTable")));
+        String targetTableRef = stagingTableRef(targetTable);
         List<String> standardTables = castStringList(task.get("standardTables"));
         if (standardTables.isEmpty()) {
             throw new IllegalArgumentException("缺少可融合的标准表");
@@ -514,7 +541,7 @@ public class DataProcessService {
         int fusionRows;
         try {
             recreateFusionTable(targetTable);
-            fusionRows = mergeStandardTablesToTarget(ownerUsername, id, targetTable, standardTables);
+            fusionRows = mergeStandardTablesToTarget(ownerUsername, id, targetTableRef, standardTables);
 
             jdbcTemplate.update(
                 "UPDATE fusion_task_record SET status='COMPLETED', fusion_rows=?, updated_at=? WHERE owner_username=? AND id=?",
@@ -536,10 +563,89 @@ public class DataProcessService {
         return completed;
     }
 
+    public Map<String, Object> previewFusionTask(String ownerUsername, Long id, Integer limit) {
+        Map<String, Object> task = getFusionTaskById(ownerUsername, id);
+        String targetTable = sanitizeTableName(String.valueOf(task.get("targetTable")));
+        String targetTableRef = stagingTableRef(targetTable);
+        int safeLimit = (limit == null || limit <= 0) ? 20 : Math.min(limit, 200);
+
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+            "SELECT * FROM " + targetTableRef + " LIMIT " + safeLimit
+        );
+
+        List<String> columns = rows.isEmpty()
+            ? List.of()
+            : new ArrayList<>(rows.get(0).keySet());
+
+        return Map.of(
+            "targetTable", targetTable,
+            "columns", columns,
+            "rows", rows,
+            "size", rows.size()
+        );
+    }
+
     public void deleteFusionTask(String ownerUsername, Long id) {
+        Map<String, Object> task = getFusionTaskById(ownerUsername, id);
+        String targetTable = text(task.get("targetTable"));
+
         int affected = jdbcTemplate.update("DELETE FROM fusion_task_record WHERE owner_username=? AND id=?", ownerUsername, id);
         if (affected == 0) throw new IllegalArgumentException("融合任务不存在");
+
+        dropFusionTargetTableIfUnused(ownerUsername, targetTable);
         invalidateDashboardCache(ownerUsername);
+    }
+
+    public Map<String, Object> cleanupOrphanGeneratedTables(String ownerUsername) {
+        Set<String> referencedTables = new LinkedHashSet<>();
+
+        List<String> standardTables = jdbcTemplate.query(
+            "SELECT standard_table FROM clean_task_record",
+            (rs, i) -> text(rs.getString("standard_table"))
+        );
+        for (String table : standardTables) {
+            if (!isBlank(table)) {
+                try {
+                    referencedTables.add(sanitizeTableName(table));
+                } catch (IllegalArgumentException ignore) {
+                    // ignore illegal table names in historical dirty data
+                }
+            }
+        }
+
+        List<String> fusionTables = jdbcTemplate.query(
+            "SELECT target_table FROM fusion_task_record",
+            (rs, i) -> text(rs.getString("target_table"))
+        );
+        for (String table : fusionTables) {
+            if (!isBlank(table)) {
+                try {
+                    referencedTables.add(sanitizeTableName(table));
+                } catch (IllegalArgumentException ignore) {
+                    // ignore illegal table names in historical dirty data
+                }
+            }
+        }
+
+        List<String> allTables = listAllTables();
+        List<String> droppedTables = new ArrayList<>();
+
+        for (String table : allTables) {
+            if (referencedTables.contains(table)) {
+                continue;
+            }
+            if (isGeneratedTableCandidate(table)) {
+                jdbcTemplate.execute("DROP TABLE IF EXISTS " + stagingTableRef(table));
+                droppedTables.add(table);
+            }
+        }
+
+        return Map.of(
+            "owner", ownerUsername,
+            "droppedCount", droppedTables.size(),
+            "droppedTables", droppedTables,
+            "referencedCount", referencedTables.size()
+        );
     }
 
     private void invalidateDashboardCache(String ownerUsername) {
@@ -894,7 +1000,8 @@ public class DataProcessService {
     }
 
     private void recreateStandardTable(String tableName) {
-        jdbcTemplate.execute("DROP TABLE IF EXISTS " + tableName);
+        String tableRef = stagingTableRef(tableName);
+        jdbcTemplate.execute("DROP TABLE IF EXISTS " + tableRef);
         jdbcTemplate.execute(
             """
             CREATE TABLE %s (
@@ -907,12 +1014,13 @@ public class DataProcessService {
               normalized_json LONGTEXT NOT NULL,
               created_at DATETIME NOT NULL
             )
-            """.formatted(tableName)
+                        """.formatted(tableRef)
         );
     }
 
     private void recreateFusionTable(String tableName) {
-        jdbcTemplate.execute("DROP TABLE IF EXISTS " + tableName);
+        String tableRef = stagingTableRef(tableName);
+        jdbcTemplate.execute("DROP TABLE IF EXISTS " + tableRef);
         jdbcTemplate.execute(
             """
             CREATE TABLE %s (
@@ -927,7 +1035,7 @@ public class DataProcessService {
               source_standard_table VARCHAR(255) NOT NULL,
               created_at DATETIME NOT NULL
             )
-            """.formatted(tableName)
+                        """.formatted(tableRef)
         );
     }
 
@@ -1307,10 +1415,11 @@ public class DataProcessService {
     private record RuleAction(String type, String field, String value, String from, String to) {
     }
 
-    private int mergeStandardTablesToTarget(String ownerUsername, Long fusionTaskId, String targetTable, List<String> standardTables) {
+    private int mergeStandardTablesToTarget(String ownerUsername, Long fusionTaskId, String targetTableRef, List<String> standardTables) {
         int total = 0;
         for (String table : standardTables) {
             String safeStandardTable = sanitizeTableName(table);
+            String sourceTableRef = stagingTableRef(safeStandardTable);
             Map<String, Object> cleanTask = findCleanTaskByStandardTable(ownerUsername, safeStandardTable);
             Long cleanTaskId = toLong(cleanTask.get("id"));
             if (cleanTaskId == null) {
@@ -1322,7 +1431,7 @@ public class DataProcessService {
                 INSERT INTO %s(fusion_task_id,clean_task_id,source_id,object_name,row_no,raw_json,normalized_json,source_standard_table,created_at)
                 SELECT ?, ?, source_id, object_name, row_no, raw_json, normalized_json, ?, ?
                   FROM %s
-                """.formatted(targetTable, safeStandardTable),
+                                """.formatted(targetTableRef, sourceTableRef),
                 fusionTaskId,
                 cleanTaskId,
                 safeStandardTable,
@@ -1373,6 +1482,96 @@ public class DataProcessService {
             throw new IllegalArgumentException("数据源不存在: " + sourceId);
         }
         return rows.get(0);
+    }
+
+    private void dropStandardTableIfUnused(String ownerUsername, String standardTable) {
+        if (isBlank(standardTable)) return;
+
+        String safeTable;
+        try {
+            safeTable = sanitizeTableName(standardTable);
+        } catch (IllegalArgumentException ex) {
+            return;
+        }
+
+        Integer cleanTaskRef = jdbcTemplate.queryForObject(
+            "SELECT COUNT(1) FROM clean_task_record WHERE standard_table=?",
+            Integer.class,
+            safeTable
+        );
+        if (cleanTaskRef != null && cleanTaskRef > 0) return;
+
+        Integer fusionRef = jdbcTemplate.queryForObject(
+            "SELECT COUNT(1) FROM fusion_task_record WHERE standard_tables_json LIKE ?",
+            Integer.class,
+            "%\"" + safeTable + "\"%"
+        );
+        if (fusionRef != null && fusionRef > 0) return;
+
+        jdbcTemplate.execute("DROP TABLE IF EXISTS " + stagingTableRef(safeTable));
+    }
+
+    private void dropFusionTargetTableIfUnused(String ownerUsername, String targetTable) {
+        if (isBlank(targetTable)) return;
+
+        String safeTable;
+        try {
+            safeTable = sanitizeTableName(targetTable);
+        } catch (IllegalArgumentException ex) {
+            return;
+        }
+
+        Integer fusionRef = jdbcTemplate.queryForObject(
+            "SELECT COUNT(1) FROM fusion_task_record WHERE target_table=?",
+            Integer.class,
+            safeTable
+        );
+        if (fusionRef != null && fusionRef > 0) return;
+
+        jdbcTemplate.execute("DROP TABLE IF EXISTS " + stagingTableRef(safeTable));
+    }
+
+    private List<String> listAllTables() {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema=? ORDER BY table_name",
+            stagingSchema
+        );
+        List<String> tables = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Object value = row.get("table_name");
+            if (value == null) {
+                value = row.get("TABLE_NAME");
+            }
+            if (value != null) {
+                tables.add(String.valueOf(value));
+            }
+        }
+        return tables;
+    }
+
+    private boolean isGeneratedTableCandidate(String tableName) {
+        String normalized = text(tableName).toLowerCase();
+        return normalized.startsWith("clean_std_")
+            || normalized.startsWith("fusion_")
+            || normalized.startsWith("tmp_fusion_")
+            || normalized.startsWith("std_")
+            || normalized.startsWith("fuse_");
+    }
+
+    private void ensureStagingSchema() {
+        jdbcTemplate.execute("CREATE SCHEMA IF NOT EXISTS " + stagingSchema);
+    }
+
+    private String stagingTableRef(String tableName) {
+        return stagingSchema + "." + sanitizeTableName(tableName);
+    }
+
+    private String sanitizeSchemaName(String schemaName) {
+        String normalized = text(schemaName);
+        if (!SAFE_SCHEMA_PATTERN.matcher(normalized).matches()) {
+            throw new IllegalArgumentException("schema 名不合法: " + schemaName);
+        }
+        return normalized;
     }
 
     private String sanitizeTableName(String tableName) {

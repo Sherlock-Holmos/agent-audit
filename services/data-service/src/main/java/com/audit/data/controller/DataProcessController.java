@@ -1,7 +1,6 @@
 package com.audit.data.controller;
 
-import com.audit.data.service.IDataProcessService;
-import com.audit.data.service.IDataProcessAsyncService;
+import com.audit.data.application.IDataProcessApplicationService;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -19,12 +18,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/data")
 public class DataProcessController {
 
-    private final IDataProcessService dataProcessService;
-    private final IDataProcessAsyncService dataProcessAsyncService;
+    private final IDataProcessApplicationService dataProcessApplicationService;
 
-    public DataProcessController(IDataProcessService dataProcessService, IDataProcessAsyncService dataProcessAsyncService) {
-        this.dataProcessService = dataProcessService;
-        this.dataProcessAsyncService = dataProcessAsyncService;
+    public DataProcessController(IDataProcessApplicationService dataProcessApplicationService) {
+        this.dataProcessApplicationService = dataProcessApplicationService;
     }
 
     @GetMapping("/clean/tasks")
@@ -37,7 +34,7 @@ public class DataProcessController {
         return ResponseEntity.ok(Map.of(
             "code", 0,
             "message", "ok",
-            "data", dataProcessService.listCleanTasks(user(username), keyword, sourceId, status)
+            "data", dataProcessApplicationService.listCleanTasks(username, keyword, sourceId, status)
         ));
     }
 
@@ -48,7 +45,7 @@ public class DataProcessController {
         return ResponseEntity.ok(Map.of(
             "code", 0,
             "message", "ok",
-            "data", dataProcessService.listCleanRules(user(username))
+            "data", dataProcessApplicationService.listCleanRules(username)
         ));
     }
 
@@ -61,7 +58,7 @@ public class DataProcessController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "上传成功",
-                "data", dataProcessService.uploadCleanRule(user(username), payload)
+                "data", dataProcessApplicationService.uploadCleanRule(username, payload)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
@@ -79,7 +76,7 @@ public class DataProcessController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "更新成功",
-                "data", dataProcessService.toggleCleanRule(user(username), id, enabled)
+                "data", dataProcessApplicationService.toggleCleanRule(username, id, enabled)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
@@ -95,7 +92,7 @@ public class DataProcessController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "ok",
-                "data", dataProcessService.getCleanRuleDetail(user(username), id)
+                "data", dataProcessApplicationService.getCleanRuleDetail(username, id)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
@@ -112,7 +109,7 @@ public class DataProcessController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "更新成功",
-                "data", dataProcessService.updateCleanRule(user(username), id, payload)
+                "data", dataProcessApplicationService.updateCleanRule(username, id, payload)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
@@ -125,7 +122,7 @@ public class DataProcessController {
         @PathVariable Long id
     ) {
         try {
-            dataProcessService.deleteCleanRule(user(username), id);
+            dataProcessApplicationService.deleteCleanRule(username, id);
             return ResponseEntity.ok(Map.of("code", 0, "message", "删除成功"));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
@@ -139,7 +136,7 @@ public class DataProcessController {
         return ResponseEntity.ok(Map.of(
             "code", 0,
             "message", "ok",
-            "data", dataProcessService.listCleanStrategies(user(username))
+            "data", dataProcessApplicationService.listCleanStrategies(username)
         ));
     }
 
@@ -152,7 +149,7 @@ public class DataProcessController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "创建成功",
-                "data", dataProcessService.createCleanStrategy(user(username), payload)
+                "data", dataProcessApplicationService.createCleanStrategy(username, payload)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
@@ -168,7 +165,7 @@ public class DataProcessController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "ok",
-                "data", dataProcessService.getCleanStrategyDetail(user(username), id)
+                "data", dataProcessApplicationService.getCleanStrategyDetail(username, id)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
@@ -185,7 +182,7 @@ public class DataProcessController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "更新成功",
-                "data", dataProcessService.updateCleanStrategy(user(username), id, payload)
+                "data", dataProcessApplicationService.updateCleanStrategy(username, id, payload)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
@@ -203,7 +200,7 @@ public class DataProcessController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "更新成功",
-                "data", dataProcessService.toggleCleanStrategy(user(username), id, enabled)
+                "data", dataProcessApplicationService.toggleCleanStrategy(username, id, enabled)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
@@ -216,7 +213,7 @@ public class DataProcessController {
         @PathVariable Long id
     ) {
         try {
-            dataProcessService.deleteCleanStrategy(user(username), id);
+            dataProcessApplicationService.deleteCleanStrategy(username, id);
             return ResponseEntity.ok(Map.of("code", 0, "message", "删除成功"));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
@@ -232,7 +229,7 @@ public class DataProcessController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "创建成功",
-                "data", dataProcessService.createCleanTask(user(username), payload)
+                "data", dataProcessApplicationService.createCleanTask(username, payload)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -251,7 +248,7 @@ public class DataProcessController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "执行成功",
-                "data", dataProcessService.runCleanTask(user(username), id)
+                "data", dataProcessApplicationService.runCleanTask(username, id)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -271,7 +268,7 @@ public class DataProcessController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "任务已提交",
-                "data", dataProcessAsyncService.startCleanTask(user(username), id, idempotencyKey)
+                "data", dataProcessApplicationService.runCleanTaskAsync(username, id, idempotencyKey)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
@@ -284,7 +281,7 @@ public class DataProcessController {
         @PathVariable Long id
     ) {
         try {
-            dataProcessService.deleteCleanTask(user(username), id);
+            dataProcessApplicationService.deleteCleanTask(username, id);
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "删除成功"
@@ -306,7 +303,7 @@ public class DataProcessController {
         return ResponseEntity.ok(Map.of(
             "code", 0,
             "message", "ok",
-            "data", dataProcessService.listFusionTasks(user(username), keyword, status)
+            "data", dataProcessApplicationService.listFusionTasks(username, keyword, status)
         ));
     }
 
@@ -319,7 +316,7 @@ public class DataProcessController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "创建成功",
-                "data", dataProcessService.createFusionTask(user(username), payload)
+                "data", dataProcessApplicationService.createFusionTask(username, payload)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -338,7 +335,7 @@ public class DataProcessController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "执行成功",
-                "data", dataProcessService.runFusionTask(user(username), id)
+                "data", dataProcessApplicationService.runFusionTask(username, id)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -358,7 +355,7 @@ public class DataProcessController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "ok",
-                "data", dataProcessService.previewFusionTask(user(username), id, limit)
+                "data", dataProcessApplicationService.previewFusionTask(username, id, limit)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -378,7 +375,7 @@ public class DataProcessController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "任务已提交",
-                "data", dataProcessAsyncService.startFusionTask(user(username), id, idempotencyKey)
+                "data", dataProcessApplicationService.runFusionTaskAsync(username, id, idempotencyKey)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
@@ -394,7 +391,7 @@ public class DataProcessController {
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "ok",
-                "data", dataProcessAsyncService.getJobStatus(user(username), jobId)
+                "data", dataProcessApplicationService.getJobStatus(username, jobId)
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
@@ -407,7 +404,7 @@ public class DataProcessController {
         @PathVariable Long id
     ) {
         try {
-            dataProcessService.deleteFusionTask(user(username), id);
+            dataProcessApplicationService.deleteFusionTask(username, id);
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "删除成功"
@@ -420,7 +417,19 @@ public class DataProcessController {
         }
     }
 
-    private String user(String username) {
-        return (username == null || username.isBlank()) ? "anonymous" : username;
+    @PostMapping("/maintenance/generated-tables/cleanup")
+    public ResponseEntity<Map<String, Object>> cleanupGeneratedTables(
+        @RequestHeader(value = "X-User-Name", required = false) String username
+    ) {
+        try {
+            return ResponseEntity.ok(Map.of(
+                "code", 0,
+                "message", "清理完成",
+                "data", dataProcessApplicationService.cleanupOrphanGeneratedTables(username)
+            ));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
+        }
     }
+
 }
