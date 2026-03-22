@@ -432,4 +432,71 @@ public class DataProcessController {
         }
     }
 
+    @PostMapping("/workflows/run")
+    public ResponseEntity<Map<String, Object>> runWorkflow(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @RequestBody Map<String, Object> payload
+    ) {
+        try {
+            return ResponseEntity.ok(Map.of(
+                "code", 0,
+                "message", "执行完成",
+                "data", dataProcessApplicationService.runWorkflow(username, payload)
+            ));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
+        }
+    }
+
+    @GetMapping("/governance/lineage")
+    public ResponseEntity<Map<String, Object>> listLineage(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @RequestParam(required = false) String taskType,
+        @RequestParam(required = false) Long taskId
+    ) {
+        return ResponseEntity.ok(Map.of(
+            "code", 0,
+            "message", "ok",
+            "data", dataProcessApplicationService.listLineageRecords(username, taskType, taskId)
+        ));
+    }
+
+    @GetMapping("/governance/quality")
+    public ResponseEntity<Map<String, Object>> listQualityReports(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @RequestParam(required = false) String taskType,
+        @RequestParam(required = false) Long taskId
+    ) {
+        return ResponseEntity.ok(Map.of(
+            "code", 0,
+            "message", "ok",
+            "data", dataProcessApplicationService.listQualityReports(username, taskType, taskId)
+        ));
+    }
+
+    @GetMapping("/governance/snapshots")
+    public ResponseEntity<Map<String, Object>> listSnapshots(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @RequestParam(required = false) String taskType,
+        @RequestParam(required = false) Long taskId
+    ) {
+        return ResponseEntity.ok(Map.of(
+            "code", 0,
+            "message", "ok",
+            "data", dataProcessApplicationService.listSnapshotRecords(username, taskType, taskId)
+        ));
+    }
+
+    @GetMapping("/governance/audit")
+    public ResponseEntity<Map<String, Object>> listAuditRecords(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @RequestParam(required = false) Integer limit
+    ) {
+        return ResponseEntity.ok(Map.of(
+            "code", 0,
+            "message", "ok",
+            "data", dataProcessApplicationService.listAuditRecords(username, limit)
+        ));
+    }
+
 }

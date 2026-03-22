@@ -2,6 +2,9 @@ package com.audit.data.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -14,12 +17,15 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Queue;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Value;
@@ -42,22 +48,36 @@ public class DataProcessService implements IDataProcessService {
     private final ObjectMapper objectMapper;
     private final DataSourceService dataSourceService;
     private final DashboardService dashboardService;
+    private final MeterRegistry meterRegistry;
     private final String stagingSchema;
+    private final Counter cleanRunSuccessCounter;
+    private final Counter cleanRunFailedCounter;
+    private final Counter fusionRunSuccessCounter;
+    private final Counter fusionRunFailedCounter;
 
     public DataProcessService(
         JdbcTemplate jdbcTemplate,
         ObjectMapper objectMapper,
         DataSourceService dataSourceService,
         DashboardService dashboardService,
+        MeterRegistry meterRegistry,
         @Value("${app.datasource.staging-schema:agent_audit_staging}") String stagingSchema
     ) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.dataSourceService = dataSourceService;
         this.dashboardService = dashboardService;
+        this.meterRegistry = meterRegistry;
         this.stagingSchema = sanitizeSchemaName(stagingSchema);
+        this.cleanRunSuccessCounter = Counter.builder("audit.process.clean.run.success").register(meterRegistry);
+        this.cleanRunFailedCounter = Counter.builder("audit.process.clean.run.failed").register(meterRegistry);
+        this.fusionRunSuccessCounter = Counter.builder("audit.process.fusion.run.success").register(meterRegistry);
+        this.fusionRunFailedCounter = Counter.builder("audit.process.fusion.run.failed").register(meterRegistry);
         ensureStagingSchema();
         ensureCleanStrategyColumns();
+        ensureGovernanceTables();
+        ensureWorkflowTables();
+        ensureAuditActionTable();
     }
 
     public List<Map<String, Object>> listCleanRules(String ownerUsername) {
@@ -330,6 +350,7 @@ public class DataProcessService implements IDataProcessService {
     }
 
     public Map<String, Object> createCleanTask(String ownerUsername, Map<String, Object> payload) {
+        requireAuthenticated(ownerUsername);
         String taskName = text(payload.get("taskName"));
         String strategyCode = text(payload.get("strategy"));
         String standardTable = text(payload.get("standardTable"));
@@ -382,11 +403,14 @@ public class DataProcessService implements IDataProcessService {
         );
 
         Map<String, Object> created = getCleanTaskById(ownerUsername, id);
+        recordAudit(ownerUsername, "CREATE", "CLEAN_TASK", String.valueOf(id), "SUCCESS", Map.of("taskName", taskName));
         invalidateDashboardCache(ownerUsername);
         return created;
     }
 
     public Map<String, Object> runCleanTask(String ownerUsername, Long id) {
+        requireAuthenticated(ownerUsername);
+        Timer.Sample sample = Timer.start(meterRegistry);
         Map<String, Object> task = getCleanTaskById(ownerUsername, id);
         String currentStatus = String.valueOf(task.get("status"));
         if (!READY_STATUSES.contains(currentStatus.toUpperCase())) {
@@ -420,6 +444,12 @@ public class DataProcessService implements IDataProcessService {
                 ownerUsername,
                 id
             );
+            cleanRunSuccessCounter.increment();
+            persistGovernanceArtifacts(ownerUsername, "CLEAN", id, outputTable, cleanObjects.stream()
+                .map(it -> text(it.get("objectName")))
+                .filter(it -> !isBlank(it))
+                .toList());
+            recordAudit(ownerUsername, "RUN", "CLEAN_TASK", String.valueOf(id), "SUCCESS", Map.of("outputTable", outputTable));
         } catch (RuntimeException ex) {
             jdbcTemplate.update(
                 "UPDATE clean_task_record SET status='FAILED', updated_at=? WHERE owner_username=? AND id=?",
@@ -427,7 +457,11 @@ public class DataProcessService implements IDataProcessService {
                 ownerUsername,
                 id
             );
+            cleanRunFailedCounter.increment();
+            recordAudit(ownerUsername, "RUN", "CLEAN_TASK", String.valueOf(id), "FAILED", Map.of("reason", nvl(ex.getMessage())));
             throw ex;
+        } finally {
+            sample.stop(Timer.builder("audit.process.clean.run.duration").register(meterRegistry));
         }
 
         Map<String, Object> completed = getCleanTaskById(ownerUsername, id);
@@ -436,6 +470,7 @@ public class DataProcessService implements IDataProcessService {
     }
 
     public void deleteCleanTask(String ownerUsername, Long id) {
+        requireAuthenticated(ownerUsername);
         Map<String, Object> task = getCleanTaskById(ownerUsername, id);
         String standardTable = text(task.get("standardTable"));
 
@@ -457,6 +492,7 @@ public class DataProcessService implements IDataProcessService {
         if (affected == 0) throw new IllegalArgumentException("清洗任务不存在");
 
         dropStandardTableIfUnused(ownerUsername, standardTable);
+        recordAudit(ownerUsername, "DELETE", "CLEAN_TASK", String.valueOf(id), "SUCCESS", Map.of("standardTable", standardTable));
         invalidateDashboardCache(ownerUsername);
     }
 
@@ -473,6 +509,7 @@ public class DataProcessService implements IDataProcessService {
     }
 
     public Map<String, Object> createFusionTask(String ownerUsername, Map<String, Object> payload) {
+        requireAuthenticated(ownerUsername);
         String taskName = text(payload.get("taskName"));
         String targetTable = text(payload.get("targetTable"));
         String strategy = text(payload.get("strategy"));
@@ -515,11 +552,14 @@ public class DataProcessService implements IDataProcessService {
         );
 
         Map<String, Object> created = getFusionTaskById(ownerUsername, id);
+        recordAudit(ownerUsername, "CREATE", "FUSION_TASK", String.valueOf(id), "SUCCESS", Map.of("taskName", taskName));
         invalidateDashboardCache(ownerUsername);
         return created;
     }
 
     public Map<String, Object> runFusionTask(String ownerUsername, Long id) {
+        requireAuthenticated(ownerUsername);
+        Timer.Sample sample = Timer.start(meterRegistry);
         Map<String, Object> task = getFusionTaskById(ownerUsername, id);
         String currentStatus = String.valueOf(task.get("status"));
         if (!READY_STATUSES.contains(currentStatus.toUpperCase())) {
@@ -550,12 +590,19 @@ public class DataProcessService implements IDataProcessService {
                 ownerUsername,
                 id
             );
+            fusionRunSuccessCounter.increment();
+            persistGovernanceArtifacts(ownerUsername, "FUSION", id, targetTable, standardTables);
+            recordAudit(ownerUsername, "RUN", "FUSION_TASK", String.valueOf(id), "SUCCESS", Map.of("targetTable", targetTable));
         } catch (RuntimeException ex) {
             jdbcTemplate.update(
                 "UPDATE fusion_task_record SET status='FAILED', updated_at=? WHERE owner_username=? AND id=?",
                 now(), ownerUsername, id
             );
+            fusionRunFailedCounter.increment();
+            recordAudit(ownerUsername, "RUN", "FUSION_TASK", String.valueOf(id), "FAILED", Map.of("reason", nvl(ex.getMessage())));
             throw ex;
+        } finally {
+            sample.stop(Timer.builder("audit.process.fusion.run.duration").register(meterRegistry));
         }
 
         Map<String, Object> completed = getFusionTaskById(ownerUsername, id);
@@ -586,6 +633,7 @@ public class DataProcessService implements IDataProcessService {
     }
 
     public void deleteFusionTask(String ownerUsername, Long id) {
+        requireAuthenticated(ownerUsername);
         Map<String, Object> task = getFusionTaskById(ownerUsername, id);
         String targetTable = text(task.get("targetTable"));
 
@@ -593,10 +641,12 @@ public class DataProcessService implements IDataProcessService {
         if (affected == 0) throw new IllegalArgumentException("融合任务不存在");
 
         dropFusionTargetTableIfUnused(ownerUsername, targetTable);
+        recordAudit(ownerUsername, "DELETE", "FUSION_TASK", String.valueOf(id), "SUCCESS", Map.of("targetTable", targetTable));
         invalidateDashboardCache(ownerUsername);
     }
 
     public Map<String, Object> cleanupOrphanGeneratedTables(String ownerUsername) {
+        requireAuthenticated(ownerUsername);
         Set<String> referencedTables = new LinkedHashSet<>();
 
         List<String> standardTables = jdbcTemplate.query(
@@ -645,6 +695,269 @@ public class DataProcessService implements IDataProcessService {
             "droppedCount", droppedTables.size(),
             "droppedTables", droppedTables,
             "referencedCount", referencedTables.size()
+        );
+    }
+
+    public Map<String, Object> runWorkflow(String ownerUsername, Map<String, Object> payload) {
+        requireAuthenticated(ownerUsername);
+        List<WorkflowNode> nodes = parseWorkflowNodes(payload);
+        if (nodes.isEmpty()) {
+            throw new IllegalArgumentException("工作流至少需要一个任务");
+        }
+
+        String tenantId = resolveTenantId(ownerUsername);
+        String workflowName = text(payload.get("workflowName"));
+        if (isBlank(workflowName)) {
+            workflowName = "workflow-" + System.currentTimeMillis();
+        }
+
+        validateWorkflowNodes(nodes);
+
+        Long workflowId = insertAndGetId(
+            "INSERT INTO etl_workflow_record(tenant_id,owner_username,workflow_name,workflow_json,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+            tenantId,
+            ownerUsername,
+            workflowName,
+            toJson(payload),
+            now(),
+            now()
+        );
+
+        Long runId = insertAndGetId(
+            "INSERT INTO etl_workflow_run_record(tenant_id,owner_username,workflow_id,run_status,start_at,end_at,error_message,created_at,updated_at) VALUES(?,?,?, 'RUNNING', ?, NULL, '', ?, ?)",
+            tenantId,
+            ownerUsername,
+            workflowId,
+            now(),
+            now(),
+            now()
+        );
+
+        long start = System.currentTimeMillis();
+        List<Map<String, Object>> cleanResults = new ArrayList<>();
+        List<Map<String, Object>> fusionResults = new ArrayList<>();
+        List<Map<String, Object>> nodeResults = new ArrayList<>();
+        Set<String> executed = new HashSet<>();
+
+        try {
+            while (executed.size() < nodes.size()) {
+                boolean progressed = false;
+                for (WorkflowNode node : nodes) {
+                    if (executed.contains(node.nodeId)) {
+                        continue;
+                    }
+                    if (!executed.containsAll(node.dependsOn)) {
+                        continue;
+                    }
+
+                    progressed = true;
+                    String startedAt = now();
+                    try {
+                        Map<String, Object> result = executeWorkflowNode(ownerUsername, node);
+                        if ("CLEAN".equals(node.taskType)) {
+                            cleanResults.add(result);
+                        } else {
+                            fusionResults.add(result);
+                        }
+                        nodeResults.add(Map.of(
+                            "nodeId", node.nodeId,
+                            "taskType", node.taskType,
+                            "taskId", node.taskId,
+                            "status", "COMPLETED",
+                            "result", result
+                        ));
+                        jdbcTemplate.update(
+                            "INSERT INTO etl_workflow_node_run_record(run_id,node_id,task_type,task_id,status,error_message,started_at,ended_at) VALUES(?,?,?,?, 'COMPLETED','',?,?)",
+                            runId,
+                            node.nodeId,
+                            node.taskType,
+                            node.taskId,
+                            startedAt,
+                            now()
+                        );
+                        executed.add(node.nodeId);
+                    } catch (RuntimeException ex) {
+                        String reason = nvl(ex.getMessage());
+                        nodeResults.add(Map.of(
+                            "nodeId", node.nodeId,
+                            "taskType", node.taskType,
+                            "taskId", node.taskId,
+                            "status", "FAILED",
+                            "reason", reason
+                        ));
+                        jdbcTemplate.update(
+                            "INSERT INTO etl_workflow_node_run_record(run_id,node_id,task_type,task_id,status,error_message,started_at,ended_at) VALUES(?,?,?,?, 'FAILED',?,?,?)",
+                            runId,
+                            node.nodeId,
+                            node.taskType,
+                            node.taskId,
+                            reason,
+                            startedAt,
+                            now()
+                        );
+                        jdbcTemplate.update(
+                            "UPDATE etl_workflow_run_record SET run_status='FAILED', end_at=?, error_message=?, updated_at=? WHERE id=?",
+                            now(),
+                            reason,
+                            now(),
+                            runId
+                        );
+                        throw ex;
+                    }
+                }
+                if (!progressed) {
+                    throw new IllegalArgumentException("工作流存在循环依赖或无可执行节点");
+                }
+            }
+        } catch (RuntimeException ex) {
+            recordAudit(ownerUsername, "RUN", "WORKFLOW", String.valueOf(workflowId), "FAILED", Map.of("reason", nvl(ex.getMessage())));
+            throw ex;
+        }
+
+        long cost = System.currentTimeMillis() - start;
+        jdbcTemplate.update(
+            "UPDATE etl_workflow_run_record SET run_status='COMPLETED', end_at=?, error_message='', updated_at=? WHERE id=?",
+            now(),
+            now(),
+            runId
+        );
+
+        Map<String, Object> result = Map.of(
+            "workflowId", workflowId,
+            "runId", runId,
+            "cleanExecuted", cleanResults.size(),
+            "fusionExecuted", fusionResults.size(),
+            "costMs", cost,
+            "cleanResults", cleanResults,
+            "fusionResults", fusionResults,
+            "nodeResults", nodeResults
+        );
+        recordAudit(ownerUsername, "RUN", "WORKFLOW", String.valueOf(workflowId), "SUCCESS", result);
+        return result;
+    }
+
+    public List<Map<String, Object>> listLineageRecords(String ownerUsername, String taskType, Long taskId) {
+                String tenantId = resolveTenantId(ownerUsername);
+        return jdbcTemplate.query(
+            """
+            SELECT id,task_type,task_id,source_table,source_field,target_table,target_field,created_at
+              FROM etl_field_lineage
+                         WHERE owner_username=? AND (tenant_id=? OR tenant_id IS NULL)
+               AND (? IS NULL OR task_type=?)
+               AND (? IS NULL OR task_id=?)
+             ORDER BY id DESC
+            """,
+            (rs, i) -> {
+                Map<String, Object> row = new HashMap<>();
+                row.put("id", rs.getLong("id"));
+                row.put("taskType", rs.getString("task_type"));
+                row.put("taskId", rs.getLong("task_id"));
+                row.put("sourceTable", rs.getString("source_table"));
+                row.put("sourceField", rs.getString("source_field"));
+                row.put("targetTable", rs.getString("target_table"));
+                row.put("targetField", rs.getString("target_field"));
+                row.put("createdAt", formatDateTime(rs.getTimestamp("created_at")));
+                return row;
+            },
+            ownerUsername,
+                        tenantId,
+            taskType,
+            taskType,
+            taskId,
+            taskId
+        );
+    }
+
+    public List<Map<String, Object>> listQualityReports(String ownerUsername, String taskType, Long taskId) {
+                String tenantId = resolveTenantId(ownerUsername);
+        return jdbcTemplate.query(
+            """
+            SELECT id,task_type,task_id,table_name,total_rows,unknown_rows,duplicate_rows,quality_score,created_at
+              FROM etl_quality_report
+                         WHERE owner_username=? AND (tenant_id=? OR tenant_id IS NULL)
+               AND (? IS NULL OR task_type=?)
+               AND (? IS NULL OR task_id=?)
+             ORDER BY id DESC
+            """,
+            (rs, i) -> {
+                Map<String, Object> row = new HashMap<>();
+                row.put("id", rs.getLong("id"));
+                row.put("taskType", rs.getString("task_type"));
+                row.put("taskId", rs.getLong("task_id"));
+                row.put("tableName", rs.getString("table_name"));
+                row.put("totalRows", rs.getInt("total_rows"));
+                row.put("unknownRows", rs.getInt("unknown_rows"));
+                row.put("duplicateRows", rs.getInt("duplicate_rows"));
+                row.put("qualityScore", rs.getInt("quality_score"));
+                row.put("createdAt", formatDateTime(rs.getTimestamp("created_at")));
+                return row;
+            },
+            ownerUsername,
+                        tenantId,
+            taskType,
+            taskType,
+            taskId,
+            taskId
+        );
+    }
+
+    public List<Map<String, Object>> listSnapshotRecords(String ownerUsername, String taskType, Long taskId) {
+                String tenantId = resolveTenantId(ownerUsername);
+        return jdbcTemplate.query(
+            """
+            SELECT id,task_type,task_id,table_name,snapshot_version,row_count,schema_json,created_at
+              FROM etl_table_snapshot
+                         WHERE owner_username=? AND (tenant_id=? OR tenant_id IS NULL)
+               AND (? IS NULL OR task_type=?)
+               AND (? IS NULL OR task_id=?)
+             ORDER BY id DESC
+            """,
+            (rs, i) -> {
+                Map<String, Object> row = new HashMap<>();
+                row.put("id", rs.getLong("id"));
+                row.put("taskType", rs.getString("task_type"));
+                row.put("taskId", rs.getLong("task_id"));
+                row.put("tableName", rs.getString("table_name"));
+                row.put("snapshotVersion", rs.getInt("snapshot_version"));
+                row.put("rowCount", rs.getInt("row_count"));
+                row.put("schema", parseJsonMap(rs.getString("schema_json")));
+                row.put("createdAt", formatDateTime(rs.getTimestamp("created_at")));
+                return row;
+            },
+            ownerUsername,
+            tenantId,
+            taskType,
+            taskType,
+            taskId,
+            taskId
+        );
+    }
+
+    public List<Map<String, Object>> listAuditRecords(String ownerUsername, Integer limit) {
+        String tenantId = resolveTenantId(ownerUsername);
+        int safeLimit = (limit == null || limit <= 0) ? 100 : Math.min(limit, 500);
+        return jdbcTemplate.query(
+            """
+            SELECT id,action_type,resource_type,resource_id,result_status,detail_json,created_at
+              FROM audit_action_record
+             WHERE actor_username=? AND (tenant_id=? OR tenant_id IS NULL)
+             ORDER BY id DESC
+             LIMIT ?
+            """,
+            (rs, i) -> {
+                Map<String, Object> row = new HashMap<>();
+                row.put("id", rs.getLong("id"));
+                row.put("actionType", rs.getString("action_type"));
+                row.put("resourceType", rs.getString("resource_type"));
+                row.put("resourceId", rs.getString("resource_id"));
+                row.put("resultStatus", rs.getString("result_status"));
+                row.put("detail", parseJsonMap(rs.getString("detail_json")));
+                row.put("createdAt", formatDateTime(rs.getTimestamp("created_at")));
+                return row;
+            },
+            ownerUsername,
+            tenantId,
+            safeLimit
         );
     }
 
@@ -1560,6 +1873,387 @@ public class DataProcessService implements IDataProcessService {
 
     private void ensureStagingSchema() {
         jdbcTemplate.execute("CREATE SCHEMA IF NOT EXISTS " + stagingSchema);
+    }
+
+    private void ensureGovernanceTables() {
+        jdbcTemplate.execute(
+            """
+            CREATE TABLE IF NOT EXISTS etl_field_lineage (
+              id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                            tenant_id VARCHAR(128),
+              owner_username VARCHAR(128) NOT NULL,
+              task_type VARCHAR(32) NOT NULL,
+              task_id BIGINT NOT NULL,
+              source_table VARCHAR(255) NOT NULL,
+              source_field VARCHAR(255) NOT NULL,
+              target_table VARCHAR(255) NOT NULL,
+              target_field VARCHAR(255) NOT NULL,
+              created_at DATETIME NOT NULL,
+              INDEX idx_lineage_owner_task (owner_username, task_type, task_id)
+            )
+            """
+        );
+
+        jdbcTemplate.execute(
+            """
+            CREATE TABLE IF NOT EXISTS etl_quality_report (
+              id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                            tenant_id VARCHAR(128),
+              owner_username VARCHAR(128) NOT NULL,
+              task_type VARCHAR(32) NOT NULL,
+              task_id BIGINT NOT NULL,
+              table_name VARCHAR(255) NOT NULL,
+              total_rows INT NOT NULL,
+              unknown_rows INT NOT NULL,
+              duplicate_rows INT NOT NULL,
+              quality_score INT NOT NULL,
+              created_at DATETIME NOT NULL,
+              INDEX idx_quality_owner_task (owner_username, task_type, task_id)
+            )
+            """
+        );
+
+        jdbcTemplate.execute(
+            """
+            CREATE TABLE IF NOT EXISTS etl_table_snapshot (
+              id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                            tenant_id VARCHAR(128),
+              owner_username VARCHAR(128) NOT NULL,
+              task_type VARCHAR(32) NOT NULL,
+              task_id BIGINT NOT NULL,
+              table_name VARCHAR(255) NOT NULL,
+              snapshot_version INT NOT NULL,
+              row_count INT NOT NULL,
+              schema_json LONGTEXT,
+              created_at DATETIME NOT NULL,
+              INDEX idx_snapshot_owner_task (owner_username, task_type, task_id)
+            )
+            """
+        );
+
+                ensureColumnExists("ALTER TABLE etl_field_lineage ADD COLUMN tenant_id VARCHAR(128)");
+                ensureColumnExists("ALTER TABLE etl_quality_report ADD COLUMN tenant_id VARCHAR(128)");
+                ensureColumnExists("ALTER TABLE etl_table_snapshot ADD COLUMN tenant_id VARCHAR(128)");
+        }
+
+        private void ensureWorkflowTables() {
+                jdbcTemplate.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS etl_workflow_record (
+                            id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                            tenant_id VARCHAR(128) NOT NULL,
+                            owner_username VARCHAR(128) NOT NULL,
+                            workflow_name VARCHAR(255) NOT NULL,
+                            workflow_json LONGTEXT,
+                            created_at DATETIME NOT NULL,
+                            updated_at DATETIME NOT NULL,
+                            INDEX idx_workflow_owner (tenant_id, owner_username)
+                        )
+                        """
+                );
+
+                jdbcTemplate.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS etl_workflow_run_record (
+                            id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                            tenant_id VARCHAR(128) NOT NULL,
+                            owner_username VARCHAR(128) NOT NULL,
+                            workflow_id BIGINT NOT NULL,
+                            run_status VARCHAR(32) NOT NULL,
+                            start_at DATETIME,
+                            end_at DATETIME,
+                            error_message VARCHAR(1024),
+                            created_at DATETIME NOT NULL,
+                            updated_at DATETIME NOT NULL,
+                            INDEX idx_workflow_run_owner (tenant_id, owner_username, workflow_id)
+                        )
+                        """
+                );
+
+                jdbcTemplate.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS etl_workflow_node_run_record (
+                            id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                            run_id BIGINT NOT NULL,
+                            node_id VARCHAR(128) NOT NULL,
+                            task_type VARCHAR(32) NOT NULL,
+                            task_id BIGINT NOT NULL,
+                            status VARCHAR(32) NOT NULL,
+                            error_message VARCHAR(1024),
+                            started_at DATETIME,
+                            ended_at DATETIME,
+                            INDEX idx_node_run_run (run_id)
+                        )
+                        """
+                );
+    }
+
+    private void ensureAuditActionTable() {
+        jdbcTemplate.execute(
+            """
+            CREATE TABLE IF NOT EXISTS audit_action_record (
+              id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                            tenant_id VARCHAR(128),
+              actor_username VARCHAR(128) NOT NULL,
+              action_type VARCHAR(32) NOT NULL,
+              resource_type VARCHAR(64) NOT NULL,
+              resource_id VARCHAR(64) NOT NULL,
+              result_status VARCHAR(16) NOT NULL,
+              detail_json LONGTEXT,
+              created_at DATETIME NOT NULL,
+              INDEX idx_audit_actor_created (actor_username, created_at)
+            )
+            """
+        );
+        ensureColumnExists("ALTER TABLE audit_action_record ADD COLUMN tenant_id VARCHAR(128)");
+    }
+
+    private void persistGovernanceArtifacts(String ownerUsername, String taskType, Long taskId, String targetTable, List<String> sourceTables) {
+        String tenantId = resolveTenantId(ownerUsername);
+        String targetTableRef = stagingTableRef(targetTable);
+        Set<String> fields = inferFieldsFromTable(targetTableRef, 200);
+        for (String source : sourceTables) {
+            String sourceTable = sanitizeTableName(source);
+            for (String field : fields) {
+                jdbcTemplate.update(
+                    "INSERT INTO etl_field_lineage(tenant_id,owner_username,task_type,task_id,source_table,source_field,target_table,target_field,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                    tenantId,
+                    ownerUsername,
+                    taskType,
+                    taskId,
+                    sourceTable,
+                    field,
+                    targetTable,
+                    field,
+                    now()
+                );
+            }
+        }
+
+        Integer totalRowsObj = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM " + targetTableRef, Integer.class);
+        int totalRows = totalRowsObj == null ? 0 : totalRowsObj;
+        Integer unknownRowsObj = jdbcTemplate.queryForObject(
+            "SELECT COUNT(1) FROM " + targetTableRef + " WHERE normalized_json LIKE '%\\\"UNKNOWN\\\"%'",
+            Integer.class
+        );
+        int unknownRows = unknownRowsObj == null ? 0 : unknownRowsObj;
+        Integer duplicateRowsObj = jdbcTemplate.queryForObject(
+            "SELECT GREATEST(COUNT(1)-COUNT(DISTINCT normalized_json),0) FROM " + targetTableRef,
+            Integer.class
+        );
+        int duplicateRows = duplicateRowsObj == null ? 0 : duplicateRowsObj;
+
+        int qualityScore = 100;
+        if (totalRows > 0) {
+            qualityScore -= (unknownRows * 60 / totalRows);
+            qualityScore -= (duplicateRows * 40 / totalRows);
+        }
+        qualityScore = Math.max(0, Math.min(100, qualityScore));
+
+        jdbcTemplate.update(
+            "INSERT INTO etl_quality_report(tenant_id,owner_username,task_type,task_id,table_name,total_rows,unknown_rows,duplicate_rows,quality_score,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            tenantId,
+            ownerUsername,
+            taskType,
+            taskId,
+            targetTable,
+            totalRows,
+            unknownRows,
+            duplicateRows,
+            qualityScore,
+            now()
+        );
+
+        Integer latestVersion = jdbcTemplate.queryForObject(
+            "SELECT COALESCE(MAX(snapshot_version),0) FROM etl_table_snapshot WHERE owner_username=? AND (tenant_id=? OR tenant_id IS NULL) AND task_type=? AND task_id=? AND table_name=?",
+            Integer.class,
+            ownerUsername,
+            tenantId,
+            taskType,
+            taskId,
+            targetTable
+        );
+        int nextVersion = (latestVersion == null ? 0 : latestVersion) + 1;
+        List<String> columns = jdbcTemplate.query(
+            "SELECT column_name FROM information_schema.columns WHERE table_schema=? AND table_name=? ORDER BY ordinal_position",
+            (rs, i) -> rs.getString("column_name"),
+            stagingSchema,
+            targetTable
+        );
+        jdbcTemplate.update(
+            "INSERT INTO etl_table_snapshot(tenant_id,owner_username,task_type,task_id,table_name,snapshot_version,row_count,schema_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+            tenantId,
+            ownerUsername,
+            taskType,
+            taskId,
+            targetTable,
+            nextVersion,
+            totalRows,
+            toJson(Map.of("columns", columns)),
+            now()
+        );
+    }
+
+    private Set<String> inferFieldsFromTable(String tableRef, int limit) {
+        Set<String> fields = new LinkedHashSet<>();
+        List<String> rows = jdbcTemplate.query(
+            "SELECT normalized_json FROM " + tableRef + " ORDER BY id DESC LIMIT " + limit,
+            (rs, i) -> nvl(rs.getString("normalized_json"))
+        );
+        for (String json : rows) {
+            Map<String, Object> parsed = parseJsonMap(json);
+            fields.addAll(parsed.keySet());
+        }
+        if (fields.isEmpty()) {
+            fields.add("normalized_json");
+        }
+        return fields;
+    }
+
+    private Map<String, Object> parseJsonMap(String json) {
+        if (isBlank(json)) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
+        } catch (Exception ex) {
+            return Map.of();
+        }
+    }
+
+    private void recordAudit(String ownerUsername, String actionType, String resourceType, String resourceId, String resultStatus, Map<String, Object> detail) {
+        String tenantId = resolveTenantId(ownerUsername);
+        jdbcTemplate.update(
+            "INSERT INTO audit_action_record(tenant_id,actor_username,action_type,resource_type,resource_id,result_status,detail_json,created_at) VALUES(?,?,?,?,?,?,?,?)",
+            tenantId,
+            ownerUsername,
+            actionType,
+            resourceType,
+            resourceId,
+            resultStatus,
+            toJson(detail),
+            now()
+        );
+    }
+
+    private void requireAuthenticated(String ownerUsername) {
+        if (isBlank(ownerUsername) || "anonymous".equalsIgnoreCase(ownerUsername)) {
+            throw new IllegalArgumentException("未认证用户不允许执行写操作");
+        }
+    }
+
+    private void ensureColumnExists(String alterSql) {
+        try {
+            jdbcTemplate.execute(alterSql);
+        } catch (DataAccessException ex) {
+            if (!isDuplicateColumnError(ex)) {
+                throw ex;
+            }
+        }
+    }
+
+    private List<WorkflowNode> parseWorkflowNodes(Map<String, Object> payload) {
+        List<Map<String, Object>> nodeMaps = castMapList(payload.get("nodes"));
+        List<WorkflowNode> nodes = new ArrayList<>();
+        if (!nodeMaps.isEmpty()) {
+            for (Map<String, Object> node : nodeMaps) {
+                String nodeId = text(node.get("nodeId"));
+                if (isBlank(nodeId)) {
+                    nodeId = "node-" + (nodes.size() + 1);
+                }
+                String taskType = text(node.get("taskType")).toUpperCase();
+                Long taskId = toLong(node.get("taskId"));
+                List<String> dependsOn = castStringList(node.get("dependsOn"));
+                nodes.add(new WorkflowNode(nodeId, taskType, taskId, dependsOn));
+            }
+            return nodes;
+        }
+
+        List<Long> cleanTaskIds = castLongList(payload.get("cleanTaskIds"));
+        List<Long> fusionTaskIds = castLongList(payload.get("fusionTaskIds"));
+        for (Long id : cleanTaskIds) {
+            nodes.add(new WorkflowNode("clean-" + id, "CLEAN", id, List.of()));
+        }
+        List<String> cleanNodeIds = nodes.stream().map(WorkflowNode::nodeId).toList();
+        for (Long id : fusionTaskIds) {
+            nodes.add(new WorkflowNode("fusion-" + id, "FUSION", id, cleanNodeIds));
+        }
+        return nodes;
+    }
+
+    private void validateWorkflowNodes(List<WorkflowNode> nodes) {
+        Set<String> ids = new HashSet<>();
+        for (WorkflowNode node : nodes) {
+            if (!ids.add(node.nodeId)) {
+                throw new IllegalArgumentException("工作流节点ID重复: " + node.nodeId);
+            }
+            if (!Set.of("CLEAN", "FUSION").contains(node.taskType)) {
+                throw new IllegalArgumentException("工作流任务类型仅支持 CLEAN/FUSION");
+            }
+            if (node.taskId == null || node.taskId <= 0) {
+                throw new IllegalArgumentException("工作流节点任务ID不合法");
+            }
+        }
+        for (WorkflowNode node : nodes) {
+            for (String dep : node.dependsOn) {
+                if (!ids.contains(dep)) {
+                    throw new IllegalArgumentException("工作流依赖节点不存在: " + dep);
+                }
+            }
+        }
+
+        Queue<String> queue = new ArrayDeque<>();
+        Map<String, Integer> indegree = new HashMap<>();
+        Map<String, List<String>> edges = new HashMap<>();
+        for (WorkflowNode node : nodes) {
+            indegree.put(node.nodeId, node.dependsOn.size());
+            edges.putIfAbsent(node.nodeId, new ArrayList<>());
+        }
+        for (WorkflowNode node : nodes) {
+            for (String dep : node.dependsOn) {
+                edges.computeIfAbsent(dep, it -> new ArrayList<>()).add(node.nodeId);
+            }
+        }
+        for (Map.Entry<String, Integer> entry : indegree.entrySet()) {
+            if (entry.getValue() == 0) {
+                queue.offer(entry.getKey());
+            }
+        }
+        int visited = 0;
+        while (!queue.isEmpty()) {
+            String current = queue.poll();
+            visited++;
+            for (String next : edges.getOrDefault(current, List.of())) {
+                int v = indegree.get(next) - 1;
+                indegree.put(next, v);
+                if (v == 0) {
+                    queue.offer(next);
+                }
+            }
+        }
+        if (visited != nodes.size()) {
+            throw new IllegalArgumentException("工作流存在循环依赖");
+        }
+    }
+
+    private Map<String, Object> executeWorkflowNode(String ownerUsername, WorkflowNode node) {
+        return switch (node.taskType) {
+            case "CLEAN" -> runCleanTask(ownerUsername, node.taskId);
+            case "FUSION" -> runFusionTask(ownerUsername, node.taskId);
+            default -> throw new IllegalArgumentException("不支持的节点任务类型: " + node.taskType);
+        };
+    }
+
+    private String resolveTenantId(String ownerUsername) {
+        String normalized = text(ownerUsername);
+        int pos = normalized.indexOf(':');
+        if (pos > 0) {
+            return normalized.substring(0, pos);
+        }
+        return "default";
+    }
+
+    private record WorkflowNode(String nodeId, String taskType, Long taskId, List<String> dependsOn) {
     }
 
     private String stagingTableRef(String tableName) {
