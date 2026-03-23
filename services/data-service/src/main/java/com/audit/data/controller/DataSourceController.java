@@ -1,8 +1,11 @@
 package com.audit.data.controller;
 
 import com.audit.data.application.IDataSourceApplicationService;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import java.util.Map;
-import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -15,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+@Validated
 @RestController
 @RequestMapping("/api/data/sources")
 public class DataSourceController {
@@ -26,137 +30,57 @@ public class DataSourceController {
     }
 
     @GetMapping
-    public ResponseEntity<Map<String, Object>> list(
+    public ApiResponse<Object> list(
         @RequestHeader(value = "X-User-Name", required = false) String username,
         @RequestParam(required = false) String keyword,
         @RequestParam(required = false) String type,
         @RequestParam(required = false) String status
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "ok",
-                "data", dataSourceApplicationService.list(username, keyword, type, status)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of(
-                "code", 400,
-                "message", ex.getMessage()
-            ));
-        } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(Map.of(
-                "code", 500,
-                "message", "数据源列表加载失败"
-            ));
-        }
+        return ApiResponse.success("ok", dataSourceApplicationService.list(username, keyword, type, status));
     }
 
     @PostMapping("/database")
-    public ResponseEntity<Map<String, Object>> createDatabase(
+    public ApiResponse<Object> createDatabase(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @RequestBody Map<String, Object> payload
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "创建成功",
-                "data", dataSourceApplicationService.createDatabase(username, payload)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of(
-                "code", 400,
-                "message", ex.getMessage()
-            ));
-        } catch (IllegalStateException ex) {
-            return ResponseEntity.badRequest().body(Map.of(
-                "code", 400,
-                "message", ex.getMessage()
-            ));
-        }
+        return ApiResponse.success("创建成功", dataSourceApplicationService.createDatabase(username, payload));
     }
 
     @PostMapping("/file")
-    public ResponseEntity<Map<String, Object>> createFile(
+    public ApiResponse<Object> createFile(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @RequestParam String name,
+        @NotBlank(message = "数据源名称不能为空") @RequestParam String name,
         @RequestParam(required = false) String remark,
-        @RequestParam("file") MultipartFile file
+        @NotNull(message = "上传文件不能为空") @RequestParam("file") MultipartFile file
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "导入成功",
-                "data", dataSourceApplicationService.createFile(username, name, remark, file)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of(
-                "code", 400,
-                "message", ex.getMessage()
-            ));
-        }
+        return ApiResponse.success("导入成功", dataSourceApplicationService.createFile(username, name, remark, file));
     }
 
     @GetMapping("/{id}/objects")
-    public ResponseEntity<Map<String, Object>> listSourceObjects(
+    public ApiResponse<Object> listSourceObjects(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @PathVariable Long id
+        @NotNull(message = "数据源ID不能为空") @Positive(message = "数据源ID必须大于0") @PathVariable Long id
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "ok",
-                "data", dataSourceApplicationService.listSourceObjects(username, id)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of(
-                "code", 400,
-                "message", ex.getMessage()
-            ));
-        } catch (IllegalStateException ex) {
-            return ResponseEntity.badRequest().body(Map.of(
-                "code", 400,
-                "message", ex.getMessage()
-            ));
-        }
+        return ApiResponse.success("ok", dataSourceApplicationService.listSourceObjects(username, id));
     }
 
     @PatchMapping("/{id}/status")
-    public ResponseEntity<Map<String, Object>> updateStatus(
+    public ApiResponse<Object> updateStatus(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @PathVariable Long id,
-        @RequestBody Map<String, String> payload
+        @NotNull(message = "数据源ID不能为空") @Positive(message = "数据源ID必须大于0") @PathVariable Long id,
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, String> payload
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "更新成功",
-                "data", dataSourceApplicationService.updateStatus(username, id, payload.getOrDefault("status", ""))
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of(
-                "code", 400,
-                "message", ex.getMessage()
-            ));
-        }
+        return ApiResponse.success("更新成功", dataSourceApplicationService.updateStatus(username, id, payload.getOrDefault("status", "")));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> delete(
+    public ApiResponse<Void> delete(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @PathVariable Long id
+        @NotNull(message = "数据源ID不能为空") @Positive(message = "数据源ID必须大于0") @PathVariable Long id
     ) {
-        try {
-            dataSourceApplicationService.delete(username, id);
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "删除成功"
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of(
-                "code", 400,
-                "message", ex.getMessage()
-            ));
-        }
+        dataSourceApplicationService.delete(username, id);
+        return ApiResponse.success("删除成功");
     }
 
 }

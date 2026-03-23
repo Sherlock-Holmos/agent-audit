@@ -1,8 +1,11 @@
 package com.audit.data.controller;
 
 import com.audit.data.application.IDataProcessApplicationService;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import java.util.Map;
-import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -14,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@Validated
 @RestController
 @RequestMapping("/api/data")
 public class DataProcessController {
@@ -25,478 +29,259 @@ public class DataProcessController {
     }
 
     @GetMapping("/clean/tasks")
-    public ResponseEntity<Map<String, Object>> listCleanTasks(
+    public ApiResponse<Object> listCleanTasks(
         @RequestHeader(value = "X-User-Name", required = false) String username,
         @RequestParam(required = false) String keyword,
         @RequestParam(required = false) String sourceId,
         @RequestParam(required = false) String status
     ) {
-        return ResponseEntity.ok(Map.of(
-            "code", 0,
-            "message", "ok",
-            "data", dataProcessApplicationService.listCleanTasks(username, keyword, sourceId, status)
-        ));
+        return ApiResponse.success("ok", dataProcessApplicationService.listCleanTasks(username, keyword, sourceId, status));
     }
 
     @GetMapping("/clean/rules")
-    public ResponseEntity<Map<String, Object>> listCleanRules(
+    public ApiResponse<Object> listCleanRules(
         @RequestHeader(value = "X-User-Name", required = false) String username
     ) {
-        return ResponseEntity.ok(Map.of(
-            "code", 0,
-            "message", "ok",
-            "data", dataProcessApplicationService.listCleanRules(username)
-        ));
+        return ApiResponse.success("ok", dataProcessApplicationService.listCleanRules(username));
     }
 
     @PostMapping("/clean/rules")
-    public ResponseEntity<Map<String, Object>> uploadCleanRule(
+    public ApiResponse<Object> uploadCleanRule(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @RequestBody Map<String, Object> payload
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "上传成功",
-                "data", dataProcessApplicationService.uploadCleanRule(username, payload)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
-        }
+        return ApiResponse.success("上传成功", dataProcessApplicationService.uploadCleanRule(username, payload));
     }
 
     @PatchMapping("/clean/rules/{id}/enabled")
-    public ResponseEntity<Map<String, Object>> toggleCleanRule(
+    public ApiResponse<Object> toggleCleanRule(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @PathVariable Long id,
-        @RequestBody Map<String, Object> payload
+        @NotNull(message = "规则ID不能为空") @Positive(message = "规则ID必须大于0") @PathVariable Long id,
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
     ) {
-        try {
-            boolean enabled = Boolean.TRUE.equals(payload.get("enabled"));
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "更新成功",
-                "data", dataProcessApplicationService.toggleCleanRule(username, id, enabled)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
-        }
+        boolean enabled = Boolean.TRUE.equals(payload.get("enabled"));
+        return ApiResponse.success("更新成功", dataProcessApplicationService.toggleCleanRule(username, id, enabled));
     }
 
     @GetMapping("/clean/rules/{id}")
-    public ResponseEntity<Map<String, Object>> getCleanRuleDetail(
+    public ApiResponse<Object> getCleanRuleDetail(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @PathVariable Long id
+        @NotNull(message = "规则ID不能为空") @Positive(message = "规则ID必须大于0") @PathVariable Long id
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "ok",
-                "data", dataProcessApplicationService.getCleanRuleDetail(username, id)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
-        }
+        return ApiResponse.success("ok", dataProcessApplicationService.getCleanRuleDetail(username, id));
     }
 
     @PatchMapping("/clean/rules/{id}")
-    public ResponseEntity<Map<String, Object>> updateCleanRule(
+    public ApiResponse<Object> updateCleanRule(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @PathVariable Long id,
-        @RequestBody Map<String, Object> payload
+        @NotNull(message = "规则ID不能为空") @Positive(message = "规则ID必须大于0") @PathVariable Long id,
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "更新成功",
-                "data", dataProcessApplicationService.updateCleanRule(username, id, payload)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
-        }
+        return ApiResponse.success("更新成功", dataProcessApplicationService.updateCleanRule(username, id, payload));
     }
 
     @DeleteMapping("/clean/rules/{id}")
-    public ResponseEntity<Map<String, Object>> deleteCleanRule(
+    public ApiResponse<Void> deleteCleanRule(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @PathVariable Long id
+        @NotNull(message = "规则ID不能为空") @Positive(message = "规则ID必须大于0") @PathVariable Long id
     ) {
-        try {
-            dataProcessApplicationService.deleteCleanRule(username, id);
-            return ResponseEntity.ok(Map.of("code", 0, "message", "删除成功"));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
-        }
+        dataProcessApplicationService.deleteCleanRule(username, id);
+        return ApiResponse.success("删除成功");
     }
 
     @GetMapping("/clean/strategies")
-    public ResponseEntity<Map<String, Object>> listCleanStrategies(
+    public ApiResponse<Object> listCleanStrategies(
         @RequestHeader(value = "X-User-Name", required = false) String username
     ) {
-        return ResponseEntity.ok(Map.of(
-            "code", 0,
-            "message", "ok",
-            "data", dataProcessApplicationService.listCleanStrategies(username)
-        ));
+        return ApiResponse.success("ok", dataProcessApplicationService.listCleanStrategies(username));
     }
 
     @PostMapping("/clean/strategies")
-    public ResponseEntity<Map<String, Object>> createCleanStrategy(
+    public ApiResponse<Object> createCleanStrategy(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @RequestBody Map<String, Object> payload
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "创建成功",
-                "data", dataProcessApplicationService.createCleanStrategy(username, payload)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
-        }
+        return ApiResponse.success("创建成功", dataProcessApplicationService.createCleanStrategy(username, payload));
     }
 
     @GetMapping("/clean/strategies/{id}")
-    public ResponseEntity<Map<String, Object>> getCleanStrategyDetail(
+    public ApiResponse<Object> getCleanStrategyDetail(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @PathVariable Long id
+        @NotNull(message = "策略ID不能为空") @Positive(message = "策略ID必须大于0") @PathVariable Long id
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "ok",
-                "data", dataProcessApplicationService.getCleanStrategyDetail(username, id)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
-        }
+        return ApiResponse.success("ok", dataProcessApplicationService.getCleanStrategyDetail(username, id));
     }
 
     @PatchMapping("/clean/strategies/{id}")
-    public ResponseEntity<Map<String, Object>> updateCleanStrategy(
+    public ApiResponse<Object> updateCleanStrategy(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @PathVariable Long id,
-        @RequestBody Map<String, Object> payload
+        @NotNull(message = "策略ID不能为空") @Positive(message = "策略ID必须大于0") @PathVariable Long id,
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "更新成功",
-                "data", dataProcessApplicationService.updateCleanStrategy(username, id, payload)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
-        }
+        return ApiResponse.success("更新成功", dataProcessApplicationService.updateCleanStrategy(username, id, payload));
     }
 
     @PatchMapping("/clean/strategies/{id}/enabled")
-    public ResponseEntity<Map<String, Object>> toggleCleanStrategy(
+    public ApiResponse<Object> toggleCleanStrategy(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @PathVariable Long id,
-        @RequestBody Map<String, Object> payload
+        @NotNull(message = "策略ID不能为空") @Positive(message = "策略ID必须大于0") @PathVariable Long id,
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
     ) {
-        try {
-            boolean enabled = Boolean.TRUE.equals(payload.get("enabled"));
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "更新成功",
-                "data", dataProcessApplicationService.toggleCleanStrategy(username, id, enabled)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
-        }
+        boolean enabled = Boolean.TRUE.equals(payload.get("enabled"));
+        return ApiResponse.success("更新成功", dataProcessApplicationService.toggleCleanStrategy(username, id, enabled));
     }
 
     @DeleteMapping("/clean/strategies/{id}")
-    public ResponseEntity<Map<String, Object>> deleteCleanStrategy(
+    public ApiResponse<Void> deleteCleanStrategy(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @PathVariable Long id
+        @NotNull(message = "策略ID不能为空") @Positive(message = "策略ID必须大于0") @PathVariable Long id
     ) {
-        try {
-            dataProcessApplicationService.deleteCleanStrategy(username, id);
-            return ResponseEntity.ok(Map.of("code", 0, "message", "删除成功"));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
-        }
+        dataProcessApplicationService.deleteCleanStrategy(username, id);
+        return ApiResponse.success("删除成功");
     }
 
     @PostMapping("/clean/tasks")
-    public ResponseEntity<Map<String, Object>> createCleanTask(
+    public ApiResponse<Object> createCleanTask(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @RequestBody Map<String, Object> payload
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "创建成功",
-                "data", dataProcessApplicationService.createCleanTask(username, payload)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of(
-                "code", 400,
-                "message", ex.getMessage()
-            ));
-        }
+        return ApiResponse.success("创建成功", dataProcessApplicationService.createCleanTask(username, payload));
     }
 
     @PostMapping("/clean/tasks/{id}/run")
-    public ResponseEntity<Map<String, Object>> runCleanTask(
+    public ApiResponse<Object> runCleanTask(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @PathVariable Long id
+        @NotNull(message = "任务ID不能为空") @Positive(message = "任务ID必须大于0") @PathVariable Long id
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "执行成功",
-                "data", dataProcessApplicationService.runCleanTask(username, id)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of(
-                "code", 400,
-                "message", ex.getMessage()
-            ));
-        }
+        return ApiResponse.success("执行成功", dataProcessApplicationService.runCleanTask(username, id));
     }
 
     @PostMapping("/clean/tasks/{id}/run-async")
-    public ResponseEntity<Map<String, Object>> runCleanTaskAsync(
+    public ApiResponse<Object> runCleanTaskAsync(
         @RequestHeader(value = "X-User-Name", required = false) String username,
         @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-        @PathVariable Long id
+        @NotNull(message = "任务ID不能为空") @Positive(message = "任务ID必须大于0") @PathVariable Long id
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "任务已提交",
-                "data", dataProcessApplicationService.runCleanTaskAsync(username, id, idempotencyKey)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
-        }
+        return ApiResponse.success("任务已提交", dataProcessApplicationService.runCleanTaskAsync(username, id, idempotencyKey));
     }
 
     @DeleteMapping("/clean/tasks/{id}")
-    public ResponseEntity<Map<String, Object>> deleteCleanTask(
+    public ApiResponse<Void> deleteCleanTask(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @PathVariable Long id
+        @NotNull(message = "任务ID不能为空") @Positive(message = "任务ID必须大于0") @PathVariable Long id
     ) {
-        try {
-            dataProcessApplicationService.deleteCleanTask(username, id);
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "删除成功"
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of(
-                "code", 400,
-                "message", ex.getMessage()
-            ));
-        }
+        dataProcessApplicationService.deleteCleanTask(username, id);
+        return ApiResponse.success("删除成功");
     }
 
     @GetMapping("/fusion/tasks")
-    public ResponseEntity<Map<String, Object>> listFusionTasks(
+    public ApiResponse<Object> listFusionTasks(
         @RequestHeader(value = "X-User-Name", required = false) String username,
         @RequestParam(required = false) String keyword,
         @RequestParam(required = false) String status
     ) {
-        return ResponseEntity.ok(Map.of(
-            "code", 0,
-            "message", "ok",
-            "data", dataProcessApplicationService.listFusionTasks(username, keyword, status)
-        ));
+        return ApiResponse.success("ok", dataProcessApplicationService.listFusionTasks(username, keyword, status));
     }
 
     @PostMapping("/fusion/tasks")
-    public ResponseEntity<Map<String, Object>> createFusionTask(
+    public ApiResponse<Object> createFusionTask(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @RequestBody Map<String, Object> payload
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "创建成功",
-                "data", dataProcessApplicationService.createFusionTask(username, payload)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of(
-                "code", 400,
-                "message", ex.getMessage()
-            ));
-        }
+        return ApiResponse.success("创建成功", dataProcessApplicationService.createFusionTask(username, payload));
     }
 
     @PostMapping("/fusion/tasks/{id}/run")
-    public ResponseEntity<Map<String, Object>> runFusionTask(
+    public ApiResponse<Object> runFusionTask(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @PathVariable Long id
+        @NotNull(message = "任务ID不能为空") @Positive(message = "任务ID必须大于0") @PathVariable Long id
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "执行成功",
-                "data", dataProcessApplicationService.runFusionTask(username, id)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of(
-                "code", 400,
-                "message", ex.getMessage()
-            ));
-        }
+        return ApiResponse.success("执行成功", dataProcessApplicationService.runFusionTask(username, id));
     }
 
     @GetMapping("/fusion/tasks/{id}/preview")
-    public ResponseEntity<Map<String, Object>> previewFusionTask(
+    public ApiResponse<Object> previewFusionTask(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @PathVariable Long id,
+        @NotNull(message = "任务ID不能为空") @Positive(message = "任务ID必须大于0") @PathVariable Long id,
         @RequestParam(required = false) Integer limit
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "ok",
-                "data", dataProcessApplicationService.previewFusionTask(username, id, limit)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of(
-                "code", 400,
-                "message", ex.getMessage()
-            ));
-        }
+        return ApiResponse.success("ok", dataProcessApplicationService.previewFusionTask(username, id, limit));
     }
 
     @PostMapping("/fusion/tasks/{id}/run-async")
-    public ResponseEntity<Map<String, Object>> runFusionTaskAsync(
+    public ApiResponse<Object> runFusionTaskAsync(
         @RequestHeader(value = "X-User-Name", required = false) String username,
         @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-        @PathVariable Long id
+        @NotNull(message = "任务ID不能为空") @Positive(message = "任务ID必须大于0") @PathVariable Long id
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "任务已提交",
-                "data", dataProcessApplicationService.runFusionTaskAsync(username, id, idempotencyKey)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
-        }
+        return ApiResponse.success("任务已提交", dataProcessApplicationService.runFusionTaskAsync(username, id, idempotencyKey));
     }
 
     @GetMapping("/jobs/{jobId}")
-    public ResponseEntity<Map<String, Object>> getJobStatus(
+    public ApiResponse<Object> getJobStatus(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @PathVariable String jobId
+        @NotBlank(message = "作业ID不能为空") @PathVariable String jobId
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "ok",
-                "data", dataProcessApplicationService.getJobStatus(username, jobId)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
-        }
+        return ApiResponse.success("ok", dataProcessApplicationService.getJobStatus(username, jobId));
     }
 
     @DeleteMapping("/fusion/tasks/{id}")
-    public ResponseEntity<Map<String, Object>> deleteFusionTask(
+    public ApiResponse<Void> deleteFusionTask(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @PathVariable Long id
+        @NotNull(message = "任务ID不能为空") @Positive(message = "任务ID必须大于0") @PathVariable Long id
     ) {
-        try {
-            dataProcessApplicationService.deleteFusionTask(username, id);
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "删除成功"
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of(
-                "code", 400,
-                "message", ex.getMessage()
-            ));
-        }
+        dataProcessApplicationService.deleteFusionTask(username, id);
+        return ApiResponse.success("删除成功");
     }
 
     @PostMapping("/maintenance/generated-tables/cleanup")
-    public ResponseEntity<Map<String, Object>> cleanupGeneratedTables(
+    public ApiResponse<Object> cleanupGeneratedTables(
         @RequestHeader(value = "X-User-Name", required = false) String username
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "清理完成",
-                "data", dataProcessApplicationService.cleanupOrphanGeneratedTables(username)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
-        }
+        return ApiResponse.success("清理完成", dataProcessApplicationService.cleanupOrphanGeneratedTables(username));
     }
 
     @PostMapping("/workflows/run")
-    public ResponseEntity<Map<String, Object>> runWorkflow(
+    public ApiResponse<Object> runWorkflow(
         @RequestHeader(value = "X-User-Name", required = false) String username,
-        @RequestBody Map<String, Object> payload
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
     ) {
-        try {
-            return ResponseEntity.ok(Map.of(
-                "code", 0,
-                "message", "执行完成",
-                "data", dataProcessApplicationService.runWorkflow(username, payload)
-            ));
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of("code", 400, "message", ex.getMessage()));
-        }
+        return ApiResponse.success("执行完成", dataProcessApplicationService.runWorkflow(username, payload));
     }
 
     @GetMapping("/governance/lineage")
-    public ResponseEntity<Map<String, Object>> listLineage(
+    public ApiResponse<Object> listLineage(
         @RequestHeader(value = "X-User-Name", required = false) String username,
         @RequestParam(required = false) String taskType,
         @RequestParam(required = false) Long taskId
     ) {
-        return ResponseEntity.ok(Map.of(
-            "code", 0,
-            "message", "ok",
-            "data", dataProcessApplicationService.listLineageRecords(username, taskType, taskId)
-        ));
+        return ApiResponse.success("ok", dataProcessApplicationService.listLineageRecords(username, taskType, taskId));
     }
 
     @GetMapping("/governance/quality")
-    public ResponseEntity<Map<String, Object>> listQualityReports(
+    public ApiResponse<Object> listQualityReports(
         @RequestHeader(value = "X-User-Name", required = false) String username,
         @RequestParam(required = false) String taskType,
         @RequestParam(required = false) Long taskId
     ) {
-        return ResponseEntity.ok(Map.of(
-            "code", 0,
-            "message", "ok",
-            "data", dataProcessApplicationService.listQualityReports(username, taskType, taskId)
-        ));
+        return ApiResponse.success("ok", dataProcessApplicationService.listQualityReports(username, taskType, taskId));
     }
 
     @GetMapping("/governance/snapshots")
-    public ResponseEntity<Map<String, Object>> listSnapshots(
+    public ApiResponse<Object> listSnapshots(
         @RequestHeader(value = "X-User-Name", required = false) String username,
         @RequestParam(required = false) String taskType,
         @RequestParam(required = false) Long taskId
     ) {
-        return ResponseEntity.ok(Map.of(
-            "code", 0,
-            "message", "ok",
-            "data", dataProcessApplicationService.listSnapshotRecords(username, taskType, taskId)
-        ));
+        return ApiResponse.success("ok", dataProcessApplicationService.listSnapshotRecords(username, taskType, taskId));
     }
 
     @GetMapping("/governance/audit")
-    public ResponseEntity<Map<String, Object>> listAuditRecords(
+    public ApiResponse<Object> listAuditRecords(
         @RequestHeader(value = "X-User-Name", required = false) String username,
         @RequestParam(required = false) Integer limit
     ) {
-        return ResponseEntity.ok(Map.of(
-            "code", 0,
-            "message", "ok",
-            "data", dataProcessApplicationService.listAuditRecords(username, limit)
-        ));
+        return ApiResponse.success("ok", dataProcessApplicationService.listAuditRecords(username, limit));
     }
 
 }

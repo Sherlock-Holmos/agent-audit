@@ -5,8 +5,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -1411,9 +1418,65 @@ public class DataProcessService implements IDataProcessService {
             return readJsonRows(path);
         }
         if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
-            throw new IllegalArgumentException("当前版本暂不支持解析 Excel 清洗，请先转为 csv/txt/json");
+            return readExcelRows(path);
         }
         throw new IllegalArgumentException("不支持的文件类型");
+    }
+
+    private List<String> readExcelRows(Path path) {
+        try (InputStream inputStream = Files.newInputStream(path); Workbook workbook = WorkbookFactory.create(inputStream)) {
+            Sheet sheet = workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : null;
+            if (sheet == null) {
+                return List.of();
+            }
+
+            int firstRow = sheet.getFirstRowNum();
+            Row headerRow = sheet.getRow(firstRow);
+            if (headerRow == null) {
+                return List.of();
+            }
+
+            int lastCell = Math.max(headerRow.getLastCellNum(), (short) 0);
+            if (lastCell == 0) {
+                return List.of();
+            }
+
+            DataFormatter formatter = new DataFormatter();
+            List<String> headers = new ArrayList<>();
+            for (int i = 0; i < lastCell; i++) {
+                Cell cell = headerRow.getCell(i, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+                String key = cell == null ? "" : formatter.formatCellValue(cell).trim();
+                if (key.isEmpty()) {
+                    key = "col_" + (i + 1);
+                }
+                headers.add(key);
+            }
+
+            List<String> rows = new ArrayList<>();
+            int lastRow = sheet.getLastRowNum();
+            for (int r = firstRow + 1; r <= lastRow && rows.size() < 10000; r++) {
+                Row row = sheet.getRow(r);
+                if (row == null) {
+                    continue;
+                }
+                Map<String, Object> item = new HashMap<>();
+                boolean hasValue = false;
+                for (int c = 0; c < headers.size(); c++) {
+                    Cell cell = row.getCell(c, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+                    String value = cell == null ? "" : formatter.formatCellValue(cell).trim();
+                    if (!value.isEmpty()) {
+                        hasValue = true;
+                    }
+                    item.put(headers.get(c), value);
+                }
+                if (hasValue) {
+                    rows.add(toJson(item));
+                }
+            }
+            return rows;
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("读取 Excel 失败: " + ex.getMessage());
+        }
     }
 
     private List<String> readTextStructuredRows(Path path, char delimiter) {
