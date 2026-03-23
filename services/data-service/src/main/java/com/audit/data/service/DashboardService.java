@@ -21,6 +21,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
+/**
+ * 仪表板聚合服务：负责融合结果的统计、趋势和热力图计算，并结合短 TTL 缓存减少重复查询。
+ */
 public class DashboardService implements IDashboardService {
 
     private static final String DASHBOARD_CACHE_PREFIX = "dashboard:";

@@ -9,6 +9,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/data")
+/**
+ * 仪表板查询接口。
+ */
 public class DashboardController {
 
     private final IDashboardApplicationService dashboardApplicationService;

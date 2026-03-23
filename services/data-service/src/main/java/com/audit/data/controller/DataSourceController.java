@@ -21,6 +21,9 @@ import org.springframework.web.multipart.MultipartFile;
 @Validated
 @RestController
 @RequestMapping("/api/data/sources")
+/**
+ * 数据源管理接口。
+ */
 public class DataSourceController {
 
     private final IDataSourceApplicationService dataSourceApplicationService;

@@ -6,6 +6,9 @@ import org.springframework.scheduling.annotation.EnableAsync;
 
 @SpringBootApplication
 @EnableAsync
+/**
+ * 数据微服务启动入口。
+ */
 public class DataServiceApplication {
 
     public static void main(String[] args) {

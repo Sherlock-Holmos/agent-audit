@@ -34,6 +34,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
+/**
+ * 数据源管理服务：处理数据库/文件数据源的创建、校验、对象发现与文件落盘。
+ */
 public class DataSourceService implements IDataSourceService {
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER =

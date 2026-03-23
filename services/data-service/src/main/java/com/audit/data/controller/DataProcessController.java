@@ -20,6 +20,9 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RestController
 @RequestMapping("/api/data")
+/**
+ * 数据处理接口：清洗、融合、工作流与治理查询。
+ */
 public class DataProcessController {
 
     private final IDataProcessApplicationService dataProcessApplicationService;
