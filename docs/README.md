@@ -9,6 +9,7 @@
 1. [项目总览](01-overview.md)
 2. [系统架构说明](02-architecture.md)
 3. [**代码架构与设计模式**](07-code-architecture.md) ⭐ **2026 新增** - 接口化编程、SOLID 原则、设计模式应用
+4. [Data-Service 分层与目录规范](08-data-service-layering.md) ⭐ - Data-Service 职责分层与落位规则
 
 ### 部署与运维
 4. [部署与环境手册](03-deployment.md)
@@ -80,6 +81,12 @@
   - 单元测试 Mock 示例
   - 编译验证状态与后续优化方向
 
+### 2026-03-23
+- ✨ **新增** [Data-Service 分层与目录规范](08-data-service-layering.md)
+  - 明确 `orchestration/domain/infrastructure/cache/api` 的目录边界
+  - 给出新增代码落位规则与编排层约束
+  - 记录“目录归位但 package 不变”的兼容策略
+
 ### 2026-03-16
 - ✅ 完成所有微服务接口化重构
 - ✅ Auth-Service、Config-Service、Data-Service、Gateway 编译通过
@@ -88,4 +95,4 @@
 ## 维护人员
 - 架构负责人：待指定
 - 文档维护：Team
-- 最后更新时间：2026-03-17
+- 最后更新时间：2026-03-23

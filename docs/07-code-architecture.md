@@ -66,6 +66,8 @@ public interface IConfigService {
 
 最复杂的服务，包含 5 个核心接口：
 
+> Data-Service 文件分层与目录落位规范见：[08-data-service-layering.md](08-data-service-layering.md)
+
 #### IDashboardService
 ```java
 public interface IDashboardService {
