@@ -9,6 +9,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -260,7 +261,7 @@ public class AuthUserServiceImpl implements IAuthUserService {
 
     private void addColumnIfMissing(String sql) {
         try {
-            jdbcTemplate.execute(sql);
+            jdbcTemplate.execute(Objects.requireNonNull(sql));
         } catch (DataAccessException ex) {
             if (!isDuplicateColumnError(ex)) {
                 throw ex;

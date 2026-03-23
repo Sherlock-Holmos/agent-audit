@@ -48,3 +48,4 @@ public class DashboardController {
         return ApiResponse.success("ok", dashboardApplicationService.listFusionOptions(username));
     }
 }
+

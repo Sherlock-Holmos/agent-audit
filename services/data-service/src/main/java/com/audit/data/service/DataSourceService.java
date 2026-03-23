@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,7 +40,6 @@ public class DataSourceService implements IDataSourceService {
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
     private static final long MAX_FILE_SIZE = 20L * 1024 * 1024;
     private static final Set<String> ALLOWED_FILE_EXT = Set.of("xlsx", "xls", "csv", "json", "txt");
-    private static final Pattern NON_ALNUM = Pattern.compile("[^a-zA-Z0-9_]");
 
     private final JdbcTemplate jdbcTemplate;
     private final Path uploadRoot;
@@ -84,12 +82,12 @@ public class DataSourceService implements IDataSourceService {
         String remark = text(payload.get("remark"));
 
         if (isBlank(name) || isBlank(dbType) || isBlank(host) || port == null || isBlank(databaseName) || isBlank(username) || isBlank(password)) {
-            throw new IllegalArgumentException("数据库数据源必填项缺失");
+            throw new IllegalArgumentException("鏁版嵁搴撴暟鎹簮蹇呭～椤圭己澶");
         }
 
         String normalizedDbType = dbType.toUpperCase();
         if (!Set.of("MYSQL", "POSTGRESQL", "ORACLE", "SQLSERVER").contains(normalizedDbType)) {
-            throw new IllegalArgumentException("暂不支持的数据库类型: " + dbType);
+            throw new IllegalArgumentException("鏆備笉鏀寔鐨勬暟鎹簱绫诲瀷: " + dbType);
         }
 
         ensureDriverAvailable(normalizedDbType);
@@ -102,7 +100,7 @@ public class DataSourceService implements IDataSourceService {
             INSERT INTO data_source_record(
               owner_username, name, type, db_type, host, port, database_name, username, db_password,
               file_name, file_size, file_path, preview_rows, status, remark, created_at, updated_at
-            ) VALUES (?, ?, 'DATABASE', ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, 'ENABLED', ?, ?, ?)
+                        ) VALUES (?, ?, 'DATABASE', ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, 'ENABLED', ?, ?, ?)
             """;
 
         Long id = insertWithGeneratedId(sql, ps -> {
@@ -123,13 +121,13 @@ public class DataSourceService implements IDataSourceService {
     }
 
     public Map<String, Object> createFile(String ownerUsername, String name, String remark, MultipartFile file) {
-        if (isBlank(name)) throw new IllegalArgumentException("数据源名称不能为空");
-        if (file == null || file.isEmpty()) throw new IllegalArgumentException("上传文件不能为空");
-        if (file.getSize() > MAX_FILE_SIZE) throw new IllegalArgumentException("上传文件不能超过20MB");
+        if (isBlank(name)) throw new IllegalArgumentException("鏁版嵁婧愬悕绉颁笉鑳戒负绌");
+        if (file == null || file.isEmpty()) throw new IllegalArgumentException("涓婁紶鏂囦欢涓嶈兘涓虹┖");
+        if (file.getSize() > MAX_FILE_SIZE) throw new IllegalArgumentException("涓婁紶鏂囦欢涓嶈兘瓒呰繃20MB");
 
         String fileName = Objects.requireNonNullElse(file.getOriginalFilename(), "unknown");
         String fileExt = getFileExt(fileName);
-        if (!ALLOWED_FILE_EXT.contains(fileExt)) throw new IllegalArgumentException("仅支持 csv/xls/xlsx/json/txt 文件");
+        if (!ALLOWED_FILE_EXT.contains(fileExt)) throw new IllegalArgumentException("浠呮敮鎸?csv/xls/xlsx/json/txt 鏂囦欢");
 
         String safeFileName = sanitizeFileName(fileName);
         String storedName = ownerUsername + "_" + Instant.now().toEpochMilli() + "_" + safeFileName;
@@ -138,9 +136,9 @@ public class DataSourceService implements IDataSourceService {
         try {
             Files.createDirectories(uploadRoot);
             savedFile = uploadRoot.resolve(storedName);
-            file.transferTo(savedFile.toFile());
+            file.transferTo(Objects.requireNonNull(savedFile));
         } catch (Exception ex) {
-            throw new IllegalArgumentException("文件保存失败: " + ex.getMessage());
+            throw new IllegalArgumentException("鏂囦欢淇濆瓨澶辫触: " + ex.getMessage());
         }
 
         int previewRows = detectPreviewRows(savedFile, fileExt);
@@ -150,7 +148,7 @@ public class DataSourceService implements IDataSourceService {
             INSERT INTO data_source_record(
               owner_username, name, type, db_type, host, port, database_name, username,
               file_name, file_size, file_path, preview_rows, status, remark, created_at, updated_at
-            ) VALUES (?, ?, 'FILE', NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?, 'ENABLED', ?, ?, ?)
+                        ) VALUES (?, ?, 'FILE', NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?, 'ENABLED', ?, ?, ?)
             """;
 
         Long id = insertWithGeneratedId(sql, ps -> {
@@ -170,14 +168,14 @@ public class DataSourceService implements IDataSourceService {
 
     public Map<String, Object> updateStatus(String ownerUsername, Long id, String status) {
         if (!"ENABLED".equalsIgnoreCase(status) && !"DISABLED".equalsIgnoreCase(status)) {
-            throw new IllegalArgumentException("状态仅支持 ENABLED 或 DISABLED");
+            throw new IllegalArgumentException("鐘舵€佷粎鏀寔 ENABLED 鎴?DISABLED");
         }
 
         int count = jdbcTemplate.update(
             "UPDATE data_source_record SET status=?, updated_at=? WHERE owner_username=? AND id=?",
             status.toUpperCase(), now(), ownerUsername, id
         );
-        if (count == 0) throw new IllegalArgumentException("数据源不存在");
+        if (count == 0) throw new IllegalArgumentException("鏁版嵁婧愪笉瀛樺湪");
         return getById(ownerUsername, id);
     }
 
@@ -189,7 +187,7 @@ public class DataSourceService implements IDataSourceService {
         }
 
         int count = jdbcTemplate.update("DELETE FROM data_source_record WHERE owner_username=? AND id=?", ownerUsername, id);
-        if (count == 0) throw new IllegalArgumentException("数据源不存在");
+        if (count == 0) throw new IllegalArgumentException("鏁版嵁婧愪笉瀛樺湪");
     }
 
     public List<Map<String, Object>> listSourceObjects(String ownerUsername, Long id) {
@@ -250,8 +248,8 @@ public class DataSourceService implements IDataSourceService {
             INSERT INTO data_source_record(
               owner_username, name, type, db_type, host, port, database_name, username,
               file_name, file_size, file_path, preview_rows, status, remark, created_at, updated_at
-            ) VALUES (?, '审计演示库', 'DATABASE', 'MYSQL', '127.0.0.1', 3306, 'audit_demo', 'audit_user',
-                      NULL, NULL, NULL, NULL, 'ENABLED', '系统初始化', ?, ?)
+                        ) VALUES (?, '审计演示库', 'DATABASE', 'MYSQL', '127.0.0.1', 3306, 'audit_demo', 'audit_user',
+                                            NULL, NULL, NULL, NULL, 'ENABLED', '系统初始化', ?, ?)
             """,
             ownerUsername, now, now
         );
@@ -267,7 +265,7 @@ public class DataSourceService implements IDataSourceService {
             """,
             (rs, i) -> toView(rs), ownerUsername, id
         );
-        if (rows.isEmpty()) throw new IllegalArgumentException("数据源不存在");
+        if (rows.isEmpty()) throw new IllegalArgumentException("鏁版嵁婧愪笉瀛樺湪");
         return rows.get(0);
     }
 
@@ -295,12 +293,14 @@ public class DataSourceService implements IDataSourceService {
     private Long insertWithGeneratedId(String sql, SqlSetter setter) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(con -> {
-            PreparedStatement ps = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
-            setter.accept(ps);
+            PreparedStatement ps = Objects.requireNonNull(
+                con.prepareStatement(Objects.requireNonNull(sql), Statement.RETURN_GENERATED_KEYS)
+            );
+            setter.accept(Objects.requireNonNull(ps));
             return ps;
         }, keyHolder);
         Number key = keyHolder.getKey();
-        if (key == null) throw new IllegalStateException("创建记录失败");
+        if (key == null) throw new IllegalStateException("鍒涘缓璁板綍澶辫触");
         return key.longValue();
     }
 
@@ -353,38 +353,34 @@ public class DataSourceService implements IDataSourceService {
         return fileName.replaceAll("[^a-zA-Z0-9._-]", "_");
     }
 
-    private static String normalizeName(String name) {
-        return NON_ALNUM.matcher(name).replaceAll("_").toLowerCase();
-    }
-
     private void deleteUploadedFileIfExists(String filePath) {
         if (isBlank(filePath)) return;
 
         Path target = Paths.get(filePath).toAbsolutePath().normalize();
         if (!target.startsWith(uploadRoot)) {
-            throw new IllegalArgumentException("文件路径非法，拒绝删除");
+            throw new IllegalArgumentException("鏂囦欢璺緞闈炴硶锛屾嫆缁濆垹闄");
         }
 
         try {
             Files.deleteIfExists(target);
         } catch (IOException ex) {
-            throw new IllegalStateException("文件删除失败: " + ex.getMessage(), ex);
+            throw new IllegalStateException("鏂囦欢鍒犻櫎澶辫触: " + ex.getMessage(), ex);
         }
     }
 
     private void testDatabaseConnection(String jdbcUrl, String username, String password) {
         try (Connection connection = DriverManager.getConnection(jdbcUrl, username, password)) {
             if (!connection.isValid(5)) {
-                throw new IllegalStateException("数据库连接测试失败，请检查地址与账号信息");
+                throw new IllegalStateException("鏁版嵁搴撹繛鎺ユ祴璇曞け璐ワ紝璇锋鏌ュ湴鍧€涓庤处鍙蜂俊鎭");
             }
         } catch (SQLException ex) {
-            throw new IllegalStateException("数据库连接失败: " + ex.getMessage());
+            throw new IllegalStateException("鏁版嵁搴撹繛鎺ュけ璐? " + ex.getMessage());
         }
     }
 
     private static String buildJdbcUrl(String dbType, String host, Integer port, String databaseName) {
         if (port == null) {
-            throw new IllegalArgumentException("数据库端口不能为空");
+            throw new IllegalArgumentException("鏁版嵁搴撶鍙ｄ笉鑳戒负绌");
         }
         return switch (dbType) {
             case "MYSQL" -> "jdbc:mysql://" + host + ":" + port + "/" + databaseName
@@ -394,7 +390,7 @@ public class DataSourceService implements IDataSourceService {
             case "SQLSERVER" -> "jdbc:sqlserver://" + host + ":" + port
                 + ";databaseName=" + databaseName + ";encrypt=true;trustServerCertificate=true;loginTimeout=5";
             case "ORACLE" -> "jdbc:oracle:thin:@//" + host + ":" + port + "/" + databaseName;
-            default -> throw new IllegalArgumentException("暂不支持的数据库类型: " + dbType);
+            default -> throw new IllegalArgumentException("鏆備笉鏀寔鐨勬暟鎹簱绫诲瀷: " + dbType);
         };
     }
 
@@ -420,7 +416,7 @@ public class DataSourceService implements IDataSourceService {
         );
 
         if (rows.isEmpty()) {
-            throw new IllegalArgumentException("数据库数据源不存在");
+            throw new IllegalArgumentException("鏁版嵁搴撴暟鎹簮涓嶅瓨鍦");
         }
         return rows.get(0);
     }
@@ -454,11 +450,11 @@ public class DataSourceService implements IDataSourceService {
                 }
             }
         } catch (SQLException ex) {
-            throw new IllegalStateException("读取数据库对象失败: " + ex.getMessage());
+            throw new IllegalStateException("璇诲彇鏁版嵁搴撳璞″け璐? " + ex.getMessage());
         }
 
         if (tables.isEmpty()) {
-            throw new IllegalStateException("连接成功，但未读取到可用数据表");
+            throw new IllegalStateException("杩炴帴鎴愬姛锛屼絾鏈鍙栧埌鍙敤鏁版嵁琛");
         }
         return tables;
     }
@@ -477,7 +473,7 @@ public class DataSourceService implements IDataSourceService {
         try {
             Class.forName(driverClass);
         } catch (ClassNotFoundException ex) {
-            throw new IllegalStateException("当前服务未安装 " + dbType + " JDBC 驱动，请联系管理员");
+            throw new IllegalStateException("褰撳墠鏈嶅姟鏈畨瑁?" + dbType + " JDBC 椹卞姩锛岃鑱旂郴绠＄悊鍛");
         }
     }
 
@@ -570,3 +566,4 @@ public class DataSourceService implements IDataSourceService {
         void accept(PreparedStatement ps) throws java.sql.SQLException;
     }
 }
+

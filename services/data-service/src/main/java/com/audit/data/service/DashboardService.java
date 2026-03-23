@@ -2,6 +2,7 @@ package com.audit.data.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.audit.data.service.cache.RedisCacheService;
 import java.time.Duration;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -12,6 +13,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Value;
@@ -98,7 +100,7 @@ public class DashboardService implements IDashboardService {
                 "overdueCount", 0,
                 "departmentRank", 0,
                 "totalRows", 0,
-                "message", "暂无可分析的融合结果"
+                "message", "鏆傛棤鍙垎鏋愮殑铻嶅悎缁撴灉"
             );
         }
 
@@ -112,7 +114,7 @@ public class DashboardService implements IDashboardService {
                 "overdueCount", 0,
                 "departmentRank", 0,
                 "totalRows", 0,
-                "message", "融合结果表不存在，请重新执行融合任务"
+                "message", "铻嶅悎缁撴灉琛ㄤ笉瀛樺湪锛岃閲嶆柊鎵ц铻嶅悎浠诲姟"
             );
         }
 
@@ -126,7 +128,7 @@ public class DashboardService implements IDashboardService {
                 "overdueCount", 0,
                 "departmentRank", 0,
                 "totalRows", 0,
-                "message", "融合结果为空"
+                "message", "铻嶅悎缁撴灉涓虹┖"
             );
         }
 
@@ -177,7 +179,7 @@ public class DashboardService implements IDashboardService {
 
         String tableName = sanitizeTableName(target.targetTable);
         String tableRef = stagingTableRef(tableName);
-        List<Map<String, Object>> rows = jdbcTemplate.query(
+        String trendSql = Objects.requireNonNull(
             """
              SELECT DATE_FORMAT(created_at, '%%m-%%d') AS day_label,
                    COUNT(1) AS total_count,
@@ -186,7 +188,10 @@ public class DashboardService implements IDashboardService {
              GROUP BY DATE(created_at), DATE_FORMAT(created_at, '%%m-%%d')
              ORDER BY DATE(created_at) DESC
              LIMIT 7
-            """.formatted(tableRef),
+            """.formatted(tableRef)
+        );
+        List<Map<String, Object>> rows = jdbcTemplate.query(
+            trendSql,
             (rs, i) -> {
                 Map<String, Object> item = new HashMap<>();
                 item.put("day", rs.getString("day_label"));
@@ -281,7 +286,7 @@ public class DashboardService implements IDashboardService {
             .toList();
 
         List<String> departments = new ArrayList<>();
-        List<String> metrics = List.of("完成率", "空值率", "重复率", "闭环率");
+        List<String> metrics = List.of("瀹屾垚鐜", "绌哄€肩巼", "閲嶅鐜", "闂幆鐜");
         List<List<Integer>> values = new ArrayList<>();
 
         for (int i = 0; i < rows.size(); i++) {
@@ -358,7 +363,7 @@ public class DashboardService implements IDashboardService {
 
     private Map<String, Object> emptyTrend() {
         return Map.of(
-            "dates", List.of("周一", "周二", "周三", "周四", "周五", "周六", "周日"),
+            "dates", List.of("鍛ㄤ竴", "鍛ㄤ簩", "鍛ㄤ笁", "鍛ㄥ洓", "鍛ㄤ簲", "鍛ㄥ叚", "鍛ㄦ棩"),
             "rates", List.of(0, 0, 0, 0, 0, 0, 0),
             "predicted", List.of(0, 0, 0, 0, 0, 0, 0)
         );
@@ -411,14 +416,14 @@ public class DashboardService implements IDashboardService {
     private String sanitizeSchemaName(String schemaName) {
         String normalized = schemaName == null ? "" : schemaName.trim();
         if (!SAFE_SCHEMA_PATTERN.matcher(normalized).matches()) {
-            throw new IllegalArgumentException("staging schema 配置不合法");
+            throw new IllegalArgumentException("staging schema 閰嶇疆涓嶅悎娉");
         }
         return normalized;
     }
 
     private String sanitizeTableName(String tableName) {
         if (tableName == null || !SAFE_TABLE_PATTERN.matcher(tableName).matches()) {
-            throw new IllegalArgumentException("目标表名不合法");
+            throw new IllegalArgumentException("鐩爣琛ㄥ悕涓嶅悎娉");
         }
         return tableName;
     }
@@ -440,3 +445,4 @@ public class DashboardService implements IDashboardService {
     private record TargetTableInfo(Long fusionTaskId, String targetTable, Integer fusionRows) {
     }
 }
+

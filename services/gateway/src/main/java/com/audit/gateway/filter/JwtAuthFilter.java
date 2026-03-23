@@ -8,6 +8,7 @@ import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.http.HttpStatus;
+import java.net.InetSocketAddress;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
@@ -90,10 +91,11 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         if (xff != null && !xff.isBlank()) {
             return xff.split(",")[0].trim();
         }
-        if (request.getRemoteAddress() == null || request.getRemoteAddress().getAddress() == null) {
+        InetSocketAddress remoteAddress = request.getRemoteAddress();
+        if (remoteAddress == null || remoteAddress.getAddress() == null) {
             return "unknown";
         }
-        return request.getRemoteAddress().getAddress().getHostAddress();
+        return remoteAddress.getAddress().getHostAddress();
     }
 
     @Override

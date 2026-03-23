@@ -12,3 +12,4 @@ public class DataServiceApplication {
         SpringApplication.run(DataServiceApplication.class, args);
     }
 }
+
