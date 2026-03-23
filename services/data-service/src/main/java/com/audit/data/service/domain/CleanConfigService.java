@@ -1,4 +1,4 @@
-package com.audit.data.service.domain;
+﻿package com.audit.data.service.domain;
 
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -53,7 +53,7 @@ public class CleanConfigService {
         String content = text(payload.get("content"));
         String remark = text(payload.get("remark"));
         if (isBlank(name) || isBlank(fileName) || isBlank(content)) {
-            throw new IllegalArgumentException("瑙勫垯鍚嶇О銆佹枃浠跺拰鍐呭涓嶈兘涓虹┖");
+            throw new IllegalArgumentException("规则名称、文件和内容不能为空");
         }
 
         String now = now();
@@ -79,7 +79,7 @@ public class CleanConfigService {
             enabled ? 1 : 0, now(), ownerUsername, id
         );
         if (updated == 0) {
-            throw new IllegalArgumentException("瑙勫垯涓嶅瓨鍦");
+            throw new IllegalArgumentException("规则不存在");
         }
         return Map.of("id", String.valueOf(id), "enabled", enabled);
     }
@@ -103,7 +103,7 @@ public class CleanConfigService {
             id
         );
         if (rows.isEmpty()) {
-            throw new IllegalArgumentException("瑙勫垯涓嶅瓨鍦");
+            throw new IllegalArgumentException("规则不存在");
         }
         return rows.get(0);
     }
@@ -111,7 +111,7 @@ public class CleanConfigService {
     public Map<String, Object> updateCleanRule(String ownerUsername, Long id, Map<String, Object> payload) {
         Map<String, Object> existing = getCleanRuleDetail(ownerUsername, id);
         if ("SYSTEM".equalsIgnoreCase(String.valueOf(existing.get("category")))) {
-            throw new IllegalArgumentException("绯荤粺瑙勫垯涓嶅厑璁哥紪杈");
+            throw new IllegalArgumentException("系统规则不允许编辑");
         }
 
         String name = text(payload.get("name"));
@@ -119,7 +119,7 @@ public class CleanConfigService {
         String content = text(payload.get("content"));
         String remark = text(payload.get("remark"));
         if (isBlank(name) || isBlank(fileName) || isBlank(content)) {
-            throw new IllegalArgumentException("瑙勫垯鍚嶇О銆佹枃浠跺拰鍐呭涓嶈兘涓虹┖");
+            throw new IllegalArgumentException("规则名称、文件和内容不能为空");
         }
 
         int updated = jdbcTemplate.update(
@@ -133,7 +133,7 @@ public class CleanConfigService {
             id
         );
         if (updated == 0) {
-            throw new IllegalArgumentException("瑙勫垯涓嶅瓨鍦");
+            throw new IllegalArgumentException("规则不存在");
         }
         return getCleanRuleDetail(ownerUsername, id);
     }
@@ -146,12 +146,12 @@ public class CleanConfigService {
             id
         );
         if (cnt != null && cnt > 0) {
-            throw new IllegalArgumentException("绯荤粺瑙勫垯涓嶅厑璁稿垹闄");
+            throw new IllegalArgumentException("系统规则不允许删除");
         }
 
         int deleted = jdbcTemplate.update("DELETE FROM clean_rule_record WHERE owner_username=? AND id=?", ownerUsername, id);
         if (deleted == 0) {
-            throw new IllegalArgumentException("瑙勫垯涓嶅瓨鍦");
+            throw new IllegalArgumentException("规则不存在");
         }
     }
 
@@ -181,7 +181,7 @@ public class CleanConfigService {
         String content = text(payload.get("content"));
         String remark = text(payload.get("remark"));
         if (isBlank(name) || isBlank(code)) {
-            throw new IllegalArgumentException("绛栫暐鍚嶇О鍜岀紪鐮佷笉鑳戒负绌");
+            throw new IllegalArgumentException("策略名称和编码不能为空");
         }
 
         Integer exists = jdbcTemplate.queryForObject(
@@ -191,7 +191,7 @@ public class CleanConfigService {
             code
         );
         if (exists != null && exists > 0) {
-            throw new IllegalArgumentException("绛栫暐缂栫爜宸插瓨鍦");
+            throw new IllegalArgumentException("策略编码已存在");
         }
 
         String now = now();
@@ -224,7 +224,7 @@ public class CleanConfigService {
             enabled ? 1 : 0, now(), ownerUsername, id
         );
         if (updated == 0) {
-            throw new IllegalArgumentException("绛栫暐涓嶅瓨鍦");
+            throw new IllegalArgumentException("策略不存在");
         }
         return Map.of("id", String.valueOf(id), "enabled", enabled);
     }
@@ -248,7 +248,7 @@ public class CleanConfigService {
             id
         );
         if (rows.isEmpty()) {
-            throw new IllegalArgumentException("绛栫暐涓嶅瓨鍦");
+            throw new IllegalArgumentException("策略不存在");
         }
         return rows.get(0);
     }
@@ -256,7 +256,7 @@ public class CleanConfigService {
     public Map<String, Object> updateCleanStrategy(String ownerUsername, Long id, Map<String, Object> payload) {
         Map<String, Object> existing = getCleanStrategyDetail(ownerUsername, id);
         if (Boolean.TRUE.equals(existing.get("builtIn"))) {
-            throw new IllegalArgumentException("绯荤粺绛栫暐涓嶅厑璁哥紪杈");
+            throw new IllegalArgumentException("系统策略不允许编辑");
         }
 
         String name = text(payload.get("name"));
@@ -264,7 +264,7 @@ public class CleanConfigService {
         String content = text(payload.get("content"));
         String remark = text(payload.get("remark"));
         if (isBlank(name) || isBlank(code)) {
-            throw new IllegalArgumentException("绛栫暐鍚嶇О鍜岀紪鐮佷笉鑳戒负绌");
+            throw new IllegalArgumentException("策略名称和编码不能为空");
         }
 
         Integer duplicate = jdbcTemplate.queryForObject(
@@ -275,7 +275,7 @@ public class CleanConfigService {
             id
         );
         if (duplicate != null && duplicate > 0) {
-            throw new IllegalArgumentException("绛栫暐缂栫爜宸插瓨鍦");
+            throw new IllegalArgumentException("策略编码已存在");
         }
 
         int updated = jdbcTemplate.update(
@@ -289,7 +289,7 @@ public class CleanConfigService {
             id
         );
         if (updated == 0) {
-            throw new IllegalArgumentException("绛栫暐涓嶅瓨鍦");
+            throw new IllegalArgumentException("策略不存在");
         }
         return getCleanStrategyDetail(ownerUsername, id);
     }
@@ -304,21 +304,21 @@ public class CleanConfigService {
                 id
             );
         } catch (EmptyResultDataAccessException ex) {
-            throw new IllegalArgumentException("绛栫暐涓嶅瓨鍦");
+            throw new IllegalArgumentException("策略不存在");
         }
         if (builtIn == 1) {
-            throw new IllegalArgumentException("绯荤粺绛栫暐涓嶅厑璁稿垹闄");
+            throw new IllegalArgumentException("系统策略不允许删除");
         }
 
         jdbcTemplate.update("DELETE FROM clean_strategy_record WHERE owner_username=? AND id=?", ownerUsername, id);
     }
 
     public void ensureDefaultCleanConfig(String ownerUsername) {
-        ensureSystemRule(ownerUsername, "绌哄€煎～鍏呰鍒", "fill_null_with_default");
+        ensureSystemRule(ownerUsername, "空值填充规则", "fill_null_with_default");
         ensureSystemRule(ownerUsername, "瀛楁鏍囧噯鍖栬鍒", "normalize_fields");
         cleanupDuplicateSystemRules(ownerUsername);
 
-        ensureSystemStrategy(ownerUsername, "鍘婚噸+绌哄€艰ˉ榻", "DEDUP_AND_FILL");
+        ensureSystemStrategy(ownerUsername, "去重+空值补齐", "DEDUP_AND_FILL");
         ensureSystemStrategy(ownerUsername, "瀛楁鏍囧噯鍖", "STANDARDIZE");
         ensureSystemStrategy(ownerUsername, "寮傚父鍊煎墧闄", "OUTLIER_REMOVE");
         cleanupDuplicateSystemStrategies(ownerUsername);
@@ -408,7 +408,7 @@ public class CleanConfigService {
             name,
             code,
             "",
-            "绯荤粺榛樿绛栫暐",
+            "系统默认策略",
             now,
             now
         );
@@ -458,7 +458,7 @@ public class CleanConfigService {
         }, keyHolder);
         Number key = keyHolder.getKey();
         if (key == null) {
-            throw new IllegalStateException("鏂板澶辫触");
+            throw new IllegalStateException("新增失败");
         }
         return key.longValue();
     }
@@ -486,4 +486,6 @@ public class CleanConfigService {
         return value == null ? "" : value;
     }
 }
+
+
 

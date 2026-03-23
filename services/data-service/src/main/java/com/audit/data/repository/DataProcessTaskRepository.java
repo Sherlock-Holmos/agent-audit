@@ -1,4 +1,4 @@
-package com.audit.data.repository;
+﻿package com.audit.data.repository;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -49,7 +49,7 @@ public class DataProcessTaskRepository {
             ownerUsername,
             id
         );
-        if (rows.isEmpty()) throw new IllegalArgumentException("娓呮礂浠诲姟涓嶅瓨鍦");
+        if (rows.isEmpty()) throw new IllegalArgumentException("清洗任务不存在");
         return rows.get(0);
     }
 
@@ -131,7 +131,7 @@ public class DataProcessTaskRepository {
             ownerUsername,
             id
         );
-        if (rows.isEmpty()) throw new IllegalArgumentException("铻嶅悎浠诲姟涓嶅瓨鍦");
+        if (rows.isEmpty()) throw new IllegalArgumentException("融合任务不存在");
         return rows.get(0);
     }
 
@@ -208,10 +208,10 @@ public class DataProcessTaskRepository {
             standardTable
         );
         if (rows.isEmpty()) {
-            throw new IllegalArgumentException("鏈壘鍒板搴旀竻娲楃粨鏋滆〃: " + standardTable);
+            throw new IllegalArgumentException("未找到对应清洗结果表: " + standardTable);
         }
         if (!"COMPLETED".equalsIgnoreCase(String.valueOf(rows.get(0).get("status")))) {
-            throw new IllegalArgumentException("娓呮礂浠诲姟鏈畬鎴? " + rows.get(0).get("taskName"));
+            throw new IllegalArgumentException("清洗任务未完成: " + rows.get(0).get("taskName"));
         }
         return rows.get(0);
     }
@@ -324,7 +324,7 @@ public class DataProcessTaskRepository {
             return ps;
         }, keyHolder);
         Number key = keyHolder.getKey();
-        if (key == null) throw new IllegalStateException("鏂板澶辫触");
+        if (key == null) throw new IllegalStateException("新增失败");
         return key.longValue();
     }
 
@@ -349,4 +349,6 @@ public class DataProcessTaskRepository {
         return value == null ? "" : value;
     }
 }
+
+
 

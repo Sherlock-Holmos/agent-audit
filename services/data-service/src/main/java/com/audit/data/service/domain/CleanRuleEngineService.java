@@ -1,4 +1,4 @@
-package com.audit.data.service.domain;
+﻿package com.audit.data.service.domain;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,7 +44,7 @@ public class CleanRuleEngineService {
         List<RuleAction> actions = loadRuleActions(ownerUsername, ruleNames);
         if (!actions.isEmpty()) {
             applyRuleActionsToRows(outputTable, actions);
-        } else if (ruleNames != null && ruleNames.stream().anyMatch(name -> String.valueOf(name).contains("绌哄€"))) {
+        } else if (ruleNames != null && ruleNames.stream().anyMatch(name -> String.valueOf(name).contains("空值"))) {
             jdbcTemplate.update("UPDATE " + outputTable + " SET normalized_json=REPLACE(normalized_json, ':\"\"', ':\"UNKNOWN\"')");
         }
     }
@@ -82,7 +82,7 @@ public class CleanRuleEngineService {
             String content = text(row.get("content"));
             actions.addAll(parseRuleActions(content));
 
-            if (ruleName.contains("绌哄€") && actions.stream().noneMatch(action -> "fill_null".equals(action.type))) {
+            if (ruleName.contains("空值") && actions.stream().noneMatch(action -> "fill_null".equals(action.type))) {
                 actions.add(new RuleAction("fill_null", "*", "UNKNOWN", "", ""));
             }
         }
@@ -141,7 +141,7 @@ public class CleanRuleEngineService {
             actions.add(new RuleAction(type, field, value, from, to));
         }
 
-        if (actions.isEmpty() && (trimmed.contains("绌哄€") || trimmed.contains("fill_null"))) {
+        if (actions.isEmpty() && (trimmed.contains("空值") || trimmed.contains("fill_null"))) {
             actions.add(new RuleAction("fill_null", "*", "UNKNOWN", "", ""));
         }
         return actions;
@@ -287,7 +287,7 @@ public class CleanRuleEngineService {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (Exception ex) {
-            throw new IllegalArgumentException("JSON搴忓垪鍖栧け璐");
+            throw new IllegalArgumentException("JSON序列化失败");
         }
     }
 
@@ -316,4 +316,5 @@ public class CleanRuleEngineService {
     private record RuleAction(String type, String field, String value, String from, String to) {
     }
 }
+
 

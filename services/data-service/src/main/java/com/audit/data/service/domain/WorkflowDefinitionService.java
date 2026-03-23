@@ -1,4 +1,4 @@
-package com.audit.data.service.domain;
+﻿package com.audit.data.service.domain;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -49,19 +49,19 @@ public class WorkflowDefinitionService {
         Set<String> ids = new HashSet<>();
         for (WorkflowNode node : nodes) {
             if (!ids.add(node.nodeId)) {
-                throw new IllegalArgumentException("宸ヤ綔娴佽妭鐐笽D閲嶅: " + node.nodeId);
+                throw new IllegalArgumentException("工作流节点ID重复: " + node.nodeId);
             }
             if (!Set.of("CLEAN", "FUSION").contains(node.taskType)) {
-                throw new IllegalArgumentException("宸ヤ綔娴佷换鍔＄被鍨嬩粎鏀寔 CLEAN/FUSION");
+                throw new IllegalArgumentException("工作流任务类型仅支持 CLEAN/FUSION");
             }
             if (node.taskId == null || node.taskId <= 0) {
-                throw new IllegalArgumentException("宸ヤ綔娴佽妭鐐逛换鍔D涓嶅悎娉");
+                throw new IllegalArgumentException("工作流节点任务ID涓嶅悎娉");
             }
         }
         for (WorkflowNode node : nodes) {
             for (String dep : node.dependsOn) {
                 if (!ids.contains(dep)) {
-                    throw new IllegalArgumentException("宸ヤ綔娴佷緷璧栬妭鐐逛笉瀛樺湪: " + dep);
+                    throw new IllegalArgumentException("工作流依赖节点不存在: " + dep);
                 }
             }
         }
@@ -96,7 +96,7 @@ public class WorkflowDefinitionService {
             }
         }
         if (visited != nodes.size()) {
-            throw new IllegalArgumentException("宸ヤ綔娴佸瓨鍦ㄥ惊鐜緷璧");
+            throw new IllegalArgumentException("工作流存在循环依赖");
         }
     }
 
@@ -141,4 +141,6 @@ public class WorkflowDefinitionService {
     public record WorkflowNode(String nodeId, String taskType, Long taskId, List<String> dependsOn) {
     }
 }
+
+
 

@@ -1,4 +1,4 @@
-package com.audit.data.service.infrastructure;
+﻿package com.audit.data.service.infrastructure;
 
 import com.audit.data.repository.DataProcessTaskRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -89,7 +89,7 @@ public class StagingTableService {
             Long sourceId = toLong(object.get("sourceId"));
             String objectName = text(object.get("objectName"));
             if (sourceId == null || isBlank(objectName)) {
-                throw new IllegalArgumentException("娓呮礂瀵硅薄淇℃伅涓嶅畬鏁");
+                throw new IllegalArgumentException("清洗对象信息不完整");
             }
 
             Map<String, Object> source = getSourceById(ownerUsername, sourceId);
@@ -97,7 +97,7 @@ public class StagingTableService {
             List<String> rows = switch (sourceType) {
                 case "DATABASE" -> readDatabaseRows(objectName);
                 case "FILE" -> fileRowReader.readRows(text(source.get("filePath")), text(source.get("fileName")));
-                default -> throw new IllegalArgumentException("涓嶆敮鎸佺殑鏁版嵁婧愮被鍨? " + sourceType);
+                default -> throw new IllegalArgumentException("不支持的数据源类型: " + sourceType);
             };
 
             int rowNo = 1;
@@ -125,7 +125,7 @@ public class StagingTableService {
             Map<String, Object> cleanTask = dataProcessTaskRepository.findCleanTaskByStandardTable(ownerUsername, safeStandardTable);
             Long cleanTaskId = toLong(cleanTask.get("id"));
             if (cleanTaskId == null) {
-                throw new IllegalArgumentException("娓呮礂浠诲姟缂哄け: " + safeStandardTable);
+                throw new IllegalArgumentException("清洗任务缺失: " + safeStandardTable);
             }
 
                         String mergeSql = Objects.requireNonNull(
@@ -238,7 +238,7 @@ public class StagingTableService {
             sourceId
         );
         if (rows.isEmpty()) {
-            throw new IllegalArgumentException("鏁版嵁婧愪笉瀛樺湪: " + sourceId);
+            throw new IllegalArgumentException("数据源不存在: " + sourceId);
         }
         return rows.get(0);
     }
@@ -258,7 +258,7 @@ public class StagingTableService {
     private String sanitizeSchemaName(String schemaName) {
         String normalized = text(schemaName);
         if (!SAFE_SCHEMA_PATTERN.matcher(normalized).matches()) {
-            throw new IllegalArgumentException("schema 鍚嶄笉鍚堟硶: " + schemaName);
+            throw new IllegalArgumentException("schema 名不合法: " + schemaName);
         }
         return normalized;
     }
@@ -266,7 +266,7 @@ public class StagingTableService {
     private String sanitizeTableName(String tableName) {
         String normalized = text(tableName);
         if (!SAFE_TABLE_PATTERN.matcher(normalized).matches()) {
-            throw new IllegalArgumentException("琛ㄥ悕涓嶅悎娉? " + tableName);
+            throw new IllegalArgumentException("表名不合法: " + tableName);
         }
         return normalized;
     }
@@ -275,7 +275,7 @@ public class StagingTableService {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (Exception ex) {
-            throw new IllegalArgumentException("JSON搴忓垪鍖栧け璐");
+            throw new IllegalArgumentException("JSON序列化失败");
         }
     }
 
@@ -311,4 +311,6 @@ public class StagingTableService {
             .format(java.time.Instant.now());
     }
 }
+
+
 

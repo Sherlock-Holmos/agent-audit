@@ -1,4 +1,4 @@
-package com.audit.data.service;
+﻿package com.audit.data.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -103,7 +103,7 @@ public class DashboardService implements IDashboardService {
                 "overdueCount", 0,
                 "departmentRank", 0,
                 "totalRows", 0,
-                "message", "鏆傛棤鍙垎鏋愮殑铻嶅悎缁撴灉"
+                "message", "暂无可分析的融合结果"
             );
         }
 
@@ -117,7 +117,7 @@ public class DashboardService implements IDashboardService {
                 "overdueCount", 0,
                 "departmentRank", 0,
                 "totalRows", 0,
-                "message", "铻嶅悎缁撴灉琛ㄤ笉瀛樺湪锛岃閲嶆柊鎵ц铻嶅悎浠诲姟"
+                "message", "融合结果表不存在，请重新执行融合任务"
             );
         }
 
@@ -131,7 +131,7 @@ public class DashboardService implements IDashboardService {
                 "overdueCount", 0,
                 "departmentRank", 0,
                 "totalRows", 0,
-                "message", "铻嶅悎缁撴灉涓虹┖"
+                "message", "融合结果为空"
             );
         }
 
@@ -289,7 +289,7 @@ public class DashboardService implements IDashboardService {
             .toList();
 
         List<String> departments = new ArrayList<>();
-        List<String> metrics = List.of("瀹屾垚鐜", "绌哄€肩巼", "閲嶅鐜", "闂幆鐜");
+        List<String> metrics = List.of("瀹屾垚鐜", "空值率", "閲嶅鐜", "闂幆鐜");
         List<List<Integer>> values = new ArrayList<>();
 
         for (int i = 0; i < rows.size(); i++) {
@@ -426,7 +426,7 @@ public class DashboardService implements IDashboardService {
 
     private String sanitizeTableName(String tableName) {
         if (tableName == null || !SAFE_TABLE_PATTERN.matcher(tableName).matches()) {
-            throw new IllegalArgumentException("鐩爣琛ㄥ悕涓嶅悎娉");
+            throw new IllegalArgumentException("目标表名不合法");
         }
         return tableName;
     }
@@ -448,4 +448,6 @@ public class DashboardService implements IDashboardService {
     private record TargetTableInfo(Long fusionTaskId, String targetTable, Integer fusionRows) {
     }
 }
+
+
 

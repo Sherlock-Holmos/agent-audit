@@ -1,4 +1,4 @@
-package com.audit.data.service.orchestration;
+﻿package com.audit.data.service.orchestration;
 
 import com.audit.data.service.api.IDataProcessAsyncService;
 import com.audit.data.service.api.IDataProcessService;
@@ -71,12 +71,12 @@ public class DataProcessAsyncService implements IDataProcessAsyncService {
     }
 
     public Map<String, Object> startCleanTask(String ownerUsername, Long taskId, String idempotencyKey) {
-        ensureTaskExists(ownerUsername, taskId, "clean_task_record", "娓呮礂浠诲姟涓嶅瓨鍦");
+        ensureTaskExists(ownerUsername, taskId, "clean_task_record", "清洗任务不存在");
         return startTask(ownerUsername, "CLEAN", taskId, idempotencyKey, () -> dataProcessService.runCleanTask(ownerUsername, taskId));
     }
 
     public Map<String, Object> startFusionTask(String ownerUsername, Long taskId, String idempotencyKey) {
-        ensureTaskExists(ownerUsername, taskId, "fusion_task_record", "铻嶅悎浠诲姟涓嶅瓨鍦");
+        ensureTaskExists(ownerUsername, taskId, "fusion_task_record", "融合任务不存在");
         return startTask(ownerUsername, "FUSION", taskId, idempotencyKey, () -> dataProcessService.runFusionTask(ownerUsername, taskId));
     }
 
@@ -88,7 +88,7 @@ public class DataProcessAsyncService implements IDataProcessAsyncService {
             jobId
         );
         if (rows.isEmpty()) {
-            throw new IllegalArgumentException("浠诲姟涓嶅瓨鍦");
+            throw new IllegalArgumentException("任务不存在");
         }
         return rows.get(0);
     }
@@ -102,7 +102,7 @@ public class DataProcessAsyncService implements IDataProcessAsyncService {
     ) {
         // 写任务记录后交给线程池执行，接口层立即返回 jobId。
         if (ownerUsername == null || ownerUsername.isBlank() || "anonymous".equalsIgnoreCase(ownerUsername)) {
-            throw new IllegalArgumentException("鏈璇佺敤鎴蜂笉鍏佽鎻愪氦寮傛浠诲姟");
+            throw new IllegalArgumentException("未认证用户不允许提交异步任务");
         }
         String idemKey = normalizeIdempotencyKey(idempotencyKey);
         if (idemKey != null) {
@@ -185,7 +185,7 @@ public class DataProcessAsyncService implements IDataProcessAsyncService {
                 }
             }
         }
-        throw lastError == null ? new IllegalStateException("鎵ц澶辫触") : lastError;
+        throw lastError == null ? new IllegalStateException("执行失败") : lastError;
     }
 
     private void markRunning(String jobId) {
@@ -237,7 +237,7 @@ public class DataProcessAsyncService implements IDataProcessAsyncService {
         String idemKey,
         RuntimeException ex
     ) {
-        String message = ex.getMessage() == null ? "鎵ц澶辫触" : ex.getMessage();
+        String message = ex.getMessage() == null ? "执行失败" : ex.getMessage();
         String failureCategory = classifyFailureCategory(message);
         String alertStatus = sendFailureAlert(ownerUsername, taskType, taskId, jobId, message, failureCategory) ? "SENT" : "SKIPPED";
         Instant now = Instant.now();
@@ -346,8 +346,8 @@ public class DataProcessAsyncService implements IDataProcessAsyncService {
         if (normalized.contains("瓒呮椂") || normalized.contains("timeout")) return "TIMEOUT";
         if (normalized.contains("鏉冮檺") || normalized.contains("unauthorized") || normalized.contains("forbidden")) return "AUTH";
         if (normalized.contains("杩炴帴") || normalized.contains("connection") || normalized.contains("缃戠粶")) return "CONNECTIVITY";
-        if (normalized.contains("sql") || normalized.contains("table") || normalized.contains("鏁版嵁搴")) return "DATA";
-        if (normalized.contains("鍙傛暟") || normalized.contains("invalid") || normalized.contains("涓嶅悎娉")) return "VALIDATION";
+        if (normalized.contains("sql") || normalized.contains("table") || normalized.contains("数据库")) return "DATA";
+        if (normalized.contains("参数") || normalized.contains("invalid") || normalized.contains("涓嶅悎娉")) return "VALIDATION";
         return "UNKNOWN";
     }
 
@@ -436,5 +436,7 @@ public class DataProcessAsyncService implements IDataProcessAsyncService {
         }
     }
 }
+
+
 
 

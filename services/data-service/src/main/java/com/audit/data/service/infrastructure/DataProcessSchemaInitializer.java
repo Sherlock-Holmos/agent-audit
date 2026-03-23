@@ -1,4 +1,4 @@
-package com.audit.data.service.infrastructure;
+﻿package com.audit.data.service.infrastructure;
 
 import java.sql.SQLException;
 import java.util.Objects;
@@ -231,9 +231,10 @@ public class DataProcessSchemaInitializer {
     private String sanitizeSchemaName(String schemaName) {
         String normalized = schemaName == null ? "" : schemaName.trim();
         if (!SAFE_SCHEMA_PATTERN.matcher(normalized).matches()) {
-            throw new IllegalArgumentException("schema 鍚嶄笉鍚堟硶: " + schemaName);
+            throw new IllegalArgumentException("schema 名不合法: " + schemaName);
         }
         return normalized;
     }
 }
+
 

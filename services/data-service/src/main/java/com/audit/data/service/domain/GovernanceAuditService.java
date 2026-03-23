@@ -1,4 +1,4 @@
-package com.audit.data.service.domain;
+﻿package com.audit.data.service.domain;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -306,7 +306,7 @@ public class GovernanceAuditService {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (Exception ex) {
-            throw new IllegalArgumentException("JSON搴忓垪鍖栧け璐");
+            throw new IllegalArgumentException("JSON序列化失败");
         }
     }
 
@@ -326,7 +326,7 @@ public class GovernanceAuditService {
     private String sanitizeSchemaName(String schemaName) {
         String normalized = text(schemaName);
         if (!Pattern.compile("^[a-zA-Z0-9_]+$").matcher(normalized).matches()) {
-            throw new IllegalArgumentException("schema 鍚嶄笉鍚堟硶: " + schemaName);
+            throw new IllegalArgumentException("schema 名不合法: " + schemaName);
         }
         return normalized;
     }
@@ -334,7 +334,7 @@ public class GovernanceAuditService {
     private String sanitizeTableName(String tableName) {
         String normalized = text(tableName);
         if (!SAFE_TABLE_PATTERN.matcher(normalized).matches()) {
-            throw new IllegalArgumentException("琛ㄥ悕涓嶅悎娉? " + tableName);
+            throw new IllegalArgumentException("表名不合法: " + tableName);
         }
         return normalized;
     }
@@ -351,4 +351,5 @@ public class GovernanceAuditService {
         return value == null ? "" : value;
     }
 }
+
 

@@ -1,4 +1,4 @@
-package com.audit.data.service.infrastructure;
+﻿package com.audit.data.service.infrastructure;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -36,11 +36,11 @@ public class FileRowReader {
 
     public List<String> readRows(String filePath, String fileName) {
         if (isBlank(filePath)) {
-            throw new IllegalArgumentException("鏂囦欢鏁版嵁婧愮己灏戞枃浠惰矾寰");
+            throw new IllegalArgumentException("文件数据源缺少文件路径");
         }
         Path path = Paths.get(filePath);
         if (!Files.exists(path)) {
-            throw new IllegalArgumentException("鏂囦欢涓嶅瓨鍦? " + filePath);
+            throw new IllegalArgumentException("文件不存在: " + filePath);
         }
 
         String lower = nvl(fileName).toLowerCase();
@@ -53,7 +53,7 @@ public class FileRowReader {
         if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
             return readExcelRows(path);
         }
-        throw new IllegalArgumentException("涓嶆敮鎸佺殑鏂囦欢绫诲瀷");
+        throw new IllegalArgumentException("不支持的文件类型");
     }
 
     private List<String> readExcelRows(Path path) {
@@ -108,7 +108,7 @@ public class FileRowReader {
             }
             return rows;
         } catch (Exception ex) {
-            throw new IllegalArgumentException("璇诲彇 Excel 澶辫触: " + ex.getMessage());
+            throw new IllegalArgumentException("读取 Excel 澶辫触: " + ex.getMessage());
         }
     }
 
@@ -131,7 +131,7 @@ public class FileRowReader {
             }
             return rows;
         } catch (IOException ex) {
-            throw new IllegalArgumentException("璇诲彇鏂囦欢澶辫触: " + ex.getMessage());
+            throw new IllegalArgumentException("读取文件失败: " + ex.getMessage());
         }
     }
 
@@ -157,7 +157,7 @@ public class FileRowReader {
             }
             return rows;
         } catch (Exception ex) {
-            throw new IllegalArgumentException("瑙ｆ瀽 JSON 鏂囦欢澶辫触: " + ex.getMessage());
+            throw new IllegalArgumentException("解析 JSON 文件失败: " + ex.getMessage());
         }
     }
 
@@ -165,7 +165,7 @@ public class FileRowReader {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (Exception ex) {
-            throw new IllegalArgumentException("JSON搴忓垪鍖栧け璐");
+            throw new IllegalArgumentException("JSON序列化失败");
         }
     }
 
@@ -181,4 +181,6 @@ public class FileRowReader {
         return value == null ? "" : value;
     }
 }
+
+
 

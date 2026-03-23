@@ -1,4 +1,4 @@
-package com.audit.data.service.orchestration;
+﻿package com.audit.data.service.orchestration;
 
 import com.audit.data.repository.DataProcessTaskRepository;
 import com.audit.data.service.DashboardService;
@@ -160,20 +160,20 @@ public class DataProcessService implements IDataProcessService {
         List<String> cleanRuleNames = castStringList(payload.get("cleanRuleNames"));
 
         if (isBlank(taskName) || isBlank(strategyCode) || cleanObjects.isEmpty()) {
-            throw new IllegalArgumentException("娓呮礂浠诲姟蹇呭～椤圭己澶");
+            throw new IllegalArgumentException("清洗任务必填项缺失");
         }
 
         cleanConfigService.ensureDefaultCleanConfig(ownerUsername);
         Map<String, Object> strategy = cleanConfigService.getEnabledStrategy(ownerUsername, strategyCode);
-        if (strategy.isEmpty()) throw new IllegalArgumentException("娓呮礂绛栫暐涓嶅瓨鍦ㄦ垨宸插仠鐢");
+        if (strategy.isEmpty()) throw new IllegalArgumentException("清洗策略不存在或已停用");
 
         for (Map<String, Object> object : cleanObjects) {
             Long sourceIdVal = toLong(object.get("sourceId"));
             String objectName = text(object.get("objectName"));
-            if (sourceIdVal == null || isBlank(objectName)) throw new IllegalArgumentException("娓呮礂瀵硅薄淇℃伅涓嶅畬鏁");
+            if (sourceIdVal == null || isBlank(objectName)) throw new IllegalArgumentException("清洗对象信息不完整");
             List<Map<String, Object>> objects = dataSourceService.listSourceObjects(ownerUsername, sourceIdVal);
             boolean valid = objects.stream().anyMatch(it -> objectName.equals(String.valueOf(it.get("objectName"))));
-            if (!valid) throw new IllegalArgumentException("瀛樺湪鏃犳晥娓呮礂瀵硅薄锛岃閲嶆柊閫夋嫨");
+            if (!valid) throw new IllegalArgumentException("存在无效清洗对象，请重新选择");
         }
 
         List<String> objectNames = cleanObjects.stream()
@@ -207,7 +207,7 @@ public class DataProcessService implements IDataProcessService {
         Map<String, Object> task = getCleanTaskById(ownerUsername, id);
         String currentStatus = String.valueOf(task.get("status"));
         if (!READY_STATUSES.contains(currentStatus.toUpperCase())) {
-            throw new IllegalArgumentException("褰撳墠浠诲姟鐘舵€佷笉鍏佽鎵ц");
+            throw new IllegalArgumentException("当前任务状态不允许执行");
         }
 
         String outputTable = sanitizeTableName(String.valueOf(task.get("standardTable")));
@@ -265,7 +265,7 @@ public class DataProcessService implements IDataProcessService {
         }
 
         int affected = dataProcessTaskRepository.deleteCleanTask(ownerUsername, id);
-        if (affected == 0) throw new IllegalArgumentException("娓呮礂浠诲姟涓嶅瓨鍦");
+        if (affected == 0) throw new IllegalArgumentException("清洗任务不存在");
 
         stagingTableService.dropStandardTableIfUnused(standardTable);
         recordAudit(ownerUsername, "DELETE", "CLEAN_TASK", String.valueOf(id), "SUCCESS", Map.of("standardTable", standardTable));
@@ -290,7 +290,7 @@ public class DataProcessService implements IDataProcessService {
         List<Long> cleanTaskIds = castLongList(payload.get("cleanTaskIds"));
 
         if (isBlank(taskName) || isBlank(targetTable) || isBlank(strategy) || cleanTaskIds.isEmpty()) {
-            throw new IllegalArgumentException("铻嶅悎浠诲姟蹇呭～椤圭己澶");
+            throw new IllegalArgumentException("融合任务必填项缺失");
         }
 
         List<String> cleanTaskNames = new ArrayList<>();
@@ -298,7 +298,7 @@ public class DataProcessService implements IDataProcessService {
         for (Long cleanTaskId : cleanTaskIds) {
             Map<String, Object> cleanTask = getCleanTaskById(ownerUsername, cleanTaskId);
             if (!"COMPLETED".equalsIgnoreCase(String.valueOf(cleanTask.get("status")))) {
-                throw new IllegalArgumentException("浠呭彲閫夋嫨宸插畬鎴愮殑娓呮礂浠诲姟");
+                throw new IllegalArgumentException("仅可选择已完成的清洗任务");
             }
             cleanTaskNames.add(String.valueOf(cleanTask.get("taskName")));
             standardTables.add(String.valueOf(cleanTask.get("standardTable")));
@@ -328,13 +328,13 @@ public class DataProcessService implements IDataProcessService {
         Map<String, Object> task = getFusionTaskById(ownerUsername, id);
         String currentStatus = String.valueOf(task.get("status"));
         if (!READY_STATUSES.contains(currentStatus.toUpperCase())) {
-            throw new IllegalArgumentException("褰撳墠浠诲姟鐘舵€佷笉鍏佽鎵ц");
+            throw new IllegalArgumentException("当前任务状态不允许执行");
         }
 
         String targetTable = sanitizeTableName(String.valueOf(task.get("targetTable")));
         List<String> standardTables = castStringList(task.get("standardTables"));
         if (standardTables.isEmpty()) {
-            throw new IllegalArgumentException("缂哄皯鍙瀺鍚堢殑鏍囧噯琛");
+            throw new IllegalArgumentException("缺少可融合的标准表");
         }
 
         dataProcessTaskRepository.markFusionTaskRunning(ownerUsername, id);
@@ -391,7 +391,7 @@ public class DataProcessService implements IDataProcessService {
         String targetTable = text(task.get("targetTable"));
 
         int affected = dataProcessTaskRepository.deleteFusionTask(ownerUsername, id);
-        if (affected == 0) throw new IllegalArgumentException("铻嶅悎浠诲姟涓嶅瓨鍦");
+        if (affected == 0) throw new IllegalArgumentException("融合任务不存在");
 
         stagingTableService.dropFusionTargetTableIfUnused(targetTable);
         recordAudit(ownerUsername, "DELETE", "FUSION_TASK", String.valueOf(id), "SUCCESS", Map.of("targetTable", targetTable));
@@ -450,7 +450,7 @@ public class DataProcessService implements IDataProcessService {
         requireAuthenticated(ownerUsername);
         List<WorkflowDefinitionService.WorkflowNode> nodes = workflowDefinitionService.parseWorkflowNodes(payload);
         if (nodes.isEmpty()) {
-            throw new IllegalArgumentException("宸ヤ綔娴佽嚦灏戦渶瑕佷竴涓换鍔");
+            throw new IllegalArgumentException("工作流至少需要一个任务");
         }
 
         String tenantId = resolveTenantId(ownerUsername);
@@ -554,7 +554,7 @@ public class DataProcessService implements IDataProcessService {
                     }
                 }
                 if (!progressed) {
-                    throw new IllegalArgumentException("宸ヤ綔娴佸瓨鍦ㄥ惊鐜緷璧栨垨鏃犲彲鎵ц鑺傜偣");
+                    throw new IllegalArgumentException("工作流存在循环依赖或无可执行节点");
                 }
             }
         } catch (RuntimeException ex) {
@@ -627,7 +627,7 @@ public class DataProcessService implements IDataProcessService {
             return ps;
         }, keyHolder);
         Number key = keyHolder.getKey();
-        if (key == null) throw new IllegalStateException("鏂板澶辫触");
+        if (key == null) throw new IllegalStateException("新增失败");
         return key.longValue();
     }
 
@@ -635,7 +635,7 @@ public class DataProcessService implements IDataProcessService {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (Exception ex) {
-            throw new IllegalArgumentException("JSON搴忓垪鍖栧け璐");
+            throw new IllegalArgumentException("JSON序列化失败");
         }
     }
 
@@ -722,7 +722,7 @@ public class DataProcessService implements IDataProcessService {
 
     private void requireAuthenticated(String ownerUsername) {
         if (isBlank(ownerUsername) || "anonymous".equalsIgnoreCase(ownerUsername)) {
-            throw new IllegalArgumentException("鏈璇佺敤鎴蜂笉鍏佽鎵ц鍐欐搷浣");
+            throw new IllegalArgumentException("未认证用户不允许执行写操作");
         }
     }
 
@@ -731,7 +731,7 @@ public class DataProcessService implements IDataProcessService {
         return switch (node.taskType()) {
             case "CLEAN" -> runCleanTask(ownerUsername, node.taskId());
             case "FUSION" -> runFusionTask(ownerUsername, node.taskId());
-            default -> throw new IllegalArgumentException("涓嶆敮鎸佺殑鑺傜偣浠诲姟绫诲瀷: " + node.taskType());
+            default -> throw new IllegalArgumentException("不支持的节点任务类型: " + node.taskType());
         };
     }
 
@@ -751,7 +751,7 @@ public class DataProcessService implements IDataProcessService {
     private String sanitizeSchemaName(String schemaName) {
         String normalized = text(schemaName);
         if (!SAFE_SCHEMA_PATTERN.matcher(normalized).matches()) {
-            throw new IllegalArgumentException("schema 鍚嶄笉鍚堟硶: " + schemaName);
+            throw new IllegalArgumentException("schema 名不合法: " + schemaName);
         }
         return normalized;
     }
@@ -759,10 +759,12 @@ public class DataProcessService implements IDataProcessService {
     private String sanitizeTableName(String tableName) {
         String normalized = text(tableName);
         if (!SAFE_TABLE_PATTERN.matcher(normalized).matches()) {
-            throw new IllegalArgumentException("琛ㄥ悕涓嶅悎娉? " + tableName);
+            throw new IllegalArgumentException("表名不合法: " + tableName);
         }
         return normalized;
     }
 
 }
+
+
 
