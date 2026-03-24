@@ -1,4 +1,4 @@
-﻿package com.audit.data.service.domain;
+package com.audit.data.service.domain;
 
 import java.sql.Timestamp;
 import java.time.Instant;

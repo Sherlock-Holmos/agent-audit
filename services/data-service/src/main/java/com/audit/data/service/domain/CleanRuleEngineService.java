@@ -1,4 +1,4 @@
-﻿package com.audit.data.service.domain;
+package com.audit.data.service.domain;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;

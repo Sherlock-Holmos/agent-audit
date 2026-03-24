@@ -1,4 +1,4 @@
-﻿package com.audit.data.service.domain;
+package com.audit.data.service.domain;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -194,7 +194,12 @@ public class GovernanceAuditService {
         String targetTableRef = stagingTableRef(targetTable);
         Set<String> fields = inferFieldsFromTable(targetTableRef, 200);
         for (String source : sourceTables) {
-            String sourceTable = sanitizeTableName(source);
+            // sourceTables may contain file object names (for example .xlsx paths),
+            // so we keep the original source identifier here instead of DB table validation.
+            String sourceTable = text(source);
+            if (isBlank(sourceTable)) {
+                continue;
+            }
             for (String field : fields) {
                 jdbcTemplate.update(
                     "INSERT INTO etl_field_lineage(tenant_id,owner_username,task_type,task_id,source_table,source_field,target_table,target_field,created_at) VALUES(?,?,?,?,?,?,?,?,?)",

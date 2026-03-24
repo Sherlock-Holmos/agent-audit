@@ -1,4 +1,4 @@
-﻿package com.audit.data.service.infrastructure;
+package com.audit.data.service.infrastructure;
 
 import java.sql.SQLException;
 import java.util.Objects;

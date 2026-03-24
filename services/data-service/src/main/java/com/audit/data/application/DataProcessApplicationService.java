@@ -31,7 +31,7 @@ public class DataProcessApplicationService implements IDataProcessApplicationSer
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<Map<String, Object>> listCleanRules(String username) {
         return dataProcessService.listCleanRules(normalizeUser(username));
     }
@@ -67,7 +67,7 @@ public class DataProcessApplicationService implements IDataProcessApplicationSer
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<Map<String, Object>> listCleanStrategies(String username) {
         return dataProcessService.listCleanStrategies(normalizeUser(username));
     }

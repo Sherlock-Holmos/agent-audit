@@ -1,4 +1,4 @@
-﻿package com.audit.data.service.domain;
+package com.audit.data.service.domain;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;

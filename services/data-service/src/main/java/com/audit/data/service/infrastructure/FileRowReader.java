@@ -1,4 +1,4 @@
-﻿package com.audit.data.service.infrastructure;
+package com.audit.data.service.infrastructure;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -108,7 +108,7 @@ public class FileRowReader {
             }
             return rows;
         } catch (Exception ex) {
-            throw new IllegalArgumentException("读取 Excel 澶辫触: " + ex.getMessage());
+            throw new IllegalArgumentException("读取 Excel 失败: " + ex.getMessage());
         }
     }
 
