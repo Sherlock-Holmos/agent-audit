@@ -53,6 +53,22 @@
           </el-form-item>
         </el-form>
 
+        <el-form v-else-if="currentNodeId === 'basic-table'" label-width="140px">
+          <el-form-item label="全局表格密度">
+            <el-radio-group v-model="forms.table.size">
+              <el-radio value="large">宽松</el-radio>
+              <el-radio value="default">默认</el-radio>
+              <el-radio value="small">紧凑</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="全局行高">
+            <el-slider v-model="forms.table.rowHeight" :min="34" :max="72" :step="2" style="width: 360px" />
+          </el-form-item>
+          <el-form-item label="说明">
+            <span class="hint-text">保存后会统一应用到数据源、清洗任务、融合任务列表页面。</span>
+          </el-form-item>
+        </el-form>
+
         <el-form v-else-if="currentNodeId === 'security-auth'" label-width="140px">
           <el-form-item label="登录失败阈值">
             <el-input-number v-model="forms.security.loginFailLimit" :min="3" :max="20" />
@@ -105,7 +121,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAppStore } from '../store/app'
 import { storeToRefs } from 'pinia'
@@ -114,6 +130,7 @@ const saving = ref(false)
 const currentNodeId = ref('basic-audit')
 const appStore = useAppStore()
 const { themeMode } = storeToRefs(appStore)
+const GLOBAL_TABLE_LAYOUT_KEY = 'app:table-layout:global'
 
 const settingTree = [
   {
@@ -121,7 +138,8 @@ const settingTree = [
     label: '基础设置',
     children: [
       { id: 'basic-audit', label: '系统与审计基础信息' },
-      { id: 'basic-appearance', label: '主题与显示' }
+      { id: 'basic-appearance', label: '主题与显示' },
+      { id: 'basic-table', label: '表格布局' }
     ]
   },
   {
@@ -142,6 +160,7 @@ const settingTree = [
 const titleMap = {
   'basic-audit': '系统与审计基础信息',
   'basic-appearance': '主题与显示',
+  'basic-table': '表格布局',
   'security-auth': '认证与会话策略',
   'data-source': '数据源接入策略',
   'data-clean': '数据清洗策略'
@@ -155,6 +174,10 @@ const forms = reactive({
   },
   appearance: {
     themeMode: themeMode.value
+  },
+  table: {
+    size: 'default',
+    rowHeight: 44
   },
   security: {
     loginFailLimit: 5,
@@ -186,12 +209,40 @@ async function saveCurrent() {
     if (currentNodeId.value === 'basic-appearance') {
       appStore.setThemeMode(forms.appearance.themeMode)
     }
+    if (currentNodeId.value === 'basic-table') {
+      const payload = {
+        size: forms.table.size,
+        rowHeight: forms.table.rowHeight
+      }
+      localStorage.setItem(GLOBAL_TABLE_LAYOUT_KEY, JSON.stringify(payload))
+      window.dispatchEvent(new CustomEvent('table-layout-config-changed', { detail: payload }))
+    }
     await new Promise((resolve) => setTimeout(resolve, 400))
     ElMessage.success(`${currentTitle.value}保存成功`)
   } finally {
     saving.value = false
   }
 }
+
+function loadGlobalTableLayout() {
+  try {
+    const cached = localStorage.getItem(GLOBAL_TABLE_LAYOUT_KEY)
+    if (!cached) return
+    const parsed = JSON.parse(cached)
+    if (typeof parsed?.size === 'string') {
+      forms.table.size = parsed.size
+    }
+    if (typeof parsed?.rowHeight === 'number') {
+      forms.table.rowHeight = parsed.rowHeight
+    }
+  } catch {
+    // ignore invalid cache
+  }
+}
+
+onMounted(() => {
+  loadGlobalTableLayout()
+})
 </script>
 
 <style scoped>
