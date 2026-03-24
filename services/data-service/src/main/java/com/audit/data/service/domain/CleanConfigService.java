@@ -314,13 +314,18 @@ public class CleanConfigService {
     }
 
     public void ensureDefaultCleanConfig(String ownerUsername) {
+        normalizeSystemRuleName(ownerUsername, "fill_null_with_default", "空值填充规则");
+        normalizeSystemRuleName(ownerUsername, "normalize_fields", "字段标准化规则");
         ensureSystemRule(ownerUsername, "空值填充规则", "fill_null_with_default");
-        ensureSystemRule(ownerUsername, "瀛楁鏍囧噯鍖栬鍒", "normalize_fields");
+        ensureSystemRule(ownerUsername, "字段标准化规则", "normalize_fields");
         cleanupDuplicateSystemRules(ownerUsername);
 
+        normalizeSystemStrategyName(ownerUsername, "DEDUP_AND_FILL", "去重+空值补齐");
+        normalizeSystemStrategyName(ownerUsername, "STANDARDIZE", "字段标准化");
+        normalizeSystemStrategyName(ownerUsername, "OUTLIER_REMOVE", "异常值剔除");
         ensureSystemStrategy(ownerUsername, "去重+空值补齐", "DEDUP_AND_FILL");
-        ensureSystemStrategy(ownerUsername, "瀛楁鏍囧噯鍖", "STANDARDIZE");
-        ensureSystemStrategy(ownerUsername, "寮傚父鍊煎墧闄", "OUTLIER_REMOVE");
+        ensureSystemStrategy(ownerUsername, "字段标准化", "STANDARDIZE");
+        ensureSystemStrategy(ownerUsername, "异常值剔除", "OUTLIER_REMOVE");
         cleanupDuplicateSystemStrategies(ownerUsername);
     }
 
@@ -336,10 +341,9 @@ public class CleanConfigService {
 
     private void ensureSystemRule(String ownerUsername, String name, String content) {
         Integer count = jdbcTemplate.queryForObject(
-            "SELECT COUNT(1) FROM clean_rule_record WHERE owner_username=? AND category='SYSTEM' AND name=? AND content=?",
+            "SELECT COUNT(1) FROM clean_rule_record WHERE owner_username=? AND category='SYSTEM' AND content=?",
             Integer.class,
             ownerUsername,
-            name,
             content
         );
         if (count != null && count > 0) {
@@ -354,6 +358,17 @@ public class CleanConfigService {
             content,
             now,
             now
+        );
+    }
+
+    private void normalizeSystemRuleName(String ownerUsername, String content, String canonicalName) {
+        jdbcTemplate.update(
+            "UPDATE clean_rule_record SET name=?, updated_at=? WHERE owner_username=? AND category='SYSTEM' AND content=? AND name<>?",
+            canonicalName,
+            now(),
+            ownerUsername,
+            content,
+            canonicalName
         );
     }
 
@@ -411,6 +426,17 @@ public class CleanConfigService {
             "系统默认策略",
             now,
             now
+        );
+    }
+
+    private void normalizeSystemStrategyName(String ownerUsername, String code, String canonicalName) {
+        jdbcTemplate.update(
+            "UPDATE clean_strategy_record SET name=?, updated_at=? WHERE owner_username=? AND built_in=1 AND code=? AND name<>?",
+            canonicalName,
+            now(),
+            ownerUsername,
+            code,
+            canonicalName
         );
     }
 
