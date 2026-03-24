@@ -1,30 +1,40 @@
 <template>
-  <div>
-    <DatasourceToolbar
-      :filters="filters"
-      @update:filters="handleFilterChange"
-      @search="loadData"
-      @reset="handleReset"
-      @create="dialogVisible = true"
-    />
+  <div class="datasource-view">
+    <div class="toolbar-host">
+      <DatasourceToolbar
+        :filters="filters"
+        @update:filters="handleFilterChange"
+        @search="loadData"
+        @reset="handleReset"
+        @create="openCreateDialog"
+      />
+    </div>
 
-    <DatasourceTable
-      :data="sources"
-      :loading="loading"
-      @status-change="handleStatusChange"
-      @delete="handleDelete"
-    />
+    <div class="table-host">
+      <DatasourceTable
+        :data="sources"
+        :loading="loading"
+        :table-size="tableLayout.size"
+        :row-height="tableLayout.rowHeight"
+        layout-storage-key="datasource-view-layout"
+        @status-change="handleStatusChange"
+        @edit="handleEdit"
+        @delete="handleDelete"
+      />
+    </div>
 
     <DatasourceFormDialog
       v-model="dialogVisible"
       :submitting="submitting"
+      :mode="dialogMode"
+      :initial-data="editingSource"
       @submit="handleSubmit"
     />
   </div>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import DatasourceToolbar from '../components/datasource/DatasourceToolbar.vue'
 import DatasourceTable from '../components/datasource/DatasourceTable.vue'
@@ -34,6 +44,7 @@ import {
   createFileSource,
   deleteDataSource,
   listDataSources,
+  updateDataSource,
   updateDataSourceStatus
 } from '../api/datasource'
 
@@ -41,6 +52,13 @@ const loading = ref(false)
 const submitting = ref(false)
 const dialogVisible = ref(false)
 const sources = ref([])
+const dialogMode = ref('create')
+const editingSource = ref(null)
+const tableLayout = reactive({
+  rowHeight: 44,
+  size: 'default'
+})
+const TABLE_LAYOUT_KEY = 'app:table-layout:global'
 
 const filters = reactive({
   keyword: '',
@@ -68,15 +86,35 @@ function handleFilterChange(nextFilters) {
   filters.status = nextFilters.status || ''
 }
 
+function openCreateDialog() {
+  dialogMode.value = 'create'
+  editingSource.value = null
+  dialogVisible.value = true
+}
+
+function handleEdit(row) {
+  dialogMode.value = 'edit'
+  editingSource.value = { ...row }
+  dialogVisible.value = true
+}
+
 async function handleSubmit({ type, payload }) {
   submitting.value = true
   try {
-    if (type === 'DATABASE') {
-      await createDatabaseSource(payload)
-      ElMessage.success('数据库数据源创建成功')
+    if (dialogMode.value === 'edit' && editingSource.value?.id) {
+      const updatePayload = type === 'DATABASE'
+        ? payload
+        : { name: payload.name, remark: payload.remark }
+      await updateDataSource(editingSource.value.id, updatePayload)
+      ElMessage.success('数据源更新成功')
     } else {
-      await createFileSource(payload)
-      ElMessage.success('本地文件数据源导入成功')
+      if (type === 'DATABASE') {
+        await createDatabaseSource(payload)
+        ElMessage.success('数据库数据源创建成功')
+      } else {
+        await createFileSource(payload)
+        ElMessage.success('本地文件数据源导入成功')
+      }
     }
 
     dialogVisible.value = false
@@ -108,7 +146,59 @@ async function handleDelete(id) {
   }
 }
 
+function loadTableLayout() {
+  try {
+    const cached = localStorage.getItem(TABLE_LAYOUT_KEY)
+    if (!cached) return
+    const parsed = JSON.parse(cached)
+    if (typeof parsed?.rowHeight === 'number') {
+      tableLayout.rowHeight = parsed.rowHeight
+    }
+    if (typeof parsed?.size === 'string') {
+      tableLayout.size = parsed.size
+    }
+  } catch {
+    // ignore invalid cache
+  }
+}
+
+function handleTableLayoutChanged(event) {
+  const next = event?.detail || {}
+  if (typeof next?.rowHeight === 'number') {
+    tableLayout.rowHeight = next.rowHeight
+  }
+  if (typeof next?.size === 'string') {
+    tableLayout.size = next.size
+  }
+}
+
 onMounted(() => {
+  loadTableLayout()
+  window.addEventListener('table-layout-config-changed', handleTableLayoutChanged)
   loadData()
 })
+
+onBeforeUnmount(() => {
+  window.removeEventListener('table-layout-config-changed', handleTableLayoutChanged)
+})
 </script>
+
+<style scoped>
+.datasource-view {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.toolbar-host {
+  flex-shrink: 0;
+}
+
+.table-host {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+</style>

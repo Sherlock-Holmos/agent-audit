@@ -1,19 +1,45 @@
 <template>
-  <el-card shadow="never">
-    <el-table :data="data" v-loading="loading" border style="width: 100%">
-      <el-table-column label="数据源名称" min-width="180">
+  <el-card ref="cardRef" shadow="never" class="table-wrap" :style="{ '--row-height': `${rowHeight}px` }">
+    <el-table
+      :data="data"
+      v-loading="loading"
+      border
+      style="width: 100%"
+      :height="tableHeight"
+      :size="tableSize"
+      :row-style="rowStyle"
+      :header-row-style="headerRowStyle"
+      fit
+      @header-dragend="handleHeaderDragEnd"
+    >
+      <el-table-column
+        column-key="name"
+        label="数据源名称"
+        :width="resolveWidth('name')"
+        :min-width="resolveMinWidth('name', 180)"
+      >
         <template #default="scope">
           {{ formatText(scope.row.name, scope.row, 'name') }}
         </template>
       </el-table-column>
-      <el-table-column label="类型" width="120">
+      <el-table-column
+        column-key="type"
+        label="类型"
+        :width="resolveWidth('type')"
+        :min-width="resolveMinWidth('type', 120)"
+      >
         <template #default="scope">
           <el-tag :type="scope.row.type === 'DATABASE' ? 'primary' : 'success'">
             {{ scope.row.type === 'DATABASE' ? '数据库' : '本地文件' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="连接信息" min-width="280">
+      <el-table-column
+        column-key="connection"
+        label="连接信息"
+        :width="resolveWidth('connection')"
+        :min-width="resolveMinWidth('connection', 280)"
+      >
         <template #default="scope">
           <span v-if="scope.row.type === 'DATABASE'">
             {{ scope.row.dbType }} / {{ scope.row.host }}:{{ scope.row.port }} / {{ scope.row.databaseName }}
@@ -23,7 +49,13 @@
           </span>
         </template>
       </el-table-column>
-      <el-table-column label="状态" width="120" align="center">
+      <el-table-column
+        column-key="status"
+        label="状态"
+        :width="resolveWidth('status')"
+        :min-width="resolveMinWidth('status', 120)"
+        align="center"
+      >
         <template #default="scope">
           <el-switch
             :model-value="scope.row.status === 'ENABLED'"
@@ -31,9 +63,16 @@
           />
         </template>
       </el-table-column>
-      <el-table-column prop="createdAt" label="创建时间" width="180" />
-      <el-table-column label="操作" width="120" align="center" fixed="right">
+      <el-table-column
+        column-key="createdAt"
+        prop="createdAt"
+        label="创建时间"
+        :width="resolveWidth('createdAt')"
+        :min-width="resolveMinWidth('createdAt', 180)"
+      />
+      <el-table-column column-key="actions" label="操作" :width="resolveWidth('actions', 170)" align="center" fixed="right">
         <template #default="scope">
+          <el-button type="primary" link @click="$emit('edit', scope.row)">编辑</el-button>
           <el-popconfirm title="确认删除该数据源？" @confirm="$emit('delete', scope.row.id)">
             <template #reference>
               <el-button type="danger" link>删除</el-button>
@@ -48,7 +87,9 @@
 </template>
 
 <script setup>
-defineProps({
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+
+const props = defineProps({
   data: {
     type: Array,
     default: () => []
@@ -56,10 +97,116 @@ defineProps({
   loading: {
     type: Boolean,
     default: false
+  },
+  tableSize: {
+    type: String,
+    default: 'default'
+  },
+  rowHeight: {
+    type: Number,
+    default: 44
+  },
+  layoutStorageKey: {
+    type: String,
+    default: 'datasource-table-layout'
+  },
+  bottomOffset: {
+    type: Number,
+    default: 8
+  }
+})
+defineEmits(['status-change', 'delete', 'edit'])
+
+const cardRef = ref()
+const tableHeight = ref(420)
+const columnWidths = ref({})
+let resizeObserver
+
+function updateTableHeight() {
+  const cardEl = cardRef.value?.$el || cardRef.value
+  if (!cardEl) return
+  const cardStyle = window.getComputedStyle(cardEl)
+  const borderTop = Number.parseFloat(cardStyle.borderTopWidth || '0') || 0
+  const borderBottom = Number.parseFloat(cardStyle.borderBottomWidth || '0') || 0
+  const bodyEl = cardEl.querySelector('.el-card__body')
+  let bodyPadding = 0
+  if (bodyEl) {
+    const bodyStyle = window.getComputedStyle(bodyEl)
+    bodyPadding += Number.parseFloat(bodyStyle.paddingTop || '0') || 0
+    bodyPadding += Number.parseFloat(bodyStyle.paddingBottom || '0') || 0
+  }
+  const chromeHeight = borderTop + borderBottom + bodyPadding
+  const parentHeight = cardEl.parentElement?.clientHeight || 0
+
+  let available = 0
+  if (parentHeight > 0) {
+    available = parentHeight - props.bottomOffset
+  } else {
+    const top = cardEl.getBoundingClientRect().top
+    const viewportHeight = document.documentElement.clientHeight || window.innerHeight
+    available = viewportHeight - top - props.bottomOffset
+  }
+
+  const next = Math.max(260, Math.floor(available - chromeHeight))
+  tableHeight.value = next
+}
+
+onMounted(() => {
+  try {
+    const cached = localStorage.getItem(`${props.layoutStorageKey}:columns`)
+    columnWidths.value = cached ? JSON.parse(cached) : {}
+  } catch {
+    columnWidths.value = {}
+  }
+
+  nextTick(() => {
+    updateTableHeight()
+    window.addEventListener('resize', updateTableHeight)
+    const cardEl = cardRef.value?.$el || cardRef.value
+    if (cardEl && window.ResizeObserver) {
+      resizeObserver = new ResizeObserver(() => updateTableHeight())
+      resizeObserver.observe(cardEl)
+    }
+  })
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateTableHeight)
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
   }
 })
 
-defineEmits(['status-change', 'delete'])
+function resolveWidth(key) {
+  return columnWidths.value[key] || undefined
+}
+
+function resolveMinWidth(key, fallback) {
+  return columnWidths.value[key] ? undefined : fallback
+}
+
+function handleHeaderDragEnd(newWidth, _oldWidth, column) {
+  const key = String(column?.columnKey || column?.property || column?.label || '').trim()
+  if (!key) return
+  columnWidths.value = {
+    ...columnWidths.value,
+    [key]: Math.max(80, Math.round(newWidth || 0))
+  }
+  localStorage.setItem(`${props.layoutStorageKey}:columns`, JSON.stringify(columnWidths.value))
+}
+
+function rowStyle() {
+  return {
+    height: `${props.rowHeight}px`
+  }
+}
+
+function headerRowStyle() {
+  return {
+    height: `${props.rowHeight}px`
+  }
+}
 
 function formatSize(size) {
   if (!size) return '0 B'
@@ -99,6 +246,14 @@ function chineseScore(text) {
 </script>
 
 <style scoped>
+.table-wrap :deep(.el-table .cell) {
+  line-height: calc(var(--row-height) - 12px);
+}
+
+.table-wrap {
+  height: 100%;
+}
+
 .empty-tip {
   margin-top: 14px;
   text-align: center;

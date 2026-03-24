@@ -2,7 +2,7 @@
   <el-dialog
     :model-value="modelValue"
     width="680px"
-    title="新建数据清洗任务"
+    :title="mode === 'edit' ? '编辑数据清洗任务' : '新建数据清洗任务'"
     destroy-on-close
     @close="handleClose"
   >
@@ -78,6 +78,14 @@ const props = defineProps({
   strategyOptions: {
     type: Array,
     default: () => []
+  },
+  mode: {
+    type: String,
+    default: 'create'
+  },
+  initialData: {
+    type: Object,
+    default: () => null
   }
 })
 
@@ -116,6 +124,27 @@ watch(
   (visible) => {
     if (!visible) {
       resetForm()
+      return
+    }
+
+    if (props.mode === 'edit' && props.initialData) {
+      const row = props.initialData
+      const rowObjects = Array.isArray(row.cleanObjects) ? row.cleanObjects : []
+      const objectKeys = rowObjects.map((item) => `${item.sourceId}::${item.objectName}`)
+      const currentRuleNames = Array.isArray(row.cleanRuleNames) ? row.cleanRuleNames : []
+      const ruleIds = props.ruleOptions
+        .filter((rule) => currentRuleNames.includes(rule.name))
+        .map((rule) => rule.id)
+
+      Object.assign(form, {
+        taskName: row.taskName || '',
+        objectKeys,
+        strategy: row.strategy || props.strategyOptions[0]?.code || '',
+        ruleIds,
+        standardTable: row.standardTable || '',
+        remark: row.remark || ''
+      })
+      formRef.value?.clearValidate()
     }
   }
 )

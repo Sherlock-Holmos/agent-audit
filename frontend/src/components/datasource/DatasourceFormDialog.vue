@@ -2,11 +2,11 @@
   <el-dialog
     :model-value="modelValue"
     width="720px"
-    title="新增数据源"
+    :title="mode === 'edit' ? '编辑数据源' : '新增数据源'"
     destroy-on-close
     @close="handleClose"
   >
-    <el-radio-group v-model="sourceType" style="margin-bottom: 16px">
+    <el-radio-group v-model="sourceType" :disabled="mode === 'edit'" style="margin-bottom: 16px">
       <el-radio-button label="DATABASE" value="DATABASE">数据库</el-radio-button>
       <el-radio-button label="FILE" value="FILE">本地文件</el-radio-button>
     </el-radio-group>
@@ -104,6 +104,14 @@ const props = defineProps({
   submitting: {
     type: Boolean,
     default: false
+  },
+  mode: {
+    type: String,
+    default: 'create'
+  },
+  initialData: {
+    type: Object,
+    default: () => null
   }
 })
 
@@ -137,7 +145,7 @@ const dbRules = {
   port: [{ required: true, message: '请输入端口', trigger: 'change' }],
   databaseName: [{ required: true, message: '请输入数据库名', trigger: 'blur' }],
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
+  password: [{ validator: validatePassword, trigger: 'blur' }]
 }
 
 const fileRules = {
@@ -146,8 +154,24 @@ const fileRules = {
 }
 
 function validateFile(_rule, _value, callback) {
+  if (props.mode === 'edit') {
+    callback()
+    return
+  }
   if (!selectedFile.value) {
     callback(new Error('请选择要导入的本地文件'))
+    return
+  }
+  callback()
+}
+
+function validatePassword(_rule, value, callback) {
+  if (props.mode === 'edit') {
+    callback()
+    return
+  }
+  if (!value) {
+    callback(new Error('请输入密码'))
     return
   }
   callback()
@@ -187,6 +211,29 @@ watch(
   (visible) => {
     if (!visible) {
       resetForms()
+      return
+    }
+
+    if (props.mode === 'edit' && props.initialData) {
+      const row = props.initialData
+      sourceType.value = row.type || 'DATABASE'
+      if (sourceType.value === 'DATABASE') {
+        Object.assign(dbForm, {
+          name: row.name || '',
+          dbType: row.dbType || 'MYSQL',
+          host: row.host || '127.0.0.1',
+          port: row.port || 3306,
+          databaseName: row.databaseName || '',
+          username: row.username || '',
+          password: '',
+          remark: row.remark || ''
+        })
+      } else {
+        Object.assign(fileForm, {
+          name: row.name || '',
+          remark: row.remark || ''
+        })
+      }
     }
   }
 )
@@ -209,7 +256,7 @@ async function submit() {
   const valid = await fileFormRef.value?.validate().catch(() => false)
   if (!valid) return
 
-  if (!selectedFile.value) {
+  if (props.mode !== 'edit' && !selectedFile.value) {
     ElMessage.warning('请选择文件')
     return
   }
@@ -218,7 +265,7 @@ async function submit() {
     type: 'FILE',
     payload: {
       ...fileForm,
-      file: selectedFile.value
+      ...(selectedFile.value ? { file: selectedFile.value } : {})
     }
   })
 }

@@ -2,7 +2,7 @@
   <el-dialog
     :model-value="modelValue"
     width="720px"
-    title="新建数据融合任务"
+    :title="mode === 'edit' ? '编辑数据融合任务' : '新建数据融合任务'"
     destroy-on-close
     @close="handleClose"
   >
@@ -72,6 +72,14 @@ const props = defineProps({
   cleanTaskOptions: {
     type: Array,
     default: () => []
+  },
+  mode: {
+    type: String,
+    default: 'create'
+  },
+  initialData: {
+    type: Object,
+    default: () => null
   }
 })
 
@@ -117,6 +125,24 @@ watch(
   (visible) => {
     if (!visible) {
       resetForm()
+      return
+    }
+
+    if (props.mode === 'edit' && props.initialData) {
+      const row = props.initialData
+      const fusionConfig = row.fusionConfig || {}
+      Object.assign(form, {
+        taskName: row.taskName || '',
+        targetTable: row.targetTable || '',
+        cleanTaskIds: Array.isArray(row.cleanTaskIds) ? row.cleanTaskIds.map((id) => String(id)) : [],
+        strategy: row.strategy || 'KEY_ALIGN',
+        keyField: fusionConfig.keyField || '',
+        timeField: fusionConfig.timeField || '',
+        windowMinutes: fusionConfig.windowMinutes || 60,
+        matchFieldsText: Array.isArray(fusionConfig.matchFields) ? fusionConfig.matchFields.join(',') : '',
+        remark: row.remark || ''
+      })
+      formRef.value?.clearValidate()
     }
   }
 )

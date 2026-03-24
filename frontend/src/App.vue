@@ -60,11 +60,14 @@ const router = useRouter()
 let systemThemeMediaQuery
 
 const isAuthPage = computed(() => ['/login', '/register'].includes(route.path))
+const noMainScrollRoutes = ['/datasource/clean', '/datasource/fusion']
+const lockMainScroll = computed(() => noMainScrollRoutes.includes(route.path))
 
 const mainStyle = computed(() => ({
   padding: '24px',
   transition: 'margin-left 0.2s',
-  marginLeft: isCollapse.value ? '0' : '0'
+  marginLeft: isCollapse.value ? '0' : '0',
+  overflowY: lockMainScroll.value ? 'hidden' : 'auto'
 }))
 function toggleCollapse() {
   appStore.toggleCollapse()

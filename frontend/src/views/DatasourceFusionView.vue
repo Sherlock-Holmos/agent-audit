@@ -1,25 +1,35 @@
 <template>
-  <div>
-    <FusionToolbar
-      :filters="filters"
-      @update:filters="handleFilterChange"
-      @search="loadData"
-      @reset="handleReset"
-      @create="dialogVisible = true"
-    />
+  <div class="fusion-view">
+    <div class="toolbar-host">
+      <FusionToolbar
+        :filters="filters"
+        @update:filters="handleFilterChange"
+        @search="loadData"
+        @reset="handleReset"
+        @create="openCreateDialog"
+      />
+    </div>
 
-    <FusionTable
-      :data="tasks"
-      :loading="loading"
-      @preview="handlePreview"
-      @run="handleRun"
-      @delete="handleDelete"
-    />
+    <div class="table-host">
+      <FusionTable
+        :data="tasks"
+        :loading="loading"
+        :table-size="tableLayout.size"
+        :row-height="tableLayout.rowHeight"
+        layout-storage-key="fusion-view-layout"
+        @preview="handlePreview"
+        @edit="handleEdit"
+        @run="handleRun"
+        @delete="handleDelete"
+      />
+    </div>
 
     <FusionFormDialog
       v-model="dialogVisible"
       :submitting="submitting"
       :clean-task-options="cleanTaskOptions"
+      :mode="dialogMode"
+      :initial-data="editingTask"
       @submit="handleSubmit"
     />
 
@@ -94,10 +104,10 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { listCleanTasks } from '../api/dataclean'
-import { createFusionTask, deleteFusionTask, getFusionTaskPreview, listFusionTasks, runFusionTask } from '../api/datafusion'
+import { createFusionTask, deleteFusionTask, getFusionTaskPreview, listFusionTasks, runFusionTask, updateFusionTask } from '../api/datafusion'
 import FusionToolbar from '../components/datafusion/FusionToolbar.vue'
 import FusionTable from '../components/datafusion/FusionTable.vue'
 import FusionFormDialog from '../components/datafusion/FusionFormDialog.vue'
@@ -106,6 +116,8 @@ const loading = ref(false)
 const submitting = ref(false)
 const dialogVisible = ref(false)
 const tasks = ref([])
+const dialogMode = ref('create')
+const editingTask = ref(null)
 const cleanTaskOptions = ref([])
 const previewVisible = ref(false)
 const previewLoading = ref(false)
@@ -117,6 +129,11 @@ const previewStats = reactive({
   previewLimit: 0
 })
 const previewRows = ref([])
+const tableLayout = reactive({
+  rowHeight: 44,
+  size: 'default'
+})
+const TABLE_LAYOUT_KEY = 'app:table-layout:global'
 
 const filters = reactive({
   keyword: '',
@@ -151,6 +168,18 @@ function handleFilterChange(nextFilters) {
   filters.status = nextFilters.status || ''
 }
 
+function openCreateDialog() {
+  dialogMode.value = 'create'
+  editingTask.value = null
+  dialogVisible.value = true
+}
+
+function handleEdit(row) {
+  dialogMode.value = 'edit'
+  editingTask.value = { ...row }
+  dialogVisible.value = true
+}
+
 async function handleSubmit(payload) {
   if (!payload.cleanTaskIds?.length) {
     ElMessage.warning('请至少选择一个清洗任务')
@@ -159,8 +188,13 @@ async function handleSubmit(payload) {
 
   submitting.value = true
   try {
-    await createFusionTask(payload)
-    ElMessage.success('融合任务创建成功')
+    if (dialogMode.value === 'edit' && editingTask.value?.id) {
+      await updateFusionTask(editingTask.value.id, payload)
+      ElMessage.success('融合任务更新成功')
+    } else {
+      await createFusionTask(payload)
+      ElMessage.success('融合任务创建成功')
+    }
     dialogVisible.value = false
     await loadCleanTaskOptions()
     await loadData()
@@ -223,13 +257,63 @@ async function handleDelete(id) {
   }
 }
 
+function loadTableLayout() {
+  try {
+    const cached = localStorage.getItem(TABLE_LAYOUT_KEY)
+    if (!cached) return
+    const parsed = JSON.parse(cached)
+    if (typeof parsed?.rowHeight === 'number') {
+      tableLayout.rowHeight = parsed.rowHeight
+    }
+    if (typeof parsed?.size === 'string') {
+      tableLayout.size = parsed.size
+    }
+  } catch {
+    // ignore invalid cache
+  }
+}
+
+function handleTableLayoutChanged(event) {
+  const next = event?.detail || {}
+  if (typeof next?.rowHeight === 'number') {
+    tableLayout.rowHeight = next.rowHeight
+  }
+  if (typeof next?.size === 'string') {
+    tableLayout.size = next.size
+  }
+}
+
 onMounted(async () => {
+  loadTableLayout()
+  window.addEventListener('table-layout-config-changed', handleTableLayoutChanged)
   await loadCleanTaskOptions()
   await loadData()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('table-layout-config-changed', handleTableLayoutChanged)
 })
 </script>
 
 <style scoped>
+.fusion-view {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.toolbar-host {
+  flex-shrink: 0;
+}
+
+.table-host {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .preview-wrap {
   display: flex;
   flex-direction: column;

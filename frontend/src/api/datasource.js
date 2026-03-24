@@ -19,6 +19,9 @@ export const createFileSource = (payload) => {
 export const updateDataSourceStatus = (id, status) =>
   client.patch(`/data/sources/${id}/status`, { status })
 
+export const updateDataSource = (id, payload) =>
+  client.patch(`/data/sources/${id}`, payload)
+
 export const deleteDataSource = (id) => client.delete(`/data/sources/${id}`)
 
 export const listDataSourceObjects = (id) => client.get(`/data/sources/${id}/objects`)

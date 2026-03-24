@@ -1,21 +1,29 @@
 <template>
-  <div>
-    <CleanToolbar
-      :filters="filters"
-      :source-options="sourceOptions"
-      @update:filters="handleFilterChange"
-      @search="loadData"
-      @reset="handleReset"
-      @manage-rules="openRuleManagement"
-      @create="dialogVisible = true"
-    />
+  <div class="clean-view">
+    <div class="toolbar-host">
+      <CleanToolbar
+        :filters="filters"
+        :source-options="sourceOptions"
+        @update:filters="handleFilterChange"
+        @search="loadData"
+        @reset="handleReset"
+        @manage-rules="openRuleManagement"
+        @create="openCreateDialog"
+      />
+    </div>
 
-    <CleanTable
-      :data="tasks"
-      :loading="loading"
-      @run="handleRun"
-      @delete="handleDelete"
-    />
+    <div class="table-host">
+      <CleanTable
+        :data="tasks"
+        :loading="loading"
+        :table-size="tableLayout.size"
+        :row-height="tableLayout.rowHeight"
+        layout-storage-key="clean-view-layout"
+        @edit="handleEdit"
+        @run="handleRun"
+        @delete="handleDelete"
+      />
+    </div>
 
     <CleanFormDialog
       v-model="dialogVisible"
@@ -23,18 +31,20 @@
       :object-options="objectOptions"
       :rule-options="ruleOptions"
       :strategy-options="strategyOptions"
+      :mode="dialogMode"
+      :initial-data="editingTask"
       @submit="handleSubmit"
     />
   </div>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listCleanRules, listCleanStrategies } from '../api/cleanrule'
 import { listDataSourceObjects, listDataSources } from '../api/datasource'
-import { createCleanTask, deleteCleanTask, listCleanTasks, runCleanTask } from '../api/dataclean'
+import { createCleanTask, deleteCleanTask, listCleanTasks, runCleanTask, updateCleanTask } from '../api/dataclean'
 import CleanToolbar from '../components/dataclean/CleanToolbar.vue'
 import CleanTable from '../components/dataclean/CleanTable.vue'
 import CleanFormDialog from '../components/dataclean/CleanFormDialog.vue'
@@ -44,10 +54,17 @@ const loading = ref(false)
 const submitting = ref(false)
 const dialogVisible = ref(false)
 const tasks = ref([])
+const dialogMode = ref('create')
+const editingTask = ref(null)
 const sourceOptions = ref([])
 const objectOptions = ref([])
 const ruleOptions = ref([])
 const strategyOptions = ref([])
+const tableLayout = reactive({
+  rowHeight: 44,
+  size: 'default'
+})
+const TABLE_LAYOUT_KEY = 'app:table-layout:global'
 
 const filters = reactive({
   keyword: '',
@@ -121,6 +138,18 @@ function handleFilterChange(nextFilters) {
   filters.status = nextFilters.status || ''
 }
 
+function openCreateDialog() {
+  dialogMode.value = 'create'
+  editingTask.value = null
+  dialogVisible.value = true
+}
+
+function handleEdit(row) {
+  dialogMode.value = 'edit'
+  editingTask.value = { ...row }
+  dialogVisible.value = true
+}
+
 async function handleSubmit(payload) {
   if (!payload.cleanObjects?.length) {
     ElMessage.warning('请至少选择一个清洗对象')
@@ -129,8 +158,13 @@ async function handleSubmit(payload) {
 
   submitting.value = true
   try {
-    await createCleanTask(payload)
-    ElMessage.success('清洗任务创建成功')
+    if (dialogMode.value === 'edit' && editingTask.value?.id) {
+      await updateCleanTask(editingTask.value.id, payload)
+      ElMessage.success('清洗任务更新成功')
+    } else {
+      await createCleanTask(payload)
+      ElMessage.success('清洗任务创建成功')
+    }
     dialogVisible.value = false
     await loadData()
   } catch (error) {
@@ -172,9 +206,61 @@ function repairName(name, item) {
   return name
 }
 
+function loadTableLayout() {
+  try {
+    const cached = localStorage.getItem(TABLE_LAYOUT_KEY)
+    if (!cached) return
+    const parsed = JSON.parse(cached)
+    if (typeof parsed?.rowHeight === 'number') {
+      tableLayout.rowHeight = parsed.rowHeight
+    }
+    if (typeof parsed?.size === 'string') {
+      tableLayout.size = parsed.size
+    }
+  } catch {
+    // ignore invalid cache
+  }
+}
+
+function handleTableLayoutChanged(event) {
+  const next = event?.detail || {}
+  if (typeof next?.rowHeight === 'number') {
+    tableLayout.rowHeight = next.rowHeight
+  }
+  if (typeof next?.size === 'string') {
+    tableLayout.size = next.size
+  }
+}
+
 onMounted(async () => {
+  loadTableLayout()
+  window.addEventListener('table-layout-config-changed', handleTableLayoutChanged)
   await loadSources()
   await loadRules()
   await loadData()
 })
+
+onBeforeUnmount(() => {
+  window.removeEventListener('table-layout-config-changed', handleTableLayoutChanged)
+})
 </script>
+
+<style scoped>
+.clean-view {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.toolbar-host {
+  flex-shrink: 0;
+}
+
+.table-host {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+</style>
