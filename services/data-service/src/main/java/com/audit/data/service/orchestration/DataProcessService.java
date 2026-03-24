@@ -201,6 +201,69 @@ public class DataProcessService implements IDataProcessService {
     }
 
     @Transactional
+    public Map<String, Object> updateCleanTask(String ownerUsername, Long id, Map<String, Object> payload) {
+        requireAuthenticated(ownerUsername);
+        Map<String, Object> existing = getCleanTaskById(ownerUsername, id);
+        String currentStatus = text(existing.get("status")).toUpperCase();
+        if ("RUNNING".equals(currentStatus) || "COMPLETED".equals(currentStatus)) {
+            throw new IllegalArgumentException("仅待执行或失败任务允许编辑");
+        }
+
+        String taskName = text(payload.get("taskName"));
+        String strategyCode = text(payload.get("strategy"));
+        String standardTable = text(payload.get("standardTable"));
+        String remark = text(payload.get("remark"));
+        List<Map<String, Object>> cleanObjects = castMapList(payload.get("cleanObjects"));
+        List<String> cleanRuleNames = castStringList(payload.get("cleanRuleNames"));
+
+        if (isBlank(taskName) || isBlank(strategyCode) || cleanObjects.isEmpty()) {
+            throw new IllegalArgumentException("清洗任务必填项缺失");
+        }
+
+        cleanConfigService.ensureDefaultCleanConfig(ownerUsername);
+        Map<String, Object> strategy = cleanConfigService.getEnabledStrategy(ownerUsername, strategyCode);
+        if (strategy.isEmpty()) throw new IllegalArgumentException("清洗策略不存在或已停用");
+
+        for (Map<String, Object> object : cleanObjects) {
+            Long sourceIdVal = toLong(object.get("sourceId"));
+            String objectName = text(object.get("objectName"));
+            if (sourceIdVal == null || isBlank(objectName)) throw new IllegalArgumentException("清洗对象信息不完整");
+            List<Map<String, Object>> objects = dataSourceService.listSourceObjects(ownerUsername, sourceIdVal);
+            boolean valid = objects.stream().anyMatch(it -> objectName.equals(String.valueOf(it.get("objectName"))));
+            if (!valid) throw new IllegalArgumentException("存在无效清洗对象，请重新选择");
+        }
+
+        List<String> objectNames = cleanObjects.stream()
+            .map(obj -> text(obj.get("sourceName")) + " / " + text(obj.get("objectName")))
+            .toList();
+
+        String outputTable = isBlank(standardTable)
+            ? text(existing.get("standardTable"))
+            : standardTable;
+
+        int affected = dataProcessTaskRepository.updateCleanTask(
+            ownerUsername,
+            id,
+            taskName,
+            toJson(cleanObjects),
+            toJson(objectNames),
+            toJson(cleanRuleNames),
+            strategyCode,
+            text(strategy.get("name")),
+            outputTable,
+            remark
+        );
+        if (affected == 0) {
+            throw new IllegalArgumentException("清洗任务不存在");
+        }
+
+        Map<String, Object> updated = getCleanTaskById(ownerUsername, id);
+        recordAudit(ownerUsername, "UPDATE", "CLEAN_TASK", String.valueOf(id), "SUCCESS", Map.of("taskName", taskName));
+        invalidateDashboardCache(ownerUsername);
+        return updated;
+    }
+
+    @Transactional
     public Map<String, Object> runCleanTask(String ownerUsername, Long id) {
         requireAuthenticated(ownerUsername);
         Timer.Sample sample = Timer.start(meterRegistry);
@@ -211,6 +274,7 @@ public class DataProcessService implements IDataProcessService {
         }
 
         String outputTable = sanitizeTableName(String.valueOf(task.get("standardTable")));
+        String rawTable = buildRawTableName(outputTable);
         String outputTableRef = stagingTableRef(outputTable);
         List<Map<String, Object>> cleanObjects = castMapList(task.get("cleanObjects"));
         String strategyCode = text(task.get("strategy"));
@@ -220,8 +284,10 @@ public class DataProcessService implements IDataProcessService {
 
         int cleanedRows;
         try {
+            stagingTableService.recreateRawTable(rawTable);
+            stagingTableService.loadObjectsIntoRawTable(ownerUsername, id, cleanObjects, rawTable);
             stagingTableService.recreateStandardTable(outputTable);
-            stagingTableService.loadObjectsIntoStandardTable(ownerUsername, id, cleanObjects, outputTable);
+            stagingTableService.loadStandardFromRawTable(id, rawTable, outputTable);
             cleanRuleEngineService.applyCleanStrategy(ownerUsername, outputTableRef, strategyCode, ruleNames);
 
             Integer count = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM " + outputTableRef, Integer.class);
@@ -267,6 +333,11 @@ public class DataProcessService implements IDataProcessService {
         int affected = dataProcessTaskRepository.deleteCleanTask(ownerUsername, id);
         if (affected == 0) throw new IllegalArgumentException("清洗任务不存在");
 
+        try {
+            stagingTableService.dropTableIfExists(buildRawTableName(standardTable));
+        } catch (IllegalArgumentException ignore) {
+            // Ignore historical dirty table names during cleanup.
+        }
         stagingTableService.dropStandardTableIfUnused(standardTable);
         recordAudit(ownerUsername, "DELETE", "CLEAN_TASK", String.valueOf(id), "SUCCESS", Map.of("standardTable", standardTable));
         invalidateDashboardCache(ownerUsername);
@@ -319,6 +390,57 @@ public class DataProcessService implements IDataProcessService {
         recordAudit(ownerUsername, "CREATE", "FUSION_TASK", String.valueOf(id), "SUCCESS", Map.of("taskName", taskName));
         invalidateDashboardCache(ownerUsername);
         return created;
+    }
+
+    @Transactional
+    public Map<String, Object> updateFusionTask(String ownerUsername, Long id, Map<String, Object> payload) {
+        requireAuthenticated(ownerUsername);
+        Map<String, Object> existing = getFusionTaskById(ownerUsername, id);
+        String currentStatus = text(existing.get("status")).toUpperCase();
+        if ("RUNNING".equals(currentStatus) || "COMPLETED".equals(currentStatus)) {
+            throw new IllegalArgumentException("仅待执行或失败任务允许编辑");
+        }
+
+        String taskName = text(payload.get("taskName"));
+        String targetTable = text(payload.get("targetTable"));
+        String strategy = text(payload.get("strategy"));
+        String remark = text(payload.get("remark"));
+        List<Long> cleanTaskIds = castLongList(payload.get("cleanTaskIds"));
+
+        if (isBlank(taskName) || isBlank(targetTable) || isBlank(strategy) || cleanTaskIds.isEmpty()) {
+            throw new IllegalArgumentException("融合任务必填项缺失");
+        }
+
+        List<String> cleanTaskNames = new ArrayList<>();
+        List<String> standardTables = new ArrayList<>();
+        for (Long cleanTaskId : cleanTaskIds) {
+            Map<String, Object> cleanTask = getCleanTaskById(ownerUsername, cleanTaskId);
+            if (!"COMPLETED".equalsIgnoreCase(String.valueOf(cleanTask.get("status")))) {
+                throw new IllegalArgumentException("仅可选择已完成的清洗任务");
+            }
+            cleanTaskNames.add(String.valueOf(cleanTask.get("taskName")));
+            standardTables.add(String.valueOf(cleanTask.get("standardTable")));
+        }
+
+        int affected = dataProcessTaskRepository.updateFusionTask(
+            ownerUsername,
+            id,
+            taskName,
+            targetTable,
+            toJson(cleanTaskIds),
+            toJson(cleanTaskNames),
+            toJson(standardTables),
+            strategy,
+            remark
+        );
+        if (affected == 0) {
+            throw new IllegalArgumentException("融合任务不存在");
+        }
+
+        Map<String, Object> updated = getFusionTaskById(ownerUsername, id);
+        recordAudit(ownerUsername, "UPDATE", "FUSION_TASK", String.valueOf(id), "SUCCESS", Map.of("taskName", taskName));
+        invalidateDashboardCache(ownerUsername);
+        return updated;
     }
 
     @Transactional
@@ -762,6 +884,17 @@ public class DataProcessService implements IDataProcessService {
             throw new IllegalArgumentException("表名不合法: " + tableName);
         }
         return normalized;
+    }
+
+    private String buildRawTableName(String standardTableName) {
+        String safeStandard = sanitizeTableName(standardTableName);
+        String candidate = safeStandard + "_raw";
+        if (candidate.length() <= 64) {
+            return candidate;
+        }
+        String hash = Integer.toHexString(safeStandard.hashCode()).replace('-', '0');
+        int keep = Math.max(1, 64 - 5 - hash.length());
+        return safeStandard.substring(0, keep) + "_raw_" + hash;
     }
 
 }

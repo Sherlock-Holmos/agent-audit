@@ -27,12 +27,14 @@ public interface IDataProcessService {
     // 清洗任务管理
     List<Map<String, Object>> listCleanTasks(String ownerUsername, String keyword, String sourceId, String status);
     Map<String, Object> createCleanTask(String ownerUsername, Map<String, Object> payload);
+    Map<String, Object> updateCleanTask(String ownerUsername, Long id, Map<String, Object> payload);
     Map<String, Object> runCleanTask(String ownerUsername, Long id);
     void deleteCleanTask(String ownerUsername, Long id);
 
     // 融合任务管理
     List<Map<String, Object>> listFusionTasks(String ownerUsername, String keyword, String status);
     Map<String, Object> createFusionTask(String ownerUsername, Map<String, Object> payload);
+    Map<String, Object> updateFusionTask(String ownerUsername, Long id, Map<String, Object> payload);
     Map<String, Object> runFusionTask(String ownerUsername, Long id);
     void deleteFusionTask(String ownerUsername, Long id);
     Map<String, Object> previewFusionTask(String ownerUsername, Long id, Integer limit);

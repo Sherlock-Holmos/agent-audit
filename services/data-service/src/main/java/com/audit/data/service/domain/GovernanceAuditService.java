@@ -196,6 +196,8 @@ public class GovernanceAuditService {
         for (String source : sourceTables) {
             // sourceTables may contain file object names (for example .xlsx paths),
             // so we keep the original source identifier here instead of DB table validation.
+            // text(...) normalizes the raw source identifier into a safe textual form (e.g. trimming/handling nulls)
+            // without enforcing database table naming rules.
             String sourceTable = text(source);
             if (isBlank(sourceTable)) {
                 continue;

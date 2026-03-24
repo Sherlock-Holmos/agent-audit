@@ -112,6 +112,48 @@ public class DataProcessTaskRepository {
         );
     }
 
+    public int updateCleanTask(
+        String ownerUsername,
+        Long id,
+        String taskName,
+        String cleanObjectsJson,
+        String cleanObjectNamesJson,
+        String cleanRuleNamesJson,
+        String strategyCode,
+        String strategyName,
+        String outputTable,
+        String remark
+    ) {
+        return jdbcTemplate.update(
+            """
+            UPDATE clean_task_record
+               SET task_name=?,
+                   clean_objects_json=?,
+                   clean_object_names_json=?,
+                   clean_rule_names_json=?,
+                   strategy_code=?,
+                   strategy_name=?,
+                   standard_table=?,
+                   remark=?,
+                   status='READY',
+                   cleaned_rows=0,
+                   updated_at=?
+             WHERE owner_username=? AND id=?
+            """,
+            taskName,
+            cleanObjectsJson,
+            cleanObjectNamesJson,
+            cleanRuleNamesJson,
+            strategyCode,
+            strategyName,
+            outputTable,
+            remark,
+            now(),
+            ownerUsername,
+            id
+        );
+    }
+
     public int deleteCleanTask(String ownerUsername, Long id) {
         return jdbcTemplate.update("DELETE FROM clean_task_record WHERE owner_username=? AND id=?", ownerUsername, id);
     }
@@ -187,6 +229,45 @@ public class DataProcessTaskRepository {
         jdbcTemplate.update(
             "UPDATE fusion_task_record SET status='FAILED', updated_at=? WHERE owner_username=? AND id=?",
             now(), ownerUsername, id
+        );
+    }
+
+    public int updateFusionTask(
+        String ownerUsername,
+        Long id,
+        String taskName,
+        String targetTable,
+        String cleanTaskIdsJson,
+        String cleanTaskNamesJson,
+        String standardTablesJson,
+        String strategy,
+        String remark
+    ) {
+        return jdbcTemplate.update(
+            """
+            UPDATE fusion_task_record
+               SET task_name=?,
+                   target_table=?,
+                   clean_task_ids_json=?,
+                   clean_task_names_json=?,
+                   standard_tables_json=?,
+                   strategy=?,
+                   remark=?,
+                   status='READY',
+                   fusion_rows=0,
+                   updated_at=?
+             WHERE owner_username=? AND id=?
+            """,
+            taskName,
+            targetTable,
+            cleanTaskIdsJson,
+            cleanTaskNamesJson,
+            standardTablesJson,
+            strategy,
+            remark,
+            now(),
+            ownerUsername,
+            id
         );
     }
 

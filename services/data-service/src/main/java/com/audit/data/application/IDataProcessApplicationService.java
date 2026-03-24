@@ -24,12 +24,14 @@ public interface IDataProcessApplicationService {
     void deleteCleanStrategy(String username, Long id);
 
     Map<String, Object> createCleanTask(String username, Map<String, Object> payload);
+    Map<String, Object> updateCleanTask(String username, Long id, Map<String, Object> payload);
     Map<String, Object> runCleanTask(String username, Long id);
     Map<String, Object> runCleanTaskAsync(String username, Long id, String idempotencyKey);
     void deleteCleanTask(String username, Long id);
 
     List<Map<String, Object>> listFusionTasks(String username, String keyword, String status);
     Map<String, Object> createFusionTask(String username, Map<String, Object> payload);
+    Map<String, Object> updateFusionTask(String username, Long id, Map<String, Object> payload);
     Map<String, Object> runFusionTask(String username, Long id);
     Map<String, Object> previewFusionTask(String username, Long id, Integer limit);
     Map<String, Object> runFusionTaskAsync(String username, Long id, String idempotencyKey);

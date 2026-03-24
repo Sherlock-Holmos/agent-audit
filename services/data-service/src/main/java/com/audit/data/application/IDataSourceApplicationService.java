@@ -15,6 +15,8 @@ public interface IDataSourceApplicationService {
 
     Map<String, Object> createFile(String username, String name, String remark, MultipartFile file);
 
+    Map<String, Object> update(String username, Long id, Map<String, Object> payload);
+
     List<Map<String, Object>> listSourceObjects(String username, Long id);
 
     Map<String, Object> updateStatus(String username, Long id, String status);

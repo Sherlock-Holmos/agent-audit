@@ -13,6 +13,7 @@ public interface IDataSourceService {
     List<Map<String, Object>> list(String ownerUsername, String keyword, String type, String status);
     void delete(String ownerUsername, Long id);
     Map<String, Object> updateStatus(String ownerUsername, Long id, String status);
+    Map<String, Object> update(String ownerUsername, Long id, Map<String, Object> payload);
 
     // 数据库数据源
     Map<String, Object> createDatabase(String ownerUsername, Map<String, Object> payload);

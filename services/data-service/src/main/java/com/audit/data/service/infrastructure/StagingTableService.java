@@ -61,6 +61,25 @@ public class StagingTableService {
                 jdbcTemplate.execute(createSql);
     }
 
+    public void recreateRawTable(String tableName) {
+        String tableRef = stagingTableRef(tableName);
+        jdbcTemplate.execute("DROP TABLE IF EXISTS " + tableRef);
+        String createSql = Objects.requireNonNull(
+            """
+            CREATE TABLE %s (
+                id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                task_id BIGINT NOT NULL,
+                source_id BIGINT NOT NULL,
+                object_name VARCHAR(255) NOT NULL,
+                row_no INT NOT NULL,
+                raw_json LONGTEXT NOT NULL,
+                created_at DATETIME NOT NULL
+            )
+            """.formatted(tableRef)
+        );
+        jdbcTemplate.execute(createSql);
+    }
+
     public void recreateFusionTable(String tableName) {
         String tableRef = stagingTableRef(tableName);
         jdbcTemplate.execute("DROP TABLE IF EXISTS " + tableRef);
@@ -114,6 +133,45 @@ public class StagingTableService {
                 );
             }
         }
+    }
+
+    public void loadObjectsIntoRawTable(String ownerUsername, Long taskId, List<Map<String, Object>> cleanObjects, String rawTableName) {
+        String rawTableRef = stagingTableRef(rawTableName);
+        for (Map<String, Object> object : cleanObjects) {
+            Long sourceId = toLong(object.get("sourceId"));
+            String objectName = text(object.get("objectName"));
+            if (sourceId == null || isBlank(objectName)) {
+                throw new IllegalArgumentException("清洗对象信息不完整");
+            }
+
+            List<String> rows = extractRows(ownerUsername, sourceId, objectName);
+            int rowNo = 1;
+            for (String row : rows) {
+                jdbcTemplate.update(
+                    "INSERT INTO " + rawTableRef + "(task_id,source_id,object_name,row_no,raw_json,created_at) VALUES(?,?,?,?,?,?)",
+                    taskId,
+                    sourceId,
+                    objectName,
+                    rowNo++,
+                    row,
+                    now()
+                );
+            }
+        }
+    }
+
+    public void loadStandardFromRawTable(Long taskId, String rawTableName, String standardTableName) {
+        String rawTableRef = stagingTableRef(rawTableName);
+        String standardTableRef = stagingTableRef(standardTableName);
+        String sql = Objects.requireNonNull(
+            """
+            INSERT INTO %s(task_id,source_id,object_name,row_no,raw_json,normalized_json,created_at)
+            SELECT task_id, source_id, object_name, row_no, raw_json, raw_json, created_at
+              FROM %s
+             WHERE task_id=?
+            """.formatted(standardTableRef, rawTableRef)
+        );
+        jdbcTemplate.update(sql, taskId);
     }
 
     public int mergeStandardTablesToTarget(String ownerUsername, Long fusionTaskId, String targetTableName, List<String> standardTables) {
@@ -221,6 +279,16 @@ public class StagingTableService {
             rows.add(toJson(record));
         }
         return rows;
+    }
+
+    private List<String> extractRows(String ownerUsername, Long sourceId, String objectName) {
+        Map<String, Object> source = getSourceById(ownerUsername, sourceId);
+        String sourceType = text(source.get("type")).toUpperCase();
+        return switch (sourceType) {
+            case "DATABASE" -> readDatabaseRows(objectName);
+            case "FILE" -> fileRowReader.readRows(text(source.get("filePath")), text(source.get("fileName")));
+            default -> throw new IllegalArgumentException("不支持的数据源类型: " + sourceType);
+        };
     }
 
     private Map<String, Object> getSourceById(String ownerUsername, Long sourceId) {

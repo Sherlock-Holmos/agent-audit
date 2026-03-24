@@ -38,6 +38,12 @@ public class DataSourceApplicationService implements IDataSourceApplicationServi
     }
 
     @Override
+    @Transactional
+    public Map<String, Object> update(String username, Long id, Map<String, Object> payload) {
+        return dataSourceService.update(normalizeUser(username), id, payload);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<Map<String, Object>> listSourceObjects(String username, Long id) {
         return dataSourceService.listSourceObjects(normalizeUser(username), id);

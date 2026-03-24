@@ -182,6 +182,64 @@ public class DataSourceService implements IDataSourceService {
         return getById(ownerUsername, id);
     }
 
+    public Map<String, Object> update(String ownerUsername, Long id, Map<String, Object> payload) {
+        Map<String, Object> existing = getById(ownerUsername, id);
+        String sourceType = text(existing.get("type")).toUpperCase();
+        String now = now();
+
+        if ("DATABASE".equals(sourceType)) {
+            String name = text(payload.get("name"));
+            String dbType = text(payload.get("dbType"));
+            String host = text(payload.get("host"));
+            Integer port = toInt(payload.get("port"));
+            String databaseName = text(payload.get("databaseName"));
+            String username = text(payload.get("username"));
+            String password = text(payload.get("password"));
+            String remark = text(payload.get("remark"));
+
+            if (isBlank(name) || isBlank(dbType) || isBlank(host) || port == null || isBlank(databaseName) || isBlank(username)) {
+                throw new IllegalArgumentException("数据库数据源必填项缺失");
+            }
+
+            String normalizedDbType = dbType.toUpperCase();
+            if (!Set.of("MYSQL", "POSTGRESQL", "ORACLE", "SQLSERVER").contains(normalizedDbType)) {
+                throw new IllegalArgumentException("暂不支持的数据库类型: " + dbType);
+            }
+
+            if (isBlank(password)) {
+                password = getDbPassword(ownerUsername, id);
+            }
+
+            ensureDriverAvailable(normalizedDbType);
+            String jdbcUrl = buildJdbcUrl(normalizedDbType, host, port, databaseName);
+            testDatabaseConnection(jdbcUrl, username, password);
+
+            int count = jdbcTemplate.update(
+                """
+                UPDATE data_source_record
+                   SET name=?, db_type=?, host=?, port=?, database_name=?, username=?, db_password=?, remark=?, updated_at=?
+                 WHERE owner_username=? AND id=? AND type='DATABASE'
+                """,
+                name, normalizedDbType, host, port, databaseName, username, password, remark, now, ownerUsername, id
+            );
+            if (count == 0) throw new IllegalArgumentException("数据源不存在");
+            return getById(ownerUsername, id);
+        }
+
+        String name = text(payload.get("name"));
+        String remark = text(payload.get("remark"));
+        if (isBlank(name)) {
+            throw new IllegalArgumentException("数据源名称不能为空");
+        }
+
+        int count = jdbcTemplate.update(
+            "UPDATE data_source_record SET name=?, remark=?, updated_at=? WHERE owner_username=? AND id=? AND type='FILE'",
+            name, remark, now, ownerUsername, id
+        );
+        if (count == 0) throw new IllegalArgumentException("数据源不存在");
+        return getById(ownerUsername, id);
+    }
+
     public void delete(String ownerUsername, Long id) {
         Map<String, Object> source = getById(ownerUsername, id);
         String sourceType = text(source.get("type"));
@@ -270,6 +328,15 @@ public class DataSourceService implements IDataSourceService {
         );
         if (rows.isEmpty()) throw new IllegalArgumentException("数据源不存在");
         return rows.get(0);
+    }
+
+    private String getDbPassword(String ownerUsername, Long id) {
+        return jdbcTemplate.query(
+            "SELECT db_password FROM data_source_record WHERE owner_username=? AND id=?",
+            rs -> rs.next() ? nvl(rs.getString(1)) : "",
+            ownerUsername,
+            id
+        );
     }
 
     private Map<String, Object> toView(java.sql.ResultSet rs) throws java.sql.SQLException {

@@ -31,7 +31,7 @@ public class DataProcessApplicationService implements IDataProcessApplicationSer
     }
 
     @Override
-    @Transactional
+    @Transactional(readOnly = true)
     public List<Map<String, Object>> listCleanRules(String username) {
         return dataProcessService.listCleanRules(normalizeUser(username));
     }
@@ -67,7 +67,7 @@ public class DataProcessApplicationService implements IDataProcessApplicationSer
     }
 
     @Override
-    @Transactional
+    @Transactional(readOnly = true)
     public List<Map<String, Object>> listCleanStrategies(String username) {
         return dataProcessService.listCleanStrategies(normalizeUser(username));
     }
@@ -110,6 +110,12 @@ public class DataProcessApplicationService implements IDataProcessApplicationSer
 
     @Override
     @Transactional
+    public Map<String, Object> updateCleanTask(String username, Long id, Map<String, Object> payload) {
+        return dataProcessService.updateCleanTask(normalizeUser(username), id, payload);
+    }
+
+    @Override
+    @Transactional
     public Map<String, Object> runCleanTask(String username, Long id) {
         return dataProcessService.runCleanTask(normalizeUser(username), id);
     }
@@ -136,6 +142,12 @@ public class DataProcessApplicationService implements IDataProcessApplicationSer
     @Transactional
     public Map<String, Object> createFusionTask(String username, Map<String, Object> payload) {
         return dataProcessService.createFusionTask(normalizeUser(username), payload);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> updateFusionTask(String username, Long id, Map<String, Object> payload) {
+        return dataProcessService.updateFusionTask(normalizeUser(username), id, payload);
     }
 
     @Override

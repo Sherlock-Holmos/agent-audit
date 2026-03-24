@@ -151,6 +151,15 @@ public class DataProcessController {
         return ApiResponse.success("创建成功", dataProcessApplicationService.createCleanTask(username, payload));
     }
 
+    @PatchMapping("/clean/tasks/{id}")
+    public ApiResponse<Object> updateCleanTask(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @NotNull(message = "任务ID不能为空") @Positive(message = "任务ID必须大于0") @PathVariable Long id,
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
+    ) {
+        return ApiResponse.success("更新成功", dataProcessApplicationService.updateCleanTask(username, id, payload));
+    }
+
     @PostMapping("/clean/tasks/{id}/run")
     public ApiResponse<Object> runCleanTask(
         @RequestHeader(value = "X-User-Name", required = false) String username,
@@ -192,6 +201,15 @@ public class DataProcessController {
         @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
     ) {
         return ApiResponse.success("创建成功", dataProcessApplicationService.createFusionTask(username, payload));
+    }
+
+    @PatchMapping("/fusion/tasks/{id}")
+    public ApiResponse<Object> updateFusionTask(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @NotNull(message = "任务ID不能为空") @Positive(message = "任务ID必须大于0") @PathVariable Long id,
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
+    ) {
+        return ApiResponse.success("更新成功", dataProcessApplicationService.updateFusionTask(username, id, payload));
     }
 
     @PostMapping("/fusion/tasks/{id}/run")

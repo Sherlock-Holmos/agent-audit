@@ -60,6 +60,15 @@ public class DataSourceController {
         return ApiResponse.success("导入成功", dataSourceApplicationService.createFile(username, name, remark, file));
     }
 
+    @PatchMapping("/{id}")
+    public ApiResponse<Object> update(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @NotNull(message = "数据源ID不能为空") @Positive(message = "数据源ID必须大于0") @PathVariable Long id,
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
+    ) {
+        return ApiResponse.success("更新成功", dataSourceApplicationService.update(username, id, payload));
+    }
+
     @GetMapping("/{id}/objects")
     public ApiResponse<Object> listSourceObjects(
         @RequestHeader(value = "X-User-Name", required = false) String username,
