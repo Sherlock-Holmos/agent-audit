@@ -35,20 +35,17 @@ const props = defineProps({
 
 const TABLE_LAYOUT_KEY = 'app:table-layout:global'
 const tableLayout = reactive({
-  rowHeight: 44,
   size: 'default'
 })
 const columnWidths = ref({})
 const minWidthCache = new Map()
+const FIXED_ROW_HEIGHT = 44
 
 function loadTableLayout() {
   try {
     const cached = localStorage.getItem(TABLE_LAYOUT_KEY)
     if (!cached) return
     const parsed = JSON.parse(cached)
-    if (typeof parsed?.rowHeight === 'number') {
-      tableLayout.rowHeight = parsed.rowHeight
-    }
     if (typeof parsed?.size === 'string') {
       tableLayout.size = parsed.size
     }
@@ -68,9 +65,6 @@ function loadColumnWidths() {
 
 function handleTableLayoutChanged(event) {
   const next = event?.detail || {}
-  if (typeof next?.rowHeight === 'number') {
-    tableLayout.rowHeight = next.rowHeight
-  }
   if (typeof next?.size === 'string') {
     tableLayout.size = next.size
   }
@@ -122,13 +116,13 @@ function resolveHeaderMinWidth(column) {
 
 function rowStyle() {
   return {
-    height: `${tableLayout.rowHeight}px`
+    height: `${FIXED_ROW_HEIGHT}px`
   }
 }
 
 function headerRowStyle() {
   return {
-    height: `${tableLayout.rowHeight}px`
+    height: `${FIXED_ROW_HEIGHT}px`
   }
 }
 

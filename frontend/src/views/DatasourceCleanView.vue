@@ -17,7 +17,6 @@
         :data="tasks"
         :loading="loading"
         :table-size="tableLayout.size"
-        :row-height="tableLayout.rowHeight"
         layout-storage-key="clean-view-layout"
         @preview="handlePreview"
         @edit="handleEdit"
@@ -125,7 +124,6 @@ const previewStats = reactive({
   previewLimit: 0
 })
 const tableLayout = reactive({
-  rowHeight: 44,
   size: 'default'
 })
 const TABLE_LAYOUT_KEY = 'app:table-layout:global'
@@ -337,9 +335,6 @@ function loadTableLayout() {
     const cached = localStorage.getItem(TABLE_LAYOUT_KEY)
     if (!cached) return
     const parsed = JSON.parse(cached)
-    if (typeof parsed?.rowHeight === 'number') {
-      tableLayout.rowHeight = parsed.rowHeight
-    }
     if (typeof parsed?.size === 'string') {
       tableLayout.size = parsed.size
     }
@@ -350,9 +345,6 @@ function loadTableLayout() {
 
 function handleTableLayoutChanged(event) {
   const next = event?.detail || {}
-  if (typeof next?.rowHeight === 'number') {
-    tableLayout.rowHeight = next.rowHeight
-  }
   if (typeof next?.size === 'string') {
     tableLayout.size = next.size
   }

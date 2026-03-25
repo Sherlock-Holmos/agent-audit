@@ -124,10 +124,6 @@ const props = defineProps({
     type: String,
     default: 'default'
   },
-  rowHeight: {
-    type: Number,
-    default: 44
-  },
   layoutStorageKey: {
     type: String,
     default: 'clean-table-layout'
@@ -144,6 +140,7 @@ const columnWidths = ref({})
 const minWidthCache = new Map()
 const cardRef = ref()
 const tableHeight = ref(420)
+const FIXED_ROW_HEIGHT = 44
 let resizeObserver
 
 function updateTableHeight() {
@@ -247,13 +244,13 @@ function resolveHeaderMinWidth(column) {
 
 function rowStyle() {
   return {
-    height: `${props.rowHeight}px`
+    height: `${FIXED_ROW_HEIGHT}px`
   }
 }
 
 function headerRowStyle() {
   return {
-    height: `${props.rowHeight}px`
+    height: `${FIXED_ROW_HEIGHT}px`
   }
 }
 </script>
