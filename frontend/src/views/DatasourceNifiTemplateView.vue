@@ -1,16 +1,12 @@
 <template>
   <GovernancePageShell>
 
-    <el-card shadow="never" style="margin-top: 0">
-      <template #header>
-        <GovernanceSectionHeader title="NiFi 模板管理">
-          <template #actions>
-          <el-space>
-            <el-button @click="loadNifiTemplates">刷新</el-button>
-            <el-button type="primary" @click="openTemplateCreate">新增模板</el-button>
-          </el-space>
-          </template>
-        </GovernanceSectionHeader>
+    <GovernanceCardSection title="NiFi 模板管理" card-style="margin-top: 0">
+      <template #actions>
+        <el-space>
+          <el-button @click="loadNifiTemplates">刷新</el-button>
+          <el-button type="primary" @click="openTemplateCreate">新增模板</el-button>
+        </el-space>
       </template>
       <GovernanceTable :data="nifiTemplates" :loading="loadingNifiTemplates" layout-storage-key="governance-nifi-template-table">
         <template #default="{ resolveWidth, resolveMinWidth }">
@@ -67,7 +63,7 @@
           </el-table-column>
         </template>
       </GovernanceTable>
-    </el-card>
+    </GovernanceCardSection>
 
     <el-dialog v-model="templateEditorVisible" width="720px" :title="templateEditorTitle" destroy-on-close>
       <el-form label-width="120px">
@@ -127,7 +123,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import GovernancePageShell from '../components/dataclean/GovernancePageShell.vue'
-import GovernanceSectionHeader from '../components/dataclean/GovernanceSectionHeader.vue'
+import GovernanceCardSection from '../components/dataclean/GovernanceCardSection.vue'
 import GovernanceTable from '../components/dataclean/GovernanceTable.vue'
 import { listNifiFlowTemplates, saveNifiFlowTemplate, triggerNifiFlow } from '../api/nifi-control-plane'
 import { useAsyncTask } from '../composables/useAsyncTask'

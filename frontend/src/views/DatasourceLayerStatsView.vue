@@ -1,21 +1,17 @@
 <template>
   <GovernancePageShell>
 
-    <el-card shadow="never" style="margin-top: 0">
-      <template #header>
-        <GovernanceSectionHeader title="Bronze/Silver/Gold 分层统计">
-          <template #actions>
-          <el-space>
-            <el-select v-model="layerFilter.taskType" clearable placeholder="任务类型" style="width: 130px">
-              <el-option label="CLEAN" value="CLEAN" />
-              <el-option label="FUSION" value="FUSION" />
-            </el-select>
-            <el-input-number v-model="layerFilter.taskId" :min="1" :step="1" placeholder="任务ID" style="width: 140px" />
-            <el-button type="primary" :loading="loadingLayerStats" @click="queryLayerStats">查询</el-button>
-            <el-button @click="resetLayerFilter">重置</el-button>
-          </el-space>
-          </template>
-        </GovernanceSectionHeader>
+    <GovernanceCardSection title="Bronze/Silver/Gold 分层统计" card-style="margin-top: 0">
+      <template #actions>
+        <el-space>
+          <el-select v-model="layerFilter.taskType" clearable placeholder="任务类型" style="width: 130px">
+            <el-option label="CLEAN" value="CLEAN" />
+            <el-option label="FUSION" value="FUSION" />
+          </el-select>
+          <el-input-number v-model="layerFilter.taskId" :min="1" :step="1" placeholder="任务ID" style="width: 140px" />
+          <el-button type="primary" :loading="loadingLayerStats" @click="queryLayerStats">查询</el-button>
+          <el-button @click="resetLayerFilter">重置</el-button>
+        </el-space>
       </template>
       <el-row :gutter="12" style="margin-bottom: 10px">
         <el-col :span="6">
@@ -73,14 +69,14 @@
           />
         </template>
       </GovernanceTable>
-    </el-card>
+    </GovernanceCardSection>
   </GovernancePageShell>
 </template>
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import GovernancePageShell from '../components/dataclean/GovernancePageShell.vue'
-import GovernanceSectionHeader from '../components/dataclean/GovernanceSectionHeader.vue'
+import GovernanceCardSection from '../components/dataclean/GovernanceCardSection.vue'
 import GovernanceTable from '../components/dataclean/GovernanceTable.vue'
 import { listLayerStats } from '../api/layer-stats'
 import { useAsyncTask } from '../composables/useAsyncTask'
