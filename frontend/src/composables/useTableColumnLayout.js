@@ -61,6 +61,15 @@ export function useTableColumnLayout(options = {}) {
       const matched = candidates.find((candidate) => Object.prototype.hasOwnProperty.call(minByKey, candidate))
       if (matched) {
         key = matched
+      } else {
+        const columnId = String(column?.id || '').trim()
+        const indexMatch = columnId.match(/column_(\d+)$/)
+        if (indexMatch) {
+          const index = Number.parseInt(indexMatch[1], 10) - 1
+          if (Number.isInteger(index) && index >= 0 && index < knownKeys.length) {
+            key = knownKeys[index]
+          }
+        }
       }
     }
     if (!key) return
