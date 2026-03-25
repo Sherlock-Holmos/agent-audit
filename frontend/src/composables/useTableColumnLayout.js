@@ -42,7 +42,8 @@ export function useTableColumnLayout(options = {}) {
   }
 
   function shouldAutoFit() {
-    return Object.keys(columnWidths.value || {}).length === 0
+    // Always fit to container width so there is no empty gap on the right side.
+    return true
   }
 
   function handleHeaderDragEnd(newWidth, _oldWidth, column) {
