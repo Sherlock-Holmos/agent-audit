@@ -38,6 +38,30 @@ export const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/datasource/clean-rules/rules',
+    name: 'datasource-clean-rules-rules',
+    component: () => import('./views/DatasourceRuleStrategyView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/datasource/clean-rules/synonyms',
+    name: 'datasource-clean-rules-synonyms',
+    component: () => import('./views/DatasourceFusionKeySynonymView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/datasource/clean-rules/nifi-templates',
+    name: 'datasource-clean-rules-nifi-templates',
+    component: () => import('./views/DatasourceNifiTemplateView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/datasource/clean-rules/layer-stats',
+    name: 'datasource-clean-rules-layer-stats',
+    component: () => import('./views/DatasourceLayerStatsView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/datasource/fusion',
     name: 'datasource-fusion',
     component: () => import('./views/DatasourceFusionView.vue'),
