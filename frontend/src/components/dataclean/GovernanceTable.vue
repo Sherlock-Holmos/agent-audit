@@ -3,7 +3,7 @@
     :data="data"
     v-loading="loading"
     border
-    fit
+    :fit="false"
     show-overflow-tooltip
     :show-header-overflow-tooltip="false"
     style="width: 100%"

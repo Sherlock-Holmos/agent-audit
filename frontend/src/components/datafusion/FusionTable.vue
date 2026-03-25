@@ -11,7 +11,7 @@
       :size="tableSize"
       :row-style="rowStyle"
       :header-row-style="headerRowStyle"
-      fit
+      :fit="false"
       @header-dragend="handleHeaderDragEnd"
     >
       <el-table-column
