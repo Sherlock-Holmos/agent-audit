@@ -44,14 +44,13 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
 import GovernancePageShell from '../components/dataclean/GovernancePageShell.vue'
 import GovernanceSectionHeader from '../components/dataclean/GovernanceSectionHeader.vue'
 import { listLayerStats } from '../api/layer-stats'
-import { getErrorMessage } from '../utils/error'
+import { useAsyncTask } from '../composables/useAsyncTask'
 
 const layerDetails = ref([])
-const loadingLayerStats = ref(false)
+const { loading: loadingLayerStats, run: runQueryLayerStats } = useAsyncTask()
 
 const layerFilter = reactive({
   taskType: '',
@@ -66,8 +65,7 @@ const layerSummary = reactive({
 })
 
 async function queryLayerStats() {
-  loadingLayerStats.value = true
-  try {
+  const result = await runQueryLayerStats(async () => {
     const params = {}
     if (layerFilter.taskType) {
       params.taskType = layerFilter.taskType
@@ -75,8 +73,25 @@ async function queryLayerStats() {
     if (layerFilter.taskId) {
       params.taskId = layerFilter.taskId
     }
-    const { data } = await listLayerStats(params)
-    const payload = data.data || {}
+    return listLayerStats(params)
+  }, {
+    errorMessage: '加载分层统计失败',
+    onError: () => {
+      layerDetails.value = []
+      Object.assign(layerSummary, {
+        bronzeRows: 0,
+        silverRows: 0,
+        goldRows: 0,
+        taskCount: 0
+      })
+    }
+  })
+
+  if (!result) {
+    return
+  }
+
+  const payload = result.data?.data || {}
     Object.assign(layerSummary, payload.summary || {
       bronzeRows: 0,
       silverRows: 0,
@@ -84,18 +99,6 @@ async function queryLayerStats() {
       taskCount: 0
     })
     layerDetails.value = payload.details || []
-  } catch (error) {
-    layerDetails.value = []
-    Object.assign(layerSummary, {
-      bronzeRows: 0,
-      silverRows: 0,
-      goldRows: 0,
-      taskCount: 0
-    })
-    ElMessage.error(getErrorMessage(error, '加载分层统计失败'))
-  } finally {
-    loadingLayerStats.value = false
-  }
 }
 
 function resetLayerFilter() {

@@ -102,15 +102,16 @@ import { ElMessage } from 'element-plus'
 import GovernancePageShell from '../components/dataclean/GovernancePageShell.vue'
 import GovernanceSectionHeader from '../components/dataclean/GovernanceSectionHeader.vue'
 import { listNifiFlowTemplates, saveNifiFlowTemplate, triggerNifiFlow } from '../api/nifi-control-plane'
-import { getErrorMessage } from '../utils/error'
+import { useAsyncTask } from '../composables/useAsyncTask'
 
-const loadingNifiTemplates = ref(false)
 const nifiTemplates = ref([])
 const templateEditorVisible = ref(false)
 const templateEditorTitle = ref('新增模板')
-const savingTemplate = ref(false)
 const templateRunVisible = ref(false)
-const runningTemplate = ref(false)
+
+const { loading: loadingNifiTemplates, run: runLoadNifiTemplates } = useAsyncTask()
+const { loading: savingTemplate, run: runSaveTemplate } = useAsyncTask()
+const { loading: runningTemplate, run: runTemplateTrigger } = useAsyncTask()
 
 const templateEditorForm = reactive({
   flowType: 'INGEST',
@@ -127,15 +128,14 @@ const templateRunForm = reactive({
 })
 
 async function loadNifiTemplates() {
-  loadingNifiTemplates.value = true
-  try {
-    const { data } = await listNifiFlowTemplates()
-    nifiTemplates.value = data.data || []
-  } catch (error) {
-    nifiTemplates.value = []
-    ElMessage.error(getErrorMessage(error, '加载 NiFi 模板失败'))
-  } finally {
-    loadingNifiTemplates.value = false
+  const result = await runLoadNifiTemplates(() => listNifiFlowTemplates(), {
+    errorMessage: '加载 NiFi 模板失败',
+    onError: () => {
+      nifiTemplates.value = []
+    }
+  })
+  if (result) {
+    nifiTemplates.value = result.data?.data || []
   }
 }
 
@@ -181,26 +181,25 @@ async function runTemplateFlow() {
     return
   }
 
-  runningTemplate.value = true
-  try {
-    const { data } = await triggerNifiFlow({
+  const result = await runTemplateTrigger(() => triggerNifiFlow({
       flowType: templateRunForm.flowType,
       processGroupId: templateRunForm.processGroupId,
       parameters
-    })
-    const result = data.data || {}
-    const dispatch = result.dispatchStatus || 'UNKNOWN'
-    if (dispatch === 'SUBMITTED') {
-      ElMessage.success(`触发成功，状态：${dispatch}`)
-    } else {
-      ElMessage.warning(`触发完成，状态：${dispatch}`)
-    }
-    templateRunVisible.value = false
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '触发失败'))
-  } finally {
-    runningTemplate.value = false
+    }), {
+    errorMessage: '触发失败'
+  })
+  if (!result) {
+    return
   }
+
+  const payload = result.data?.data || {}
+  const dispatch = payload.dispatchStatus || 'UNKNOWN'
+  if (dispatch === 'SUBMITTED') {
+    ElMessage.success(`触发成功，状态：${dispatch}`)
+  } else {
+    ElMessage.warning(`触发完成，状态：${dispatch}`)
+  }
+  templateRunVisible.value = false
 }
 
 async function saveTemplateEditor() {
@@ -216,22 +215,19 @@ async function saveTemplateEditor() {
     .map((it) => it.trim())
     .filter(Boolean)
 
-  savingTemplate.value = true
-  try {
-    await saveNifiFlowTemplate({
+  const result = await runSaveTemplate(() => saveNifiFlowTemplate({
       flowType,
       processGroupId,
       parameterSchema: { requiredKeys },
       enabled: templateEditorForm.enabled,
       remark: templateEditorForm.remark.trim()
-    })
-    ElMessage.success('模板已保存')
+    }), {
+    errorMessage: '模板保存失败',
+    successMessage: '模板已保存'
+  })
+  if (result) {
     templateEditorVisible.value = false
     await loadNifiTemplates()
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '模板保存失败'))
-  } finally {
-    savingTemplate.value = false
   }
 }
 
