@@ -1,6 +1,5 @@
 <template>
-  <div>
-    <GovernanceSubNav />
+  <GovernancePageShell>
 
     <el-card shadow="never" style="margin-top: 0">
       <template #header>
@@ -94,13 +93,13 @@
         <el-button type="primary" :loading="runningTemplate" @click="runTemplateFlow">执行触发</el-button>
       </template>
     </el-dialog>
-  </div>
+  </GovernancePageShell>
 </template>
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import GovernanceSubNav from '../components/dataclean/GovernanceSubNav.vue'
+import GovernancePageShell from '../components/dataclean/GovernancePageShell.vue'
 import GovernanceSectionHeader from '../components/dataclean/GovernanceSectionHeader.vue'
 import { listNifiFlowTemplates, saveNifiFlowTemplate, triggerNifiFlow } from '../api/nifi-control-plane'
 import { getErrorMessage } from '../utils/error'

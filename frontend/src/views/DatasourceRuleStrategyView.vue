@@ -1,6 +1,5 @@
 <template>
-  <div>
-    <GovernanceSubNav />
+  <GovernancePageShell>
 
     <el-card shadow="never" style="margin-bottom: 12px">
       <template #header>
@@ -157,13 +156,13 @@
       :submitting="creatingStrategy"
       @submit="handleStrategyUpload"
     />
-  </div>
+  </GovernancePageShell>
 </template>
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import GovernanceSubNav from '../components/dataclean/GovernanceSubNav.vue'
+import GovernancePageShell from '../components/dataclean/GovernancePageShell.vue'
 import GovernanceSectionHeader from '../components/dataclean/GovernanceSectionHeader.vue'
 import RuleUploadDialog from '../components/dataclean/RuleUploadDialog.vue'
 import StrategyUploadDialog from '../components/dataclean/StrategyUploadDialog.vue'

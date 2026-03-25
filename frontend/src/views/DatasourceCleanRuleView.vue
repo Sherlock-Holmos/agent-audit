@@ -1,6 +1,5 @@
 <template>
-  <div class="governance-hub">
-    <GovernanceSubNav />
+  <GovernancePageShell>
 
     <el-card shadow="never">
       <template #header>
@@ -80,13 +79,13 @@
         </el-collapse-item>
       </el-collapse>
     </el-card>
-  </div>
+  </GovernancePageShell>
 </template>
 
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import GovernanceSubNav from '../components/dataclean/GovernanceSubNav.vue'
+import GovernancePageShell from '../components/dataclean/GovernancePageShell.vue'
 
 const router = useRouter()
 const activeNames = ref(['rules'])
@@ -99,12 +98,6 @@ function go(path) {
 </script>
 
 <style scoped>
-.governance-hub {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
 .hub-header {
   display: flex;
   align-items: center;
