@@ -12,34 +12,61 @@
           </template>
         </GovernanceSectionHeader>
       </template>
-      <el-table :data="nifiTemplates" v-loading="loadingNifiTemplates" border style="width: 100%">
-        <el-table-column prop="flowType" label="Flow 类型" width="140" />
-        <el-table-column prop="processGroupId" label="Process Group ID" min-width="220" />
-        <el-table-column prop="versionNo" label="版本" width="90" align="center" />
-        <el-table-column label="启用" width="90" align="center">
-          <template #default="scope">
-            <el-tag :type="scope.row.enabled ? 'success' : 'info'">{{ scope.row.enabled ? '启用' : '停用' }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="updatedAt" label="更新时间" width="180" />
-        <el-table-column label="参数规则" min-width="220">
-          <template #default="scope">
-            <el-space wrap>
-              <el-tag
-                v-for="key in (scope.row.parameterSchema?.requiredKeys || [])"
-                :key="`${scope.row.id}-${key}`"
-                type="warning"
-              >{{ key }}</el-tag>
-            </el-space>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="120" align="center">
-          <template #default="scope">
-            <el-button type="primary" link @click="openTemplateEditor(scope.row)">编辑</el-button>
-            <el-button type="success" link @click="openTemplateRun(scope.row)">触发测试</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <GovernanceTable :data="nifiTemplates" :loading="loadingNifiTemplates" layout-storage-key="governance-nifi-template-table">
+        <template #default="{ resolveWidth, resolveMinWidth }">
+          <el-table-column
+            column-key="flowType"
+            prop="flowType"
+            label="Flow 类型"
+            :width="resolveWidth('flowType')"
+            :min-width="resolveMinWidth('flowType', 140)"
+          />
+          <el-table-column
+            column-key="processGroupId"
+            prop="processGroupId"
+            label="Process Group ID"
+            :width="resolveWidth('processGroupId')"
+            :min-width="resolveMinWidth('processGroupId', 240)"
+          />
+          <el-table-column
+            column-key="versionNo"
+            prop="versionNo"
+            label="版本"
+            :width="resolveWidth('versionNo')"
+            :min-width="resolveMinWidth('versionNo', 100)"
+            align="center"
+          />
+          <el-table-column column-key="enabled" label="启用" :width="resolveWidth('enabled')" :min-width="resolveMinWidth('enabled', 100)" align="center">
+            <template #default="scope">
+              <el-tag :type="scope.row.enabled ? 'success' : 'info'">{{ scope.row.enabled ? '启用' : '停用' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column
+            column-key="updatedAt"
+            prop="updatedAt"
+            label="更新时间"
+            :width="resolveWidth('updatedAt')"
+            :min-width="resolveMinWidth('updatedAt', 180)"
+          />
+          <el-table-column column-key="parameterSchema" label="参数规则" :width="resolveWidth('parameterSchema')" :min-width="resolveMinWidth('parameterSchema', 220)">
+            <template #default="scope">
+              <el-space wrap>
+                <el-tag
+                  v-for="key in (scope.row.parameterSchema?.requiredKeys || [])"
+                  :key="`${scope.row.id}-${key}`"
+                  type="warning"
+                >{{ key }}</el-tag>
+              </el-space>
+            </template>
+          </el-table-column>
+          <el-table-column column-key="actions" label="操作" :width="resolveWidth('actions')" :min-width="resolveMinWidth('actions', 160)" align="center" fixed="right">
+            <template #default="scope">
+              <el-button type="primary" link @click="openTemplateEditor(scope.row)">编辑</el-button>
+              <el-button type="success" link @click="openTemplateRun(scope.row)">触发测试</el-button>
+            </template>
+          </el-table-column>
+        </template>
+      </GovernanceTable>
     </el-card>
 
     <el-dialog v-model="templateEditorVisible" width="720px" :title="templateEditorTitle" destroy-on-close>
@@ -101,6 +128,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import GovernancePageShell from '../components/dataclean/GovernancePageShell.vue'
 import GovernanceSectionHeader from '../components/dataclean/GovernanceSectionHeader.vue'
+import GovernanceTable from '../components/dataclean/GovernanceTable.vue'
 import { listNifiFlowTemplates, saveNifiFlowTemplate, triggerNifiFlow } from '../api/nifi-control-plane'
 import { useAsyncTask } from '../composables/useAsyncTask'
 

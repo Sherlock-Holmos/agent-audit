@@ -31,13 +31,48 @@
           <el-statistic title="任务数" :value="layerSummary.taskCount || 0" />
         </el-col>
       </el-row>
-      <el-table :data="layerDetails" v-loading="loadingLayerStats" border style="width: 100%">
-        <el-table-column prop="taskType" label="任务类型" width="120" />
-        <el-table-column prop="taskId" label="任务ID" width="120" />
-        <el-table-column prop="bronzeRows" label="Bronze" width="140" align="right" />
-        <el-table-column prop="silverRows" label="Silver" width="140" align="right" />
-        <el-table-column prop="goldRows" label="Gold" width="140" align="right" />
-      </el-table>
+      <GovernanceTable :data="layerDetails" :loading="loadingLayerStats" layout-storage-key="governance-layer-stats-table">
+        <template #default="{ resolveWidth, resolveMinWidth }">
+          <el-table-column
+            column-key="taskType"
+            prop="taskType"
+            label="任务类型"
+            :width="resolveWidth('taskType')"
+            :min-width="resolveMinWidth('taskType', 140)"
+          />
+          <el-table-column
+            column-key="taskId"
+            prop="taskId"
+            label="任务ID"
+            :width="resolveWidth('taskId')"
+            :min-width="resolveMinWidth('taskId', 120)"
+          />
+          <el-table-column
+            column-key="bronzeRows"
+            prop="bronzeRows"
+            label="Bronze"
+            :width="resolveWidth('bronzeRows')"
+            :min-width="resolveMinWidth('bronzeRows', 160)"
+            align="right"
+          />
+          <el-table-column
+            column-key="silverRows"
+            prop="silverRows"
+            label="Silver"
+            :width="resolveWidth('silverRows')"
+            :min-width="resolveMinWidth('silverRows', 160)"
+            align="right"
+          />
+          <el-table-column
+            column-key="goldRows"
+            prop="goldRows"
+            label="Gold"
+            :width="resolveWidth('goldRows')"
+            :min-width="resolveMinWidth('goldRows', 160)"
+            align="right"
+          />
+        </template>
+      </GovernanceTable>
     </el-card>
   </GovernancePageShell>
 </template>
@@ -46,6 +81,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import GovernancePageShell from '../components/dataclean/GovernancePageShell.vue'
 import GovernanceSectionHeader from '../components/dataclean/GovernanceSectionHeader.vue'
+import GovernanceTable from '../components/dataclean/GovernanceTable.vue'
 import { listLayerStats } from '../api/layer-stats'
 import { useAsyncTask } from '../composables/useAsyncTask'
 

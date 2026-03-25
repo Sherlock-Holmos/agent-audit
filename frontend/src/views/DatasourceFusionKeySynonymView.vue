@@ -12,40 +12,54 @@
           </template>
         </GovernanceSectionHeader>
       </template>
-      <el-table :data="synonyms" v-loading="loadingSynonyms" border style="width: 100%">
-        <el-table-column prop="canonicalKey" label="标准主键" min-width="180" />
-        <el-table-column label="同义字段" min-width="320">
-          <template #default="scope">
-            <el-space wrap>
-              <el-tag v-for="item in scope.row.aliases || []" :key="`${scope.row.id}-${item}`" type="info">{{ item }}</el-tag>
-            </el-space>
-          </template>
-        </el-table-column>
-        <el-table-column label="类型" width="100" align="center">
-          <template #default="scope">
-            <el-tag :type="scope.row.builtIn ? 'info' : 'success'">
-              {{ scope.row.builtIn ? '系统' : '用户' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="启用" width="90" align="center">
-          <template #default="scope">
-            <el-switch :model-value="scope.row.enabled" @change="(val) => handleToggleSynonym(scope.row.id, val)" />
-          </template>
-        </el-table-column>
-        <el-table-column prop="updatedAt" label="更新时间" width="180" />
-        <el-table-column label="操作" width="180" align="center">
-          <template #default="scope">
-            <el-button type="primary" link @click="openSynonymEditor(scope.row)">编辑</el-button>
-            <el-button type="primary" link @click="openSynonymHistory(scope.row)">历史</el-button>
-            <el-popconfirm title="确认删除该映射？" @confirm="handleDeleteSynonym(scope.row)">
-              <template #reference>
-                <el-button type="danger" link :disabled="scope.row.builtIn">删除</el-button>
-              </template>
-            </el-popconfirm>
-          </template>
-        </el-table-column>
-      </el-table>
+      <GovernanceTable :data="synonyms" :loading="loadingSynonyms" layout-storage-key="governance-synonym-table">
+        <template #default="{ resolveWidth, resolveMinWidth }">
+          <el-table-column
+            column-key="canonicalKey"
+            prop="canonicalKey"
+            label="标准主键"
+            :width="resolveWidth('canonicalKey')"
+            :min-width="resolveMinWidth('canonicalKey', 180)"
+          />
+          <el-table-column column-key="aliases" label="同义字段" :width="resolveWidth('aliases')" :min-width="resolveMinWidth('aliases', 320)">
+            <template #default="scope">
+              <el-space wrap>
+                <el-tag v-for="item in scope.row.aliases || []" :key="`${scope.row.id}-${item}`" type="info">{{ item }}</el-tag>
+              </el-space>
+            </template>
+          </el-table-column>
+          <el-table-column column-key="builtIn" label="类型" :width="resolveWidth('builtIn')" :min-width="resolveMinWidth('builtIn', 100)" align="center">
+            <template #default="scope">
+              <el-tag :type="scope.row.builtIn ? 'info' : 'success'">
+                {{ scope.row.builtIn ? '系统' : '用户' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column column-key="enabled" label="启用" :width="resolveWidth('enabled')" :min-width="resolveMinWidth('enabled', 90)" align="center">
+            <template #default="scope">
+              <el-switch :model-value="scope.row.enabled" @change="(val) => handleToggleSynonym(scope.row.id, val)" />
+            </template>
+          </el-table-column>
+          <el-table-column
+            column-key="updatedAt"
+            prop="updatedAt"
+            label="更新时间"
+            :width="resolveWidth('updatedAt')"
+            :min-width="resolveMinWidth('updatedAt', 180)"
+          />
+          <el-table-column column-key="actions" label="操作" :width="resolveWidth('actions')" :min-width="resolveMinWidth('actions', 180)" align="center" fixed="right">
+            <template #default="scope">
+              <el-button type="primary" link @click="openSynonymEditor(scope.row)">编辑</el-button>
+              <el-button type="primary" link @click="openSynonymHistory(scope.row)">历史</el-button>
+              <el-popconfirm title="确认删除该映射？" @confirm="handleDeleteSynonym(scope.row)">
+                <template #reference>
+                  <el-button type="danger" link :disabled="scope.row.builtIn">删除</el-button>
+                </template>
+              </el-popconfirm>
+            </template>
+          </el-table-column>
+        </template>
+      </GovernanceTable>
     </el-card>
 
     <el-dialog v-model="synonymEditorVisible" width="700px" :title="synonymEditorTitle" destroy-on-close>
@@ -119,6 +133,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import GovernancePageShell from '../components/dataclean/GovernancePageShell.vue'
 import GovernanceSectionHeader from '../components/dataclean/GovernanceSectionHeader.vue'
+import GovernanceTable from '../components/dataclean/GovernanceTable.vue'
 import { useAsyncTask } from '../composables/useAsyncTask'
 import {
   createFusionKeySynonym,

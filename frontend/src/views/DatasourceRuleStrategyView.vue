@@ -12,33 +12,35 @@
     </el-card>
 
     <el-card shadow="never" style="margin-bottom: 16px">
-      <el-table :data="rules" v-loading="loading" border style="width: 100%">
-        <el-table-column prop="name" label="规则名称" min-width="180" />
-        <el-table-column label="类型" width="100" align="center">
-          <template #default="scope">
-            <el-tag :type="scope.row.category === 'SYSTEM' ? 'info' : 'success'">
-              {{ scope.row.category === 'SYSTEM' ? '系统' : '用户' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="fileName" label="文件" min-width="160" />
-        <el-table-column prop="updatedAt" label="更新时间" width="180" />
-        <el-table-column label="启用" width="90" align="center">
-          <template #default="scope">
-            <el-switch :model-value="scope.row.enabled" @change="(val) => handleToggle(scope.row.id, val)" />
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="180" align="center">
-          <template #default="scope">
-            <el-button type="primary" link @click="openRuleEditor(scope.row)">在线查看</el-button>
-            <el-popconfirm title="确认删除该规则？" @confirm="handleDelete(scope.row)">
-              <template #reference>
-                <el-button type="danger" link :disabled="scope.row.category === 'SYSTEM'">删除</el-button>
-              </template>
-            </el-popconfirm>
-          </template>
-        </el-table-column>
-      </el-table>
+      <GovernanceTable :data="rules" :loading="loading" layout-storage-key="governance-clean-rules-table">
+        <template #default="{ resolveWidth, resolveMinWidth }">
+          <el-table-column column-key="name" prop="name" label="规则名称" :width="resolveWidth('name')" :min-width="resolveMinWidth('name', 180)" />
+          <el-table-column column-key="category" label="类型" :width="resolveWidth('category')" :min-width="resolveMinWidth('category', 100)" align="center">
+            <template #default="scope">
+              <el-tag :type="scope.row.category === 'SYSTEM' ? 'info' : 'success'">
+                {{ scope.row.category === 'SYSTEM' ? '系统' : '用户' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column column-key="fileName" prop="fileName" label="文件" :width="resolveWidth('fileName')" :min-width="resolveMinWidth('fileName', 160)" />
+          <el-table-column column-key="updatedAt" prop="updatedAt" label="更新时间" :width="resolveWidth('updatedAt')" :min-width="resolveMinWidth('updatedAt', 180)" />
+          <el-table-column column-key="enabled" label="启用" :width="resolveWidth('enabled')" :min-width="resolveMinWidth('enabled', 90)" align="center">
+            <template #default="scope">
+              <el-switch :model-value="scope.row.enabled" @change="(val) => handleToggle(scope.row.id, val)" />
+            </template>
+          </el-table-column>
+          <el-table-column column-key="actions" label="操作" :width="resolveWidth('actions')" :min-width="resolveMinWidth('actions', 180)" align="center" fixed="right">
+            <template #default="scope">
+              <el-button type="primary" link @click="openRuleEditor(scope.row)">在线查看</el-button>
+              <el-popconfirm title="确认删除该规则？" @confirm="handleDelete(scope.row)">
+                <template #reference>
+                  <el-button type="danger" link :disabled="scope.row.category === 'SYSTEM'">删除</el-button>
+                </template>
+              </el-popconfirm>
+            </template>
+          </el-table-column>
+        </template>
+      </GovernanceTable>
     </el-card>
 
     <el-dialog v-model="ruleEditorVisible" width="760px" title="规则在线查看与编辑" destroy-on-close>
@@ -84,33 +86,35 @@
     </el-card>
 
     <el-card shadow="never">
-      <el-table :data="strategies" v-loading="loadingStrategies" border style="width: 100%">
-        <el-table-column prop="name" label="策略名称" min-width="180" />
-        <el-table-column prop="code" label="策略编码" min-width="180" />
-        <el-table-column label="类型" width="100" align="center">
-          <template #default="scope">
-            <el-tag :type="scope.row.builtIn ? 'info' : 'success'">
-              {{ scope.row.builtIn ? '系统' : '用户' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="updatedAt" label="更新时间" width="180" />
-        <el-table-column label="启用" width="90" align="center">
-          <template #default="scope">
-            <el-switch :model-value="scope.row.enabled" @change="(val) => handleToggleStrategy(scope.row.id, val)" />
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="180" align="center">
-          <template #default="scope">
-            <el-button type="primary" link @click="openStrategyEditor(scope.row)">在线查看</el-button>
-            <el-popconfirm title="确认删除该策略？" @confirm="handleDeleteStrategy(scope.row)">
-              <template #reference>
-                <el-button type="danger" link :disabled="scope.row.builtIn">删除</el-button>
-              </template>
-            </el-popconfirm>
-          </template>
-        </el-table-column>
-      </el-table>
+      <GovernanceTable :data="strategies" :loading="loadingStrategies" layout-storage-key="governance-clean-strategy-table">
+        <template #default="{ resolveWidth, resolveMinWidth }">
+          <el-table-column column-key="name" prop="name" label="策略名称" :width="resolveWidth('name')" :min-width="resolveMinWidth('name', 180)" />
+          <el-table-column column-key="code" prop="code" label="策略编码" :width="resolveWidth('code')" :min-width="resolveMinWidth('code', 180)" />
+          <el-table-column column-key="builtIn" label="类型" :width="resolveWidth('builtIn')" :min-width="resolveMinWidth('builtIn', 100)" align="center">
+            <template #default="scope">
+              <el-tag :type="scope.row.builtIn ? 'info' : 'success'">
+                {{ scope.row.builtIn ? '系统' : '用户' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column column-key="updatedAt" prop="updatedAt" label="更新时间" :width="resolveWidth('updatedAt')" :min-width="resolveMinWidth('updatedAt', 180)" />
+          <el-table-column column-key="enabled" label="启用" :width="resolveWidth('enabled')" :min-width="resolveMinWidth('enabled', 90)" align="center">
+            <template #default="scope">
+              <el-switch :model-value="scope.row.enabled" @change="(val) => handleToggleStrategy(scope.row.id, val)" />
+            </template>
+          </el-table-column>
+          <el-table-column column-key="actions" label="操作" :width="resolveWidth('actions')" :min-width="resolveMinWidth('actions', 180)" align="center" fixed="right">
+            <template #default="scope">
+              <el-button type="primary" link @click="openStrategyEditor(scope.row)">在线查看</el-button>
+              <el-popconfirm title="确认删除该策略？" @confirm="handleDeleteStrategy(scope.row)">
+                <template #reference>
+                  <el-button type="danger" link :disabled="scope.row.builtIn">删除</el-button>
+                </template>
+              </el-popconfirm>
+            </template>
+          </el-table-column>
+        </template>
+      </GovernanceTable>
     </el-card>
 
     <el-dialog v-model="strategyEditorVisible" width="760px" title="策略在线查看与编辑" destroy-on-close>
@@ -164,6 +168,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import GovernancePageShell from '../components/dataclean/GovernancePageShell.vue'
 import GovernanceSectionHeader from '../components/dataclean/GovernanceSectionHeader.vue'
+import GovernanceTable from '../components/dataclean/GovernanceTable.vue'
 import RuleUploadDialog from '../components/dataclean/RuleUploadDialog.vue'
 import StrategyUploadDialog from '../components/dataclean/StrategyUploadDialog.vue'
 import { useAsyncTask } from '../composables/useAsyncTask'
