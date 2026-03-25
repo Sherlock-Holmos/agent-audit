@@ -49,29 +49,18 @@ export function useTableColumnLayout(options = {}) {
   }
 
   function handleHeaderDragEnd(newWidth, _oldWidth, column) {
-    let key = String(column?.columnKey || column?.property || column?.label || '').trim()
     const knownKeys = Object.keys(minByKey || {})
-    if (knownKeys.length > 0 && !Object.prototype.hasOwnProperty.call(minByKey, key)) {
-      const candidates = [
-        column?.columnKey,
-        column?.rawColumnKey,
-        column?.property,
-        column?.label
-      ].map((it) => String(it || '').trim()).filter(Boolean)
-      const matched = candidates.find((candidate) => Object.prototype.hasOwnProperty.call(minByKey, candidate))
-      if (matched) {
-        key = matched
-      } else {
-        const columnId = String(column?.id || '').trim()
-        const indexMatch = columnId.match(/column_(\d+)$/)
-        if (indexMatch) {
-          const index = Number.parseInt(indexMatch[1], 10) - 1
-          if (Number.isInteger(index) && index >= 0 && index < knownKeys.length) {
-            key = knownKeys[index]
-          }
-        }
+    let key = ''
+
+    if (knownKeys.length > 0) {
+      key = resolveKnownColumnKey(column, knownKeys)
+      if (!key) {
+        return
       }
+    } else {
+      key = String(column?.columnKey || column?.property || column?.label || '').trim()
     }
+
     if (!key) return
     const minWidth = Number(minByKey[key]) || 0
     columnWidths.value = {
@@ -89,6 +78,17 @@ export function useTableColumnLayout(options = {}) {
   function normalizeLoadedColumnWidths() {
     const next = { ...columnWidths.value }
     let changed = false
+
+    const knownKeys = Object.keys(minByKey || {})
+    if (knownKeys.length > 0) {
+      Object.keys(next).forEach((key) => {
+        if (!Object.prototype.hasOwnProperty.call(minByKey, key)) {
+          delete next[key]
+          changed = true
+        }
+      })
+    }
+
     Object.entries(minByKey).forEach(([key, min]) => {
       const current = toWidthNumber(next[key])
       if (current == null) {
@@ -110,6 +110,37 @@ export function useTableColumnLayout(options = {}) {
       columnWidths.value = next
       persistColumnWidths()
     }
+  }
+
+  function resolveKnownColumnKey(column, knownKeys) {
+    const candidates = [
+      column?.columnKey,
+      column?.rawColumnKey,
+      column?.property,
+      column?.label
+    ].map((it) => String(it || '').trim()).filter(Boolean)
+
+    const direct = candidates.find((candidate) => Object.prototype.hasOwnProperty.call(minByKey, candidate))
+    if (direct) {
+      return direct
+    }
+
+    const columnId = String(column?.id || '').trim()
+    if (!columnId) {
+      return ''
+    }
+
+    const allMatches = [...columnId.matchAll(/column_(\d+)/g)]
+    if (allMatches.length === 0) {
+      return ''
+    }
+
+    const last = allMatches[allMatches.length - 1]
+    const index = Number.parseInt(last[1], 10) - 1
+    if (!Number.isInteger(index) || index < 0 || index >= knownKeys.length) {
+      return ''
+    }
+    return knownKeys[index]
   }
 
   function toWidthNumber(value) {
