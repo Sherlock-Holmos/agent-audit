@@ -94,6 +94,35 @@ CREATE TABLE IF NOT EXISTS fusion_task_record (
 
 ALTER TABLE fusion_task_record ADD COLUMN IF NOT EXISTS fusion_config_json TEXT;
 
+CREATE TABLE IF NOT EXISTS fusion_key_synonym_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_username VARCHAR(128) NOT NULL,
+  canonical_key VARCHAR(255) NOT NULL,
+  aliases_json TEXT,
+  built_in TINYINT(1) NOT NULL,
+  enabled TINYINT(1) NOT NULL,
+  remark VARCHAR(512),
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE KEY uk_fusion_key_synonym_owner_key (owner_username, canonical_key),
+  INDEX idx_fusion_key_synonym_owner (owner_username)
+);
+
+CREATE TABLE IF NOT EXISTS fusion_key_synonym_history_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  synonym_id BIGINT NOT NULL,
+  owner_username VARCHAR(128) NOT NULL,
+  canonical_key VARCHAR(255) NOT NULL,
+  version_no INT NOT NULL,
+  action_type VARCHAR(32) NOT NULL,
+  before_json LONGTEXT,
+  after_json LONGTEXT,
+  actor_username VARCHAR(128) NOT NULL,
+  created_at DATETIME NOT NULL,
+  INDEX idx_fusion_key_synonym_history_owner_syn (owner_username, synonym_id),
+  INDEX idx_fusion_key_synonym_history_owner_key (owner_username, canonical_key)
+);
+
 CREATE INDEX idx_clean_task_owner_status_updated ON clean_task_record(owner_username, status, updated_at);
 CREATE INDEX idx_fusion_task_owner_status_updated ON fusion_task_record(owner_username, status, updated_at);
 
@@ -227,4 +256,85 @@ CREATE TABLE IF NOT EXISTS etl_workflow_node_run_record (
   started_at DATETIME,
   ended_at DATETIME,
   INDEX idx_node_run_run (run_id)
+);
+
+CREATE TABLE IF NOT EXISTS nifi_flow_run_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  tenant_id VARCHAR(128),
+  owner_username VARCHAR(128) NOT NULL,
+  flow_type VARCHAR(64) NOT NULL,
+  process_group_id VARCHAR(128) NOT NULL,
+  dispatch_status VARCHAR(32) NOT NULL,
+  external_run_id VARCHAR(128),
+  request_json LONGTEXT,
+  response_json LONGTEXT,
+  error_message VARCHAR(1024),
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  INDEX idx_nifi_flow_owner_created (owner_username, created_at),
+  INDEX idx_nifi_flow_owner_status (owner_username, dispatch_status)
+);
+
+CREATE TABLE IF NOT EXISTS nifi_flow_template_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  tenant_id VARCHAR(128),
+  owner_username VARCHAR(128) NOT NULL,
+  flow_type VARCHAR(64) NOT NULL,
+  process_group_id VARCHAR(128) NOT NULL,
+  parameter_schema_json LONGTEXT,
+  version_no INT NOT NULL,
+  enabled TINYINT(1) NOT NULL,
+  remark VARCHAR(512),
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE KEY uk_nifi_template_owner_flow (owner_username, flow_type),
+  INDEX idx_nifi_template_owner_updated (owner_username, updated_at)
+);
+
+CREATE TABLE IF NOT EXISTS bronze_ingest_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  tenant_id VARCHAR(128),
+  owner_username VARCHAR(128) NOT NULL,
+  ingest_type VARCHAR(32) NOT NULL,
+  source_task_type VARCHAR(32) NOT NULL,
+  source_task_id BIGINT NOT NULL,
+  source_table VARCHAR(255) NOT NULL,
+  source_object VARCHAR(255),
+  row_no INT,
+  raw_payload_json LONGTEXT,
+  created_at DATETIME NOT NULL,
+  INDEX idx_bronze_owner_task (owner_username, source_task_type, source_task_id)
+);
+
+CREATE TABLE IF NOT EXISTS silver_standard_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  tenant_id VARCHAR(128),
+  owner_username VARCHAR(128) NOT NULL,
+  standard_table VARCHAR(255) NOT NULL,
+  source_task_type VARCHAR(32) NOT NULL,
+  source_task_id BIGINT NOT NULL,
+  source_id BIGINT,
+  source_object VARCHAR(255),
+  row_no INT,
+  normalized_payload_json LONGTEXT,
+  quality_status VARCHAR(32) NOT NULL,
+  created_at DATETIME NOT NULL,
+  INDEX idx_silver_owner_task (owner_username, source_task_type, source_task_id),
+  INDEX idx_silver_owner_table (owner_username, standard_table)
+);
+
+CREATE TABLE IF NOT EXISTS gold_fusion_wide_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  tenant_id VARCHAR(128),
+  owner_username VARCHAR(128) NOT NULL,
+  gold_table VARCHAR(255) NOT NULL,
+  fusion_task_id BIGINT NOT NULL,
+  entity_key VARCHAR(512),
+  match_type VARCHAR(64) NOT NULL,
+  confidence DECIMAL(6,4) NOT NULL,
+  source_records_json LONGTEXT,
+  merged_payload_json LONGTEXT,
+  created_at DATETIME NOT NULL,
+  INDEX idx_gold_owner_task (owner_username, fusion_task_id),
+  INDEX idx_gold_owner_table (owner_username, gold_table)
 );

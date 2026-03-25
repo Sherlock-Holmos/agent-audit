@@ -39,17 +39,31 @@
 11. `PATCH /api/data/clean/strategies/{id}/enabled`
 12. `DELETE /api/data/clean/strategies/{id}`
 
-## 6. 任务接口（同步）
+## 6. 融合主键同义词接口
+1. `GET /api/data/fusion/key-synonyms`
+2. `POST /api/data/fusion/key-synonyms`
+3. `GET /api/data/fusion/key-synonyms/{id}`
+4. `PATCH /api/data/fusion/key-synonyms/{id}`
+5. `PATCH /api/data/fusion/key-synonyms/{id}/enabled`
+6. `DELETE /api/data/fusion/key-synonyms/{id}`
+7. `GET /api/data/fusion/key-synonyms/{id}/history`
+8. `GET /api/data/fusion/key-synonyms/history?canonicalKey=...`
+
+## 7. 任务接口（同步）
 1. `GET /api/data/clean/tasks`
 2. `POST /api/data/clean/tasks`
-3. `POST /api/data/clean/tasks/{id}/run`
-4. `DELETE /api/data/clean/tasks/{id}`
-5. `GET /api/data/fusion/tasks`
-6. `POST /api/data/fusion/tasks`
-7. `POST /api/data/fusion/tasks/{id}/run`
-8. `DELETE /api/data/fusion/tasks/{id}`
+3. `PATCH /api/data/clean/tasks/{id}`
+4. `POST /api/data/clean/tasks/{id}/run`
+5. `GET /api/data/clean/tasks/{id}/preview`
+6. `DELETE /api/data/clean/tasks/{id}`
+7. `GET /api/data/fusion/tasks`
+8. `POST /api/data/fusion/tasks`
+9. `PATCH /api/data/fusion/tasks/{id}`
+10. `POST /api/data/fusion/tasks/{id}/run`
+11. `GET /api/data/fusion/tasks/{id}/preview`
+12. `DELETE /api/data/fusion/tasks/{id}`
 
-## 7. 任务接口（异步）
+## 8. 任务接口（异步）
 1. `POST /api/data/clean/tasks/{id}/run-async`
 2. `POST /api/data/fusion/tasks/{id}/run-async`
 3. `GET /api/data/jobs/{jobId}`
@@ -58,7 +72,33 @@
 - 可通过请求头 `Idempotency-Key` 实现幂等提交。
 - 异步状态：`QUEUED`、`RUNNING`、`COMPLETED`、`FAILED`。
 
-## 8. 观测端点
+## 9. 观测端点
 1. `GET /actuator/health`
 2. `GET /actuator/metrics`
 3. `GET /actuator/prometheus`
+
+## 10. 控制平面（NiFi）接口
+1. `GET /api/data/control-plane/nifi/status`
+2. `POST /api/data/control-plane/nifi/flows/run`
+3. `GET /api/data/control-plane/nifi/flows`
+4. `GET /api/data/control-plane/nifi/templates`
+5. `POST /api/data/control-plane/nifi/templates`
+6. `GET /api/data/control-plane/layers/stats`
+
+说明：
+- `POST /api/data/control-plane/nifi/flows/run` 请求体示例：
+
+```json
+{
+	"flowType": "INGEST",
+	"processGroupId": "<your-process-group-id>",
+	"parameters": {
+		"sourceId": 1001,
+		"triggerBy": "Holmes"
+	}
+}
+```
+
+- 每次触发都会写入 `nifi_flow_run_record`，可用于审计追溯。
+- 可通过模板接口配置 `flowType -> processGroupId` 与 `parameterSchema.requiredKeys`，触发时将自动执行必填参数校验并返回 `templateVersion`。
+- `GET /api/data/control-plane/layers/stats` 支持按 `taskType`、`taskId` 过滤并返回 Bronze/Silver/Gold 行数汇总与任务明细。

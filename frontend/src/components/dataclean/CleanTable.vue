@@ -84,8 +84,11 @@
         :width="resolveWidth('updatedAt')"
         :min-width="resolveMinWidth('updatedAt', 180)"
       />
-      <el-table-column column-key="actions" label="操作" :width="resolveWidth('actions', 210)" align="center" fixed="right">
+      <el-table-column column-key="actions" label="操作" :width="resolveWidth('actions', 260)" align="center" fixed="right">
         <template #default="scope">
+          <el-button type="primary" link :disabled="scope.row.status !== 'COMPLETED'" @click="$emit('preview', scope.row)">
+            预览
+          </el-button>
           <el-button type="primary" link :disabled="scope.row.status === 'COMPLETED' || scope.row.status === 'RUNNING'" @click="$emit('edit', scope.row)">
             编辑
           </el-button>
@@ -134,7 +137,7 @@ const props = defineProps({
   }
 })
 
-defineEmits(['run', 'delete', 'edit'])
+defineEmits(['run', 'delete', 'edit', 'preview'])
 
 const columnWidths = ref({})
 const cardRef = ref()

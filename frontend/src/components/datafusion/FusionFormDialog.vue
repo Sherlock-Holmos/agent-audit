@@ -31,7 +31,7 @@
         </el-select>
       </el-form-item>
       <el-form-item v-if="form.strategy === 'KEY_ALIGN' || form.strategy === 'TIME_WINDOW'" label="主键字段">
-        <el-input v-model="form.keyField" placeholder="例如：issue_id（留空自动识别）" />
+        <el-input v-model="form.keyField" placeholder="例如：整改事项ID+整改单位ID（支持组合键与同义字段映射，留空自动识别）" />
       </el-form-item>
       <el-form-item v-if="form.strategy === 'TIME_WINDOW'" label="时间字段">
         <el-input v-model="form.timeField" placeholder="例如：event_time（留空自动识别）" />

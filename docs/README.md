@@ -10,6 +10,7 @@
 2. [系统架构说明](02-architecture.md)
 3. [**代码架构与设计模式**](07-code-architecture.md) ⭐ **2026 新增** - 接口化编程、SOLID 原则、设计模式应用
 4. [Data-Service 分层与目录规范](08-data-service-layering.md) ⭐ - Data-Service 职责分层与落位规则
+5. [目标架构蓝图与实施方案](09-architecture-blueprint.md) ⭐ - 规划阶段重构蓝图、分层模型、90 天实施计划
 
 ### 部署与运维
 4. [部署与环境手册](03-deployment.md)
@@ -25,6 +26,7 @@
 ## 快速入口
 - 根 README: [../README.md](../README.md)
 - 系统架构图: [02-architecture.md](02-architecture.md)
+- 目标架构蓝图: [09-architecture-blueprint.md](09-architecture-blueprint.md)
 - **代码架构详解**: [07-code-architecture.md](07-code-architecture.md)
 - API 细分文档: [api/](api/)
 
@@ -87,6 +89,18 @@
   - 给出新增代码落位规则与编排层约束
   - 记录“目录归位但 package 不变”的兼容策略
 
+### 2026-03-24
+- ✨ **新增** [目标架构蓝图与实施方案](09-architecture-blueprint.md)
+  - 双平面目标架构（数据平面 + 控制平面）
+  - Bronze/Silver/Gold 分层与融合语义层设计
+  - 90 天分阶段实施计划与验收标准
+- ♻️ **更新** [系统架构说明](02-architecture.md)
+  - 增补 To-Be 架构、融合模型设计、迁移建议
+- ♻️ **更新** [发布与变更记录](06-release-notes.md)
+  - 新增 v1.5.0 发布条目（NiFi 控制平面、模板化触发、分层落表、统计验收）
+- ♻️ **更新** [接口文档总览](API.md) 与 [Data 服务接口文档](api/data-service.md)
+  - 补充控制平面接口与分层统计接口说明
+
 ### 2026-03-16
 - ✅ 完成所有微服务接口化重构
 - ✅ Auth-Service、Config-Service、Data-Service、Gateway 编译通过
@@ -95,4 +109,4 @@
 ## 维护人员
 - 架构负责人：待指定
 - 文档维护：Team
-- 最后更新时间：2026-03-23
+- 最后更新时间：2026-03-24（晚间）

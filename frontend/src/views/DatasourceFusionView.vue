@@ -223,13 +223,51 @@ async function handlePreview(row) {
     const { data } = await getFusionTaskPreview(row.id, { limit: 50 })
     const payload = data.data || {}
     previewTask.value = payload.task || row
-    Object.assign(previewStats, payload.stats || {
-      totalRows: 0,
-      mergedRows: 0,
-      mergeRate: 0,
-      previewLimit: 0
+    const sourceRows = Array.isArray(payload.rows) ? payload.rows : []
+
+    // Backward/forward compatibility: map raw preview rows to the UI model.
+    const normalizedRows = sourceRows.map((item, index) => {
+      const record = item && typeof item === 'object' ? item : {}
+      const sourceValue =
+        record.sourceTable ||
+        record.sourceStandardTable ||
+        record.source_standard_table ||
+        record.source_table ||
+        record.__sourceTable ||
+        record.__source_table ||
+        record._source_table ||
+        ''
+      const sourceTables = Array.isArray(record.sourceTables)
+        ? record.sourceTables
+        : (sourceValue ? String(sourceValue).split(',').map((it) => it.trim()).filter(Boolean) : [])
+      const parsedRaw = parseJsonMaybe(record.raw_json, record.raw_json)
+      const parsedNormalized = parseJsonMaybe(record.normalized_json, record.normalized_json)
+      const rawData = Array.isArray(record.rawData)
+        ? record.rawData
+        : (Array.isArray(parsedRaw) ? parsedRaw : [parsedRaw || record])
+      const normalizedData = record.normalizedData && typeof record.normalizedData === 'object'
+        ? record.normalizedData
+        : (parsedNormalized && typeof parsedNormalized === 'object' ? parsedNormalized : record)
+
+      return {
+        rowNo: Number(record.rowNo) || index + 1,
+        sourceTables,
+        rawData,
+        normalizedData
+      }
     })
-    previewRows.value = payload.rows || []
+
+    const mergedRows = normalizedRows.filter((item) => (item.sourceTables || []).length > 1).length
+    const totalRows = Number(payload.stats?.totalRows) || Number(payload.size) || normalizedRows.length
+    const safeTotal = totalRows > 0 ? totalRows : normalizedRows.length
+
+    Object.assign(previewStats, {
+      totalRows,
+      mergedRows: Number(payload.stats?.mergedRows) || mergedRows,
+      mergeRate: Number(payload.stats?.mergeRate) || (safeTotal > 0 ? Number((((Number(payload.stats?.mergedRows) || mergedRows) * 100) / safeTotal).toFixed(2)) : 0),
+      previewLimit: Number(payload.stats?.previewLimit) || normalizedRows.length
+    })
+    previewRows.value = normalizedRows
   } catch (error) {
     previewVisible.value = false
     ElMessage.error(error?.response?.data?.message || error?.message || '加载融合结果失败')
@@ -244,6 +282,20 @@ function toPrettyJson(value) {
   } catch (error) {
     return String(value ?? '')
   }
+}
+
+function parseJsonMaybe(value, fallback = {}) {
+  if (value && typeof value === 'object') {
+    return value
+  }
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      return JSON.parse(value)
+    } catch {
+      return fallback
+    }
+  }
+  return fallback
 }
 
 async function handleDelete(id) {

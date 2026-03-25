@@ -1,82 +1,85 @@
-# ·¢²¼Óë±ä¸ü¼ÇÂ¼
+# å‘å¸ƒä¸å˜æ›´è®°å½•
 
-## v1.4.0 (2026-03-17) ?? **¼Ü¹¹Éı¼¶°æ**
+## v1.5.0 (2026-03-24)
+### æ–°å¢
+- Data Service æ–°å¢ NiFi æ§åˆ¶å¹³é¢æ¥å£ï¼š
+  - GET /api/data/control-plane/nifi/status
+  - POST /api/data/control-plane/nifi/flows/run
+  - GET /api/data/control-plane/nifi/flows
+  - GET /api/data/control-plane/nifi/templates
+  - POST /api/data/control-plane/nifi/templates
+- æ–°å¢åˆ†å±‚ç»Ÿè®¡æ¥å£ï¼š
+  - GET /api/data/control-plane/layers/stats
+- æ–°å¢ NiFi è¿è¡Œä¸æ¨¡æ¿ç›¸å…³æ•°æ®è¡¨ï¼š
+  - nifi_flow_run_record
+  - nifi_flow_template_record
+- æ–°å¢ç›®æ ‡åˆ†å±‚æ•°æ®è¡¨ï¼š
+  - bronze_ingest_record
+  - silver_standard_record
+  - gold_fusion_wide_record
 
-### ? Ö÷ÒªÌØĞÔ - ½Ó¿Ú»¯±à³ÌÖØ¹¹
+### å˜æ›´
+- æ¸…æ´—ä»»åŠ¡æ‰§è¡ŒæˆåŠŸåï¼Œè‡ªåŠ¨å›å†™ Bronze å’Œ Silverã€‚
+- èåˆä»»åŠ¡æ‰§è¡ŒæˆåŠŸåï¼Œè‡ªåŠ¨å›å†™ Goldã€‚
+- NiFi è§¦å‘æ”¯æŒæ¨¡æ¿å‚æ•°æ ¡éªŒï¼š
+  - æ”¯æŒæŒ‰ flowType è‡ªåŠ¨è¯»å–å¯ç”¨æ¨¡æ¿ã€‚
+  - æ”¯æŒ parameterSchema.requiredKeys å¿…å¡«æ ¡éªŒã€‚
+  - è§¦å‘ç»“æœè¿”å› templateVersionã€‚
+- å‰ç«¯è§„åˆ™é¡µé¢æ–°å¢ï¼š
+  - NiFi æ¨¡æ¿ç®¡ç†ï¼ˆæ–°å¢/ç¼–è¾‘/å¯ç”¨çŠ¶æ€æŸ¥çœ‹ï¼‰
+  - NiFi æ¨¡æ¿è§¦å‘æµ‹è¯•å¼¹çª—
+  - Bronze/Silver/Gold åˆ†å±‚ç»Ÿè®¡çœ‹æ¿
 
-#### Éè¼ÆÄ£Ê½Éı¼¶
-²ÉÓÃ **SOLID Ô­Ôò**½øĞĞÈ«Á¿¼Ü¹¹ÖØ¹¹£¬ÌØ±ğÊÇÒÀÀµµ¹ÖÃÔ­Ôò£¨DIP£©£º
+### éªŒè¯ç»“æœ
+- åç«¯ç¼–è¯‘é€šè¿‡ï¼šmvn -DskipTests compile
+- å‰ç«¯æ„å»ºé€šè¿‡ï¼šnpm run build
+- æ¥å£å†’çƒŸé€šè¿‡ï¼š
+  - æ¨¡æ¿æŸ¥è¯¢è¿”å› 200ï¼Œå­˜åœ¨æ¨¡æ¿è®°å½•
+  - åˆ†å±‚ç»Ÿè®¡è¿”å› 200ï¼Œç»Ÿè®¡ç»“æœéé›¶
+  - å®æµ‹ç»Ÿè®¡æ ·ä¾‹ï¼štasks=3, bronzeRows=16, silverRows=16, goldRows=7
 
-**Java Î¢·şÎñ½Ó¿Ú»¯**£¨10 ¸ö½Ó¿Ú£©
-- auth-service: 2 ¸ö½Ó¿Ú£¨IAuthUserService¡¢IJwtService£©
-- config-service: 1 ¸ö½Ó¿Ú£¨IConfigService£©
-- data-service: 5 ¸ö½Ó¿Ú£¨IDashboardService¡¢IDataProcessService µÈ£©
-- gateway: 2 ¸ö½Ó¿Ú£¨ITokenProvider¡¢IRateLimitProvider£©
+### å…¼å®¹æ€§è¯´æ˜
+- æ—¢æœ‰æ¸…æ´—/èåˆæ¥å£ä¿æŒä¸å˜ï¼Œæ–°å¢èƒ½åŠ›é€šè¿‡æ§åˆ¶å¹³é¢æ¥å£æ‰©å±•ã€‚
+- æœªé…ç½® NiFi æ¨¡æ¿æ—¶ï¼Œä»å¯é€šè¿‡è¯·æ±‚ä½“ç›´æ¥ä¼  processGroupId è§¦å‘æµç¨‹ã€‚
 
-**Python Î¢·şÎñ½Ó¿Ú»¯**£¨5 ¸ö ABC ½Ó¿Ú£©
-- agent-service: ILLMProvider¡¢IRAGRetriever¡¢IAgentService¡¢ISessionManager¡¢IDashboardClient
+---
 
-#### ±àÒëÑéÖ¤×´Ì¬
-? **ËùÓĞ·şÎñ±àÒëÍ¨¹ı**
-- auth-service    : mvn clean compile -q ¡ú BUILD SUCCESS
-- config-service  : mvn clean compile -q ¡ú BUILD SUCCESS
-- data-service    : mvn clean compile -q ¡ú BUILD SUCCESS
-- gateway         : mvn clean compile -q ¡ú BUILD SUCCESS
-- agent-service   : python -m py_compile *.py ¡ú OK
+## v1.4.0 (2026-03-17)
+### ä¸»è¦å†…å®¹
+- å®Œæˆå¾®æœåŠ¡æ¥å£åŒ–é‡æ„ï¼Œè½åœ°é¢å‘æ¥å£ç¼–ç¨‹ä¸ä¾èµ–å€’ç½®ã€‚
+- Java æœåŠ¡æ–°å¢å’Œå½’æ•´æ¥å£å±‚ï¼Œæå‡å¯æµ‹è¯•æ€§ä¸å¯æ›¿æ¢æ€§ã€‚
+- Python Agent æœåŠ¡è¡¥é½æŠ½è±¡æ¥å£ä¸å®ç°è§£è€¦ã€‚
 
-#### ¼Ü¹¹ÊÕÒæ
-| ·½Ãæ | ÊÕÒæ |
-|-----|------|
-| **¿ÉÎ¬»¤ĞÔ** | ½Ó¿Ú×÷ÎªÆõÔ¼£¬ÊµÏÖĞŞ¸Ä¶Ôµ÷ÓÃ·½ÎŞÓ°Ïì |
-| **¿É²âÊÔĞÔ** | Ö§³Ö Mock ÊµÏÖ£¬µ¥Ôª²âÊÔÎŞÒÀÀµÍâ²¿·şÎñ |
-| **¿ÉÀ©Õ¹ĞÔ** | ĞÂÔöÊµÏÖÎŞĞèĞŞ¸ÄÏÖÓĞ´úÂë£¬·ûºÏ OCP |
-| **¿ÉÌæ»»ĞÔ** | ²ßÂÔÄ£Ê½ÊµÏÖ¶àÊµÏÖÀàÁé»îÇĞ»» |
-| **½âñî³Ì¶È** | ·şÎñ½öÒÀÀµ½Ó¿Ú£¬ÁãñîºÏ¾ßÌåÊµÏÖ |
-
-### ?? ÎÄµµ
-- ? ĞÂÔö [´úÂë¼Ü¹¹ÓëÉè¼ÆÄ£Ê½](07-code-architecture.md) ÍêÕûÖ¸ÄÏ
-- ¸üĞÂ [README.md](../README.md) Óë [docs/README.md](README.md) µ¼º½Á´½Ó
-
-### ?? ¼æÈİĞÔ
-- ? **ÍêÈ«¼æÈİ**£ºËùÓĞ API ¶Ëµã¡¢ÇëÇó/ÏìÓ¦¸ñÊ½ÎŞ±ä¸ü
-- ? **Áã¸Ä¶¯**£ºÍâ²¿µ÷ÓÃ·½ÎŞĞè×öÈÎºÎÊÊÅä
-- ? **½¥½øÊ½**£º½Ó¿Ú-ÊµÏÖ·ÖÀëÎªºóĞø¶à°æ±¾²ßÂÔµì»ù
-
-### ? ÑéÊÕÇåµ¥
-- ? Auth-Service ±àÒëÍ¨¹ı
-- ? Config-Service ±àÒëÍ¨¹ı
-- ? Data-Service ±àÒëÍ¨¹ı£¨5 ¸öÊµÏÖÀà£©
-- ? Gateway ±àÒëÍ¨¹ı£¨º¬ JWT ºÍÏŞÁ÷Ìá¹©ÉÌ£©
-- ? Agent-Service Óï·¨¼ì²éÍ¨¹ı
-- ? µ¥Ôª²âÊÔ¿ò¼Ü¾ÍĞ÷£¨Mock Ö§³Ö£©
-- ? ÎÄµµÍêÕû£¨10+ Ò³¼Ü¹¹Éè¼ÆÖ¸ÄÏ£©
+### éªŒè¯
+- auth-serviceã€config-serviceã€data-serviceã€gateway ç¼–è¯‘é€šè¿‡ã€‚
+- agent-service è¯­æ³•éªŒè¯é€šè¿‡ã€‚
 
 ---
 
 ## v1.3.0 (2026-03-14)
-### ĞÂÔö
-- data-service ÇåÏ´/ÈÚºÏÒì²½Ö´ĞĞÄÜÁ¦£º
+### æ–°å¢
+- data-service æ–°å¢æ¸…æ´—ä¸èåˆå¼‚æ­¥æ‰§è¡Œæ¥å£ï¼š
   - POST /api/data/clean/tasks/{id}/run-async
   - POST /api/data/fusion/tasks/{id}/run-async
   - GET /api/data/jobs/{jobId}
-- Òì²½×÷Òµ±íÓëÃİµÈ¼ÇÂ¼±í£ºprocess_job_record¡¢task_idempotency_record
-- Prometheus + Grafana ¼à¿Ø±àÅÅ
+- æ–°å¢å¼‚æ­¥ä»»åŠ¡è½åº“è¡¨ï¼šprocess_job_recordã€task_idempotency_record
+- æ–°å¢ Prometheus + Grafana åŸºç¡€ç›‘æ§
 
-### ÓÅ»¯
-- Gateway Ôö¼Ó°´ÓÃ»§/IP ÏŞÁ÷ºÍ traceId ×¢Èë¡£
-- data-service Ôö¼Ó»º´æÓë×÷ÒµÖ¸±êÂñµã¡£
-- agent-service ÇĞ»»Îª Python/FastAPI/LangChain ÊµÏÖ¡£
+### ä¼˜åŒ–
+- Gateway å¢åŠ ç”¨æˆ·/IP ç»´åº¦é™æµä¸ traceId é€ä¼ ã€‚
+- data-service å¢åŠ ç¼“å­˜ä¸ä»»åŠ¡æŒ‡æ ‡åŸ‹ç‚¹ã€‚
+- agent-service åˆ‡æ¢ä¸º Python/FastAPI/LangChain å®ç°ã€‚
 
-### ¼æÈİĞÔËµÃ÷
-- Ô­Í¬²½Ö´ĞĞ½Ó¿Ú±£Áô£¬²»ÆÆ»µÏÖÓĞµ÷ÓÃ·½¡£
-- ĞÂÔöÒì²½½Ó¿Ú½¨ÒéÔÚ¸ß²¢·¢³¡¾°ÓÅÏÈÊ¹ÓÃ¡£
+---
 
 ## v1.2.0 (2026-03)
-### ĞÂÔö
-- Redis »º´æÄÜÁ¦¸²¸Ç dashboard/trend/heatmap/fusion-options¡£
-- Agent »á»°ÉÏÏÂÎÄ»º´æÓëÏŞÁ÷¡£
+### æ–°å¢
+- Redis ç¼“å­˜ dashboardã€trendã€heatmapã€fusion-optionsã€‚
+- Agent ä¼šè¯ç®¡ç†å¢å¼ºä¸ç¼“å­˜ä¼˜åŒ–ã€‚
+
+---
 
 ## v1.1.0 (2026-03)
-### ĞÂÔö
-- ´óÆÁÄ£¿é»¯×é¼şÓë¿É¶¨ÖÆ²¼¾Ö¡£
-- Ğü¸¡ÖúÊÖ½»»¥ÔöÇ¿¡£
+### æ–°å¢
+- å‰åç«¯æ¨¡å—åŒ–æ•´ç†ä¸åŸºç¡€è”è°ƒèƒ½åŠ›å»ºè®¾ã€‚
+- ç™»å½•é‰´æƒä¸åŸºç¡€æ•°æ®æµè½¬èƒ½åŠ›å¢å¼ºã€‚

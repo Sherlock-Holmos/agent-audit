@@ -8,11 +8,13 @@ import com.audit.data.service.domain.CleanConfigService;
 import com.audit.data.service.domain.CleanRuleEngineService;
 import com.audit.data.service.domain.GovernanceAuditService;
 import com.audit.data.service.domain.WorkflowDefinitionService;
+import com.audit.data.service.infrastructure.NifiOrchestrationService;
 import com.audit.data.service.infrastructure.StagingTableService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -53,6 +55,7 @@ public class DataProcessService implements IDataProcessService {
     private final GovernanceAuditService governanceAuditService;
     private final CleanRuleEngineService cleanRuleEngineService;
     private final WorkflowDefinitionService workflowDefinitionService;
+    private final NifiOrchestrationService nifiOrchestrationService;
     private final MeterRegistry meterRegistry;
     private final String stagingSchema;
     private final Counter cleanRunSuccessCounter;
@@ -71,6 +74,7 @@ public class DataProcessService implements IDataProcessService {
         GovernanceAuditService governanceAuditService,
         CleanRuleEngineService cleanRuleEngineService,
         WorkflowDefinitionService workflowDefinitionService,
+        NifiOrchestrationService nifiOrchestrationService,
         MeterRegistry meterRegistry,
         @Value("${app.datasource.staging-schema:agent_audit_staging}") String stagingSchema
     ) {
@@ -84,6 +88,7 @@ public class DataProcessService implements IDataProcessService {
         this.governanceAuditService = governanceAuditService;
         this.cleanRuleEngineService = cleanRuleEngineService;
         this.workflowDefinitionService = workflowDefinitionService;
+        this.nifiOrchestrationService = nifiOrchestrationService;
         this.meterRegistry = meterRegistry;
         this.stagingSchema = sanitizeSchemaName(stagingSchema);
         this.cleanRunSuccessCounter = Counter.builder("audit.process.clean.run.success").register(meterRegistry);
@@ -138,6 +143,70 @@ public class DataProcessService implements IDataProcessService {
 
     public void deleteCleanStrategy(String ownerUsername, Long id) {
         cleanConfigService.deleteCleanStrategy(ownerUsername, id);
+    }
+
+    public List<Map<String, Object>> listFusionKeySynonyms(String ownerUsername) {
+        return cleanConfigService.listFusionKeySynonyms(ownerUsername);
+    }
+
+    public Map<String, Object> createFusionKeySynonym(String ownerUsername, Map<String, Object> payload) {
+        requireAuthenticated(ownerUsername);
+        Map<String, Object> created = cleanConfigService.createFusionKeySynonym(ownerUsername, payload);
+        recordAudit(
+            ownerUsername,
+            "CREATE",
+            "FUSION_KEY_SYNONYM",
+            String.valueOf(created.get("id")),
+            "SUCCESS",
+            Map.of("canonicalKey", String.valueOf(created.get("canonicalKey")))
+        );
+        return created;
+    }
+
+    public Map<String, Object> getFusionKeySynonymDetail(String ownerUsername, Long id) {
+        return cleanConfigService.getFusionKeySynonymDetail(ownerUsername, id);
+    }
+
+    public Map<String, Object> updateFusionKeySynonym(String ownerUsername, Long id, Map<String, Object> payload) {
+        requireAuthenticated(ownerUsername);
+        Map<String, Object> updated = cleanConfigService.updateFusionKeySynonym(ownerUsername, id, payload);
+        recordAudit(
+            ownerUsername,
+            "UPDATE",
+            "FUSION_KEY_SYNONYM",
+            String.valueOf(id),
+            "SUCCESS",
+            Map.of("canonicalKey", String.valueOf(updated.get("canonicalKey")))
+        );
+        return updated;
+    }
+
+    public Map<String, Object> toggleFusionKeySynonym(String ownerUsername, Long id, boolean enabled) {
+        requireAuthenticated(ownerUsername);
+        Map<String, Object> toggled = cleanConfigService.toggleFusionKeySynonym(ownerUsername, id, enabled);
+        recordAudit(
+            ownerUsername,
+            enabled ? "ENABLE" : "DISABLE",
+            "FUSION_KEY_SYNONYM",
+            String.valueOf(id),
+            "SUCCESS",
+            Map.of("enabled", enabled)
+        );
+        return toggled;
+    }
+
+    public void deleteFusionKeySynonym(String ownerUsername, Long id) {
+        requireAuthenticated(ownerUsername);
+        cleanConfigService.deleteFusionKeySynonym(ownerUsername, id);
+        recordAudit(ownerUsername, "DELETE", "FUSION_KEY_SYNONYM", String.valueOf(id), "SUCCESS", Map.of());
+    }
+
+    public List<Map<String, Object>> listFusionKeySynonymHistory(String ownerUsername, Long id, Integer limit) {
+        return cleanConfigService.listFusionKeySynonymHistory(ownerUsername, id, limit);
+    }
+
+    public List<Map<String, Object>> listFusionKeySynonymHistoryByCanonicalKey(String ownerUsername, String canonicalKey, Integer limit) {
+        return cleanConfigService.listFusionKeySynonymHistoryByCanonicalKey(ownerUsername, canonicalKey, limit);
     }
 
     public List<Map<String, Object>> listCleanTasks(String ownerUsername, String keyword, String sourceId, String status) {
@@ -283,6 +352,7 @@ public class DataProcessService implements IDataProcessService {
         dataProcessTaskRepository.markCleanTaskRunning(ownerUsername, id);
 
         int cleanedRows;
+        Map<String, Object> layerResult = Map.of();
         try {
             stagingTableService.recreateRawTable(rawTable);
             stagingTableService.loadObjectsIntoRawTable(ownerUsername, id, cleanObjects, rawTable);
@@ -292,6 +362,7 @@ public class DataProcessService implements IDataProcessService {
 
             Integer count = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM " + outputTableRef, Integer.class);
             cleanedRows = count == null ? 0 : count;
+            layerResult = stagingTableService.persistCleanResultToLayers(ownerUsername, id, outputTable);
 
             dataProcessTaskRepository.markCleanTaskCompleted(ownerUsername, id, cleanedRows);
             cleanRunSuccessCounter.increment();
@@ -299,7 +370,7 @@ public class DataProcessService implements IDataProcessService {
                 .map(it -> text(it.get("objectName")))
                 .filter(it -> !isBlank(it))
                 .toList());
-            recordAudit(ownerUsername, "RUN", "CLEAN_TASK", String.valueOf(id), "SUCCESS", Map.of("outputTable", outputTable));
+            recordAudit(ownerUsername, "RUN", "CLEAN_TASK", String.valueOf(id), "SUCCESS", Map.of("outputTable", outputTable, "layers", layerResult));
         } catch (RuntimeException ex) {
             dataProcessTaskRepository.markCleanTaskFailed(ownerUsername, id);
             cleanRunFailedCounter.increment();
@@ -312,6 +383,34 @@ public class DataProcessService implements IDataProcessService {
         Map<String, Object> completed = getCleanTaskById(ownerUsername, id);
         invalidateDashboardCache(ownerUsername);
         return completed;
+    }
+
+    public Map<String, Object> previewCleanTask(String ownerUsername, Long id, Integer limit) {
+        Map<String, Object> task = getCleanTaskById(ownerUsername, id);
+        String standardTable = sanitizeTableName(String.valueOf(task.get("standardTable")));
+        String standardTableRef = stagingTableRef(standardTable);
+        int safeLimit = (limit == null || limit <= 0) ? 20 : Math.min(limit, 200);
+
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+            "SELECT id,task_id,source_id,object_name,row_no,raw_json,normalized_json,created_at FROM " +
+                standardTableRef + " WHERE task_id=? ORDER BY row_no ASC LIMIT " + safeLimit,
+            id
+        );
+
+        Integer total = jdbcTemplate.queryForObject(
+            "SELECT COUNT(1) FROM " + standardTableRef + " WHERE task_id=?",
+            Integer.class,
+            id
+        );
+
+        return Map.of(
+            "task", task,
+            "standardTable", standardTable,
+            "rows", rows,
+            "size", rows.size(),
+            "totalRows", total == null ? 0 : total,
+            "previewLimit", safeLimit
+        );
     }
 
     @Transactional
@@ -359,6 +458,7 @@ public class DataProcessService implements IDataProcessService {
         String strategy = text(payload.get("strategy"));
         String remark = text(payload.get("remark"));
         List<Long> cleanTaskIds = castLongList(payload.get("cleanTaskIds"));
+        Map<String, Object> fusionConfig = castMap(payload.get("fusionConfig"));
 
         if (isBlank(taskName) || isBlank(targetTable) || isBlank(strategy) || cleanTaskIds.isEmpty()) {
             throw new IllegalArgumentException("融合任务必填项缺失");
@@ -383,6 +483,7 @@ public class DataProcessService implements IDataProcessService {
             toJson(cleanTaskNames),
             toJson(standardTables),
             strategy,
+            toJson(fusionConfig),
             remark
         );
 
@@ -406,6 +507,7 @@ public class DataProcessService implements IDataProcessService {
         String strategy = text(payload.get("strategy"));
         String remark = text(payload.get("remark"));
         List<Long> cleanTaskIds = castLongList(payload.get("cleanTaskIds"));
+        Map<String, Object> fusionConfig = castMap(payload.get("fusionConfig"));
 
         if (isBlank(taskName) || isBlank(targetTable) || isBlank(strategy) || cleanTaskIds.isEmpty()) {
             throw new IllegalArgumentException("融合任务必填项缺失");
@@ -431,6 +533,7 @@ public class DataProcessService implements IDataProcessService {
             toJson(cleanTaskNames),
             toJson(standardTables),
             strategy,
+            toJson(fusionConfig),
             remark
         );
         if (affected == 0) {
@@ -455,6 +558,8 @@ public class DataProcessService implements IDataProcessService {
 
         String targetTable = sanitizeTableName(String.valueOf(task.get("targetTable")));
         List<String> standardTables = castStringList(task.get("standardTables"));
+        String strategy = text(task.get("strategy"));
+        Map<String, Object> fusionConfig = castMap(task.get("fusionConfig"));
         if (standardTables.isEmpty()) {
             throw new IllegalArgumentException("缺少可融合的标准表");
         }
@@ -462,14 +567,16 @@ public class DataProcessService implements IDataProcessService {
         dataProcessTaskRepository.markFusionTaskRunning(ownerUsername, id);
 
         int fusionRows;
+        Map<String, Object> goldResult = Map.of();
         try {
             stagingTableService.recreateFusionTable(targetTable);
-            fusionRows = stagingTableService.mergeStandardTablesToTarget(ownerUsername, id, targetTable, standardTables);
+            fusionRows = stagingTableService.mergeStandardTablesToTarget(ownerUsername, id, targetTable, standardTables, strategy, fusionConfig);
+            goldResult = stagingTableService.persistFusionResultToGold(ownerUsername, id, targetTable, strategy);
 
             dataProcessTaskRepository.markFusionTaskCompleted(ownerUsername, id, fusionRows);
             fusionRunSuccessCounter.increment();
             persistGovernanceArtifacts(ownerUsername, "FUSION", id, targetTable, standardTables);
-            recordAudit(ownerUsername, "RUN", "FUSION_TASK", String.valueOf(id), "SUCCESS", Map.of("targetTable", targetTable));
+            recordAudit(ownerUsername, "RUN", "FUSION_TASK", String.valueOf(id), "SUCCESS", Map.of("targetTable", targetTable, "layers", goldResult));
         } catch (RuntimeException ex) {
             dataProcessTaskRepository.markFusionTaskFailed(ownerUsername, id);
             fusionRunFailedCounter.increment();
@@ -706,6 +813,353 @@ public class DataProcessService implements IDataProcessService {
         return result;
     }
 
+    public Map<String, Object> getNifiStatus(String ownerUsername) {
+        return nifiOrchestrationService.getStatus();
+    }
+
+    public List<Map<String, Object>> listNifiFlowTemplates(String ownerUsername) {
+        return jdbcTemplate.query(
+            """
+            SELECT id, flow_type, process_group_id, parameter_schema_json, version_no, enabled, remark, created_at, updated_at
+              FROM nifi_flow_template_record
+             WHERE owner_username=?
+             ORDER BY updated_at DESC, id DESC
+            """,
+            (rs, i) -> Map.of(
+                "id", rs.getLong("id"),
+                "flowType", rs.getString("flow_type"),
+                "processGroupId", rs.getString("process_group_id"),
+                "parameterSchema", castMap(parseJson(rs.getString("parameter_schema_json"))),
+                "versionNo", rs.getInt("version_no"),
+                "enabled", rs.getBoolean("enabled"),
+                "remark", nvl(rs.getString("remark")),
+                "createdAt", formatDateTime(rs.getTimestamp("created_at")),
+                "updatedAt", formatDateTime(rs.getTimestamp("updated_at"))
+            ),
+            ownerUsername
+        );
+    }
+
+    @Transactional
+    public Map<String, Object> saveNifiFlowTemplate(String ownerUsername, Map<String, Object> payload) {
+        requireAuthenticated(ownerUsername);
+        String flowType = text(payload.get("flowType")).toUpperCase();
+        String processGroupId = text(payload.get("processGroupId"));
+        Map<String, Object> parameterSchema = castMap(payload.get("parameterSchema"));
+        boolean enabled = !Boolean.FALSE.equals(payload.get("enabled"));
+        String remark = text(payload.get("remark"));
+
+        if (isBlank(flowType)) {
+            throw new IllegalArgumentException("flowType 不能为空");
+        }
+        if (isBlank(processGroupId)) {
+            throw new IllegalArgumentException("processGroupId 不能为空");
+        }
+
+        String tenantId = resolveTenantId(ownerUsername);
+        String now = now();
+
+        List<Map<String, Object>> existing = jdbcTemplate.queryForList(
+            "SELECT id, version_no FROM nifi_flow_template_record WHERE owner_username=? AND flow_type=? LIMIT 1",
+            ownerUsername,
+            flowType
+        );
+
+        int versionNo = 1;
+        Long templateId;
+        if (existing.isEmpty()) {
+            templateId = insertAndGetId(
+                "INSERT INTO nifi_flow_template_record(tenant_id,owner_username,flow_type,process_group_id,parameter_schema_json,version_no,enabled,remark,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                tenantId,
+                ownerUsername,
+                flowType,
+                processGroupId,
+                toJson(parameterSchema),
+                versionNo,
+                enabled ? 1 : 0,
+                remark,
+                now,
+                now
+            );
+        } else {
+            Map<String, Object> row = existing.get(0);
+            templateId = toLong(row.get("id"));
+            Number oldVersion = (Number) row.get("version_no");
+            versionNo = (oldVersion == null ? 0 : oldVersion.intValue()) + 1;
+            jdbcTemplate.update(
+                "UPDATE nifi_flow_template_record SET process_group_id=?, parameter_schema_json=?, version_no=?, enabled=?, remark=?, updated_at=? WHERE id=? AND owner_username=?",
+                processGroupId,
+                toJson(parameterSchema),
+                versionNo,
+                enabled ? 1 : 0,
+                remark,
+                now,
+                templateId,
+                ownerUsername
+            );
+        }
+
+        recordAudit(
+            ownerUsername,
+            "UPSERT",
+            "NIFI_TEMPLATE",
+            String.valueOf(templateId),
+            "SUCCESS",
+            Map.of("flowType", flowType, "versionNo", versionNo, "enabled", enabled)
+        );
+
+        return Map.of(
+            "id", templateId,
+            "flowType", flowType,
+            "processGroupId", processGroupId,
+            "parameterSchema", parameterSchema,
+            "versionNo", versionNo,
+            "enabled", enabled,
+            "remark", remark,
+            "updatedAt", now
+        );
+    }
+
+    @Transactional
+    public Map<String, Object> triggerNifiFlow(String ownerUsername, Map<String, Object> payload) {
+        requireAuthenticated(ownerUsername);
+        String flowType = text(payload.get("flowType")).toUpperCase();
+        String processGroupId = text(payload.get("processGroupId"));
+        Map<String, Object> parameters = castMap(payload.get("parameters"));
+        Map<String, Object> template = findEnabledNifiTemplate(ownerUsername, flowType);
+        if (isBlank(processGroupId)) {
+            processGroupId = text(template.get("processGroupId"));
+        }
+        validateFlowParameters(flowType, parameters, template);
+
+        String tenantId = resolveTenantId(ownerUsername);
+        String now = now();
+        Map<String, Object> result;
+
+        Map<String, Object> requestPayload = Map.of(
+            "flowType", flowType,
+            "processGroupId", processGroupId,
+            "parameters", parameters,
+            "templateVersion", template.getOrDefault("versionNo", 0)
+        );
+
+        try {
+            result = nifiOrchestrationService.triggerFlow(flowType, processGroupId, parameters);
+            insertAndGetId(
+                "INSERT INTO nifi_flow_run_record(tenant_id,owner_username,flow_type,process_group_id,dispatch_status,external_run_id,request_json,response_json,error_message,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                tenantId,
+                ownerUsername,
+                text(result.get("flowType")),
+                text(result.get("processGroupId")),
+                text(result.get("dispatchStatus")),
+                text(result.get("externalRunId")),
+                toJson(requestPayload),
+                toJson(result),
+                "",
+                now,
+                now
+            );
+            recordAudit(
+                ownerUsername,
+                "RUN",
+                "NIFI_FLOW",
+                text(result.get("externalRunId")),
+                "SUCCESS",
+                Map.of(
+                    "flowType", text(result.get("flowType")),
+                    "processGroupId", text(result.get("processGroupId")),
+                    "dispatchStatus", text(result.get("dispatchStatus")),
+                    "templateVersion", template.getOrDefault("versionNo", 0)
+                )
+            );
+            return Map.of(
+                "flowType", text(result.get("flowType")),
+                "processGroupId", text(result.get("processGroupId")),
+                "dispatchStatus", text(result.get("dispatchStatus")),
+                "templateVersion", template.getOrDefault("versionNo", 0),
+                "externalRunId", text(result.get("externalRunId")),
+                "httpStatus", result.getOrDefault("httpStatus", 0),
+                "submittedAt", result.getOrDefault("submittedAt", now)
+            );
+        } catch (RuntimeException ex) {
+            String safeFlowType = isBlank(flowType) ? "INGEST" : flowType.toUpperCase();
+            String safeProcessGroupId = processGroupId;
+            if (isBlank(safeProcessGroupId)) {
+                safeProcessGroupId = "UNKNOWN";
+            }
+            insertAndGetId(
+                "INSERT INTO nifi_flow_run_record(tenant_id,owner_username,flow_type,process_group_id,dispatch_status,external_run_id,request_json,response_json,error_message,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                tenantId,
+                ownerUsername,
+                safeFlowType,
+                safeProcessGroupId,
+                "FAILED",
+                "",
+                toJson(requestPayload),
+                "{}",
+                nvl(ex.getMessage()),
+                now,
+                now
+            );
+            recordAudit(
+                ownerUsername,
+                "RUN",
+                "NIFI_FLOW",
+                safeProcessGroupId,
+                "FAILED",
+                Map.of("reason", nvl(ex.getMessage()), "flowType", safeFlowType)
+            );
+            return Map.of(
+                "flowType", safeFlowType,
+                "processGroupId", safeProcessGroupId,
+                "dispatchStatus", "FAILED",
+                "templateVersion", template.getOrDefault("versionNo", 0),
+                "errorMessage", nvl(ex.getMessage()),
+                "submittedAt", now
+            );
+        }
+    }
+
+    public List<Map<String, Object>> listNifiFlowRuns(String ownerUsername, Integer limit) {
+        int safeLimit = (limit == null || limit <= 0) ? 50 : Math.min(limit, 500);
+        return jdbcTemplate.query(
+            """
+            SELECT id, flow_type, process_group_id, dispatch_status, external_run_id, request_json, response_json, error_message, created_at, updated_at
+              FROM nifi_flow_run_record
+             WHERE owner_username=?
+             ORDER BY id DESC
+             LIMIT ?
+            """,
+            (rs, i) -> Map.of(
+                "id", rs.getLong("id"),
+                "flowType", rs.getString("flow_type"),
+                "processGroupId", rs.getString("process_group_id"),
+                "dispatchStatus", rs.getString("dispatch_status"),
+                "externalRunId", nvl(rs.getString("external_run_id")),
+                "request", castMap(parseJson(rs.getString("request_json"))),
+                "response", castMap(parseJson(rs.getString("response_json"))),
+                "errorMessage", nvl(rs.getString("error_message")),
+                "createdAt", formatDateTime(rs.getTimestamp("created_at")),
+                "updatedAt", formatDateTime(rs.getTimestamp("updated_at"))
+            ),
+            ownerUsername,
+            safeLimit
+        );
+    }
+
+    public Map<String, Object> getLayerStats(String ownerUsername, String taskType, Long taskId) {
+        String normalizedTaskType = text(taskType).toUpperCase();
+        boolean filterByTaskType = !isBlank(normalizedTaskType);
+        boolean filterByTaskId = taskId != null && taskId > 0;
+        long filterTaskId = taskId == null ? 0L : taskId;
+
+        List<Map<String, Object>> bronzeRows = jdbcTemplate.queryForList(
+            "SELECT source_task_type AS taskType, source_task_id AS taskId, COUNT(1) AS rowCount FROM bronze_ingest_record WHERE owner_username=? GROUP BY source_task_type, source_task_id",
+            ownerUsername
+        );
+        List<Map<String, Object>> silverRows = jdbcTemplate.queryForList(
+            "SELECT source_task_type AS taskType, source_task_id AS taskId, COUNT(1) AS rowCount FROM silver_standard_record WHERE owner_username=? GROUP BY source_task_type, source_task_id",
+            ownerUsername
+        );
+        List<Map<String, Object>> goldRows = jdbcTemplate.queryForList(
+            "SELECT 'FUSION' AS taskType, fusion_task_id AS taskId, COUNT(1) AS rowCount FROM gold_fusion_wide_record WHERE owner_username=? GROUP BY fusion_task_id",
+            ownerUsername
+        );
+
+        Map<String, Map<String, Object>> merged = new java.util.LinkedHashMap<>();
+        mergeLayerRows(merged, bronzeRows, "bronzeRows");
+        mergeLayerRows(merged, silverRows, "silverRows");
+        mergeLayerRows(merged, goldRows, "goldRows");
+
+        List<Map<String, Object>> details = merged.values().stream()
+            .filter(it -> !filterByTaskType || normalizedTaskType.equals(text(it.get("taskType"))))
+            .filter(it -> !filterByTaskId || filterTaskId == (toLong(it.get("taskId")) == null ? 0L : toLong(it.get("taskId"))))
+            .toList();
+
+        int bronzeTotal = details.stream().mapToInt(it -> ((Number) it.getOrDefault("bronzeRows", 0)).intValue()).sum();
+        int silverTotal = details.stream().mapToInt(it -> ((Number) it.getOrDefault("silverRows", 0)).intValue()).sum();
+        int goldTotal = details.stream().mapToInt(it -> ((Number) it.getOrDefault("goldRows", 0)).intValue()).sum();
+
+        return Map.of(
+            "owner", ownerUsername,
+            "taskType", normalizedTaskType,
+            "taskId", taskId == null ? 0L : taskId,
+            "summary", Map.of(
+                "bronzeRows", bronzeTotal,
+                "silverRows", silverTotal,
+                "goldRows", goldTotal,
+                "taskCount", details.size()
+            ),
+            "details", details
+        );
+    }
+
+    private void mergeLayerRows(Map<String, Map<String, Object>> merged, List<Map<String, Object>> rows, String fieldName) {
+        for (Map<String, Object> row : rows) {
+            String taskType = text(row.get("taskType")).toUpperCase();
+            Long taskId = toLong(row.get("taskId"));
+            if (taskId == null || isBlank(taskType)) {
+                continue;
+            }
+            String key = taskType + "#" + taskId;
+            Map<String, Object> base = merged.computeIfAbsent(key, k -> {
+                Map<String, Object> val = new java.util.LinkedHashMap<>();
+                val.put("taskType", taskType);
+                val.put("taskId", taskId);
+                val.put("bronzeRows", 0);
+                val.put("silverRows", 0);
+                val.put("goldRows", 0);
+                return val;
+            });
+            Number rowCount = (Number) row.get("rowCount");
+            base.put(fieldName, rowCount == null ? 0 : rowCount.intValue());
+        }
+    }
+
+    private Map<String, Object> findEnabledNifiTemplate(String ownerUsername, String flowType) {
+        String normalizedFlowType = isBlank(flowType) ? "INGEST" : flowType.toUpperCase();
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+            "SELECT id, process_group_id, parameter_schema_json, version_no FROM nifi_flow_template_record WHERE owner_username=? AND flow_type=? AND enabled=1 LIMIT 1",
+            ownerUsername,
+            normalizedFlowType
+        );
+        if (rows.isEmpty()) {
+            return Map.of(
+                "flowType", normalizedFlowType,
+                "processGroupId", "",
+                "parameterSchema", Map.of(),
+                "versionNo", 0
+            );
+        }
+        Map<String, Object> row = rows.get(0);
+        Number versionNo = (Number) row.get("version_no");
+        return Map.of(
+            "flowType", normalizedFlowType,
+            "processGroupId", text(row.get("process_group_id")),
+            "parameterSchema", castMap(parseJson(String.valueOf(row.get("parameter_schema_json")))),
+            "versionNo", versionNo == null ? 0 : versionNo.intValue()
+        );
+    }
+
+    private void validateFlowParameters(String flowType, Map<String, Object> parameters, Map<String, Object> template) {
+        Map<String, Object> parameterSchema = castMap(template.get("parameterSchema"));
+        List<String> requiredKeys = castStringList(parameterSchema.get("requiredKeys"));
+        List<String> missing = new ArrayList<>();
+        for (String key : requiredKeys) {
+            String normalizedKey = text(key);
+            if (isBlank(normalizedKey)) {
+                continue;
+            }
+            Object value = parameters.get(normalizedKey);
+            if (value == null || isBlank(String.valueOf(value))) {
+                missing.add(normalizedKey);
+            }
+        }
+        if (!missing.isEmpty()) {
+            throw new IllegalArgumentException("NiFi flow " + flowType + " 缺少必填参数: " + String.join(",", missing));
+        }
+    }
+
     public List<Map<String, Object>> listLineageRecords(String ownerUsername, String taskType, Long taskId) {
         String tenantId = resolveTenantId(ownerUsername);
         return governanceAuditService.listLineageRecords(ownerUsername, tenantId, taskType, taskId);
@@ -761,6 +1215,21 @@ public class DataProcessService implements IDataProcessService {
         }
     }
 
+    private Object parseJson(String raw) {
+        if (isBlank(raw)) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(raw, Object.class);
+        } catch (Exception ex) {
+            return Map.of();
+        }
+    }
+
+    private String formatDateTime(Timestamp ts) {
+        return ts == null ? "" : DATE_TIME_FORMATTER.format(ts.toInstant());
+    }
+
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> castMapList(Object value) {
         if (!(value instanceof List<?> list)) return List.of();
@@ -792,6 +1261,14 @@ public class DataProcessService implements IDataProcessService {
     private List<Long> castLongList(Object value) {
         if (!(value instanceof List<?> list)) return List.of();
         return list.stream().map(DataProcessService::toLong).filter(Objects::nonNull).toList();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> castMap(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
+        }
+        return Map.of();
     }
 
     private static boolean contains(Object value, String keyword) {

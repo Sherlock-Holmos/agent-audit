@@ -31,7 +31,7 @@ public class DataProcessApplicationService implements IDataProcessApplicationSer
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<Map<String, Object>> listCleanRules(String username) {
         return dataProcessService.listCleanRules(normalizeUser(username));
     }
@@ -67,7 +67,7 @@ public class DataProcessApplicationService implements IDataProcessApplicationSer
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<Map<String, Object>> listCleanStrategies(String username) {
         return dataProcessService.listCleanStrategies(normalizeUser(username));
     }
@@ -104,6 +104,54 @@ public class DataProcessApplicationService implements IDataProcessApplicationSer
 
     @Override
     @Transactional
+    public List<Map<String, Object>> listFusionKeySynonyms(String username) {
+        return dataProcessService.listFusionKeySynonyms(normalizeUser(username));
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> createFusionKeySynonym(String username, Map<String, Object> payload) {
+        return dataProcessService.createFusionKeySynonym(normalizeUser(username), payload);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> getFusionKeySynonymDetail(String username, Long id) {
+        return dataProcessService.getFusionKeySynonymDetail(normalizeUser(username), id);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> updateFusionKeySynonym(String username, Long id, Map<String, Object> payload) {
+        return dataProcessService.updateFusionKeySynonym(normalizeUser(username), id, payload);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> toggleFusionKeySynonym(String username, Long id, boolean enabled) {
+        return dataProcessService.toggleFusionKeySynonym(normalizeUser(username), id, enabled);
+    }
+
+    @Override
+    @Transactional
+    public void deleteFusionKeySynonym(String username, Long id) {
+        dataProcessService.deleteFusionKeySynonym(normalizeUser(username), id);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> listFusionKeySynonymHistory(String username, Long id, Integer limit) {
+        return dataProcessService.listFusionKeySynonymHistory(normalizeUser(username), id, limit);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> listFusionKeySynonymHistoryByCanonicalKey(String username, String canonicalKey, Integer limit) {
+        return dataProcessService.listFusionKeySynonymHistoryByCanonicalKey(normalizeUser(username), canonicalKey, limit);
+    }
+
+    @Override
+    @Transactional
     public Map<String, Object> createCleanTask(String username, Map<String, Object> payload) {
         return dataProcessService.createCleanTask(normalizeUser(username), payload);
     }
@@ -118,6 +166,12 @@ public class DataProcessApplicationService implements IDataProcessApplicationSer
     @Transactional
     public Map<String, Object> runCleanTask(String username, Long id) {
         return dataProcessService.runCleanTask(normalizeUser(username), id);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> previewCleanTask(String username, Long id, Integer limit) {
+        return dataProcessService.previewCleanTask(normalizeUser(username), id, limit);
     }
 
     @Override
@@ -190,6 +244,42 @@ public class DataProcessApplicationService implements IDataProcessApplicationSer
     @Transactional
     public Map<String, Object> runWorkflow(String username, Map<String, Object> payload) {
         return dataProcessService.runWorkflow(normalizeUser(username), payload);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> getNifiStatus(String username) {
+        return dataProcessService.getNifiStatus(normalizeUser(username));
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> triggerNifiFlow(String username, Map<String, Object> payload) {
+        return dataProcessService.triggerNifiFlow(normalizeUser(username), payload);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> listNifiFlowRuns(String username, Integer limit) {
+        return dataProcessService.listNifiFlowRuns(normalizeUser(username), limit);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> listNifiFlowTemplates(String username) {
+        return dataProcessService.listNifiFlowTemplates(normalizeUser(username));
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> saveNifiFlowTemplate(String username, Map<String, Object> payload) {
+        return dataProcessService.saveNifiFlowTemplate(normalizeUser(username), payload);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> getLayerStats(String username, String taskType, Long taskId) {
+        return dataProcessService.getLayerStats(normalizeUser(username), taskType, taskId);
     }
 
     @Override

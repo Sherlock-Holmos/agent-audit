@@ -48,3 +48,12 @@ app:
   datasource:
     upload-dir: ../../data/uploads
     staging-schema: ${APP_DATASOURCE_STAGING_SCHEMA:agent_audit_staging}
+  fusion:
+    # Optional JSON map for synonym extension. Example:
+    # {"整改单位ID":["单位ID","org_id"],"整改事项ID":["事项ID","issue_id"]}
+    key-synonyms-json: ${APP_FUSION_KEY_SYNONYMS_JSON:}
+  nifi:
+    enabled: ${APP_NIFI_ENABLED:false}
+    base-url: ${APP_NIFI_BASE_URL:http://localhost:8090}
+    timeout-seconds: ${APP_NIFI_TIMEOUT_SECONDS:5}
+    default-process-group-id: ${APP_NIFI_DEFAULT_PROCESS_GROUP_ID:}

@@ -143,6 +143,75 @@ public class DataProcessController {
         return ApiResponse.success("删除成功");
     }
 
+    @GetMapping("/fusion/key-synonyms")
+    public ApiResponse<Object> listFusionKeySynonyms(
+        @RequestHeader(value = "X-User-Name", required = false) String username
+    ) {
+        return ApiResponse.success("ok", dataProcessApplicationService.listFusionKeySynonyms(username));
+    }
+
+    @PostMapping("/fusion/key-synonyms")
+    public ApiResponse<Object> createFusionKeySynonym(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
+    ) {
+        return ApiResponse.success("创建成功", dataProcessApplicationService.createFusionKeySynonym(username, payload));
+    }
+
+    @GetMapping("/fusion/key-synonyms/{id}")
+    public ApiResponse<Object> getFusionKeySynonymDetail(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @NotNull(message = "映射ID不能为空") @Positive(message = "映射ID必须大于0") @PathVariable Long id
+    ) {
+        return ApiResponse.success("ok", dataProcessApplicationService.getFusionKeySynonymDetail(username, id));
+    }
+
+    @PatchMapping("/fusion/key-synonyms/{id}")
+    public ApiResponse<Object> updateFusionKeySynonym(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @NotNull(message = "映射ID不能为空") @Positive(message = "映射ID必须大于0") @PathVariable Long id,
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
+    ) {
+        return ApiResponse.success("更新成功", dataProcessApplicationService.updateFusionKeySynonym(username, id, payload));
+    }
+
+    @PatchMapping("/fusion/key-synonyms/{id}/enabled")
+    public ApiResponse<Object> toggleFusionKeySynonym(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @NotNull(message = "映射ID不能为空") @Positive(message = "映射ID必须大于0") @PathVariable Long id,
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
+    ) {
+        boolean enabled = Boolean.TRUE.equals(payload.get("enabled"));
+        return ApiResponse.success("更新成功", dataProcessApplicationService.toggleFusionKeySynonym(username, id, enabled));
+    }
+
+    @DeleteMapping("/fusion/key-synonyms/{id}")
+    public ApiResponse<Void> deleteFusionKeySynonym(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @NotNull(message = "映射ID不能为空") @Positive(message = "映射ID必须大于0") @PathVariable Long id
+    ) {
+        dataProcessApplicationService.deleteFusionKeySynonym(username, id);
+        return ApiResponse.success("删除成功");
+    }
+
+    @GetMapping("/fusion/key-synonyms/{id}/history")
+    public ApiResponse<Object> listFusionKeySynonymHistory(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @NotNull(message = "映射ID不能为空") @Positive(message = "映射ID必须大于0") @PathVariable Long id,
+        @RequestParam(required = false) Integer limit
+    ) {
+        return ApiResponse.success("ok", dataProcessApplicationService.listFusionKeySynonymHistory(username, id, limit));
+    }
+
+    @GetMapping("/fusion/key-synonyms/history")
+    public ApiResponse<Object> listFusionKeySynonymHistoryByCanonicalKey(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @NotBlank(message = "标准主键不能为空") @RequestParam String canonicalKey,
+        @RequestParam(required = false) Integer limit
+    ) {
+        return ApiResponse.success("ok", dataProcessApplicationService.listFusionKeySynonymHistoryByCanonicalKey(username, canonicalKey, limit));
+    }
+
     @PostMapping("/clean/tasks")
     public ApiResponse<Object> createCleanTask(
         @RequestHeader(value = "X-User-Name", required = false) String username,
@@ -166,6 +235,15 @@ public class DataProcessController {
         @NotNull(message = "任务ID不能为空") @Positive(message = "任务ID必须大于0") @PathVariable Long id
     ) {
         return ApiResponse.success("执行成功", dataProcessApplicationService.runCleanTask(username, id));
+    }
+
+    @GetMapping("/clean/tasks/{id}/preview")
+    public ApiResponse<Object> previewCleanTask(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @NotNull(message = "任务ID不能为空") @Positive(message = "任务ID必须大于0") @PathVariable Long id,
+        @RequestParam(required = false) Integer limit
+    ) {
+        return ApiResponse.success("ok", dataProcessApplicationService.previewCleanTask(username, id, limit));
     }
 
     @PostMapping("/clean/tasks/{id}/run-async")
@@ -268,6 +346,53 @@ public class DataProcessController {
         @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
     ) {
         return ApiResponse.success("执行完成", dataProcessApplicationService.runWorkflow(username, payload));
+    }
+
+    @GetMapping("/control-plane/nifi/status")
+    public ApiResponse<Object> getNifiStatus(
+        @RequestHeader(value = "X-User-Name", required = false) String username
+    ) {
+        return ApiResponse.success("ok", dataProcessApplicationService.getNifiStatus(username));
+    }
+
+    @PostMapping("/control-plane/nifi/flows/run")
+    public ApiResponse<Object> triggerNifiFlow(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
+    ) {
+        return ApiResponse.success("已处理", dataProcessApplicationService.triggerNifiFlow(username, payload));
+    }
+
+    @GetMapping("/control-plane/nifi/flows")
+    public ApiResponse<Object> listNifiFlowRuns(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @RequestParam(required = false) Integer limit
+    ) {
+        return ApiResponse.success("ok", dataProcessApplicationService.listNifiFlowRuns(username, limit));
+    }
+
+    @GetMapping("/control-plane/nifi/templates")
+    public ApiResponse<Object> listNifiFlowTemplates(
+        @RequestHeader(value = "X-User-Name", required = false) String username
+    ) {
+        return ApiResponse.success("ok", dataProcessApplicationService.listNifiFlowTemplates(username));
+    }
+
+    @PostMapping("/control-plane/nifi/templates")
+    public ApiResponse<Object> saveNifiFlowTemplate(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
+    ) {
+        return ApiResponse.success("已保存", dataProcessApplicationService.saveNifiFlowTemplate(username, payload));
+    }
+
+    @GetMapping("/control-plane/layers/stats")
+    public ApiResponse<Object> getLayerStats(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @RequestParam(required = false) String taskType,
+        @RequestParam(required = false) Long taskId
+    ) {
+        return ApiResponse.success("ok", dataProcessApplicationService.getLayerStats(username, taskType, taskId));
     }
 
     @GetMapping("/governance/lineage")

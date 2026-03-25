@@ -185,6 +185,7 @@ public class DataProcessTaskRepository {
         String cleanTaskNamesJson,
         String standardTablesJson,
         String strategy,
+        String fusionConfigJson,
         String remark
     ) {
         String now = now();
@@ -192,8 +193,8 @@ public class DataProcessTaskRepository {
             """
             INSERT INTO fusion_task_record(
               owner_username,task_name,target_table,clean_task_ids_json,clean_task_names_json,standard_tables_json,
-              strategy,status,fusion_rows,remark,created_at,updated_at
-                        ) VALUES(?,?,?,?,?,?,?, 'READY',0,?,?,?)
+              strategy,fusion_config_json,status,fusion_rows,remark,created_at,updated_at
+                        ) VALUES(?,?,?,?,?,?,?, ?, 'READY',0,?,?,?)
             """,
             ownerUsername,
             taskName,
@@ -202,6 +203,7 @@ public class DataProcessTaskRepository {
             cleanTaskNamesJson,
             standardTablesJson,
             strategy,
+            fusionConfigJson,
             remark,
             now,
             now
@@ -241,6 +243,7 @@ public class DataProcessTaskRepository {
         String cleanTaskNamesJson,
         String standardTablesJson,
         String strategy,
+        String fusionConfigJson,
         String remark
     ) {
         return jdbcTemplate.update(
@@ -252,6 +255,7 @@ public class DataProcessTaskRepository {
                    clean_task_names_json=?,
                    standard_tables_json=?,
                    strategy=?,
+                 fusion_config_json=?,
                    remark=?,
                    status='READY',
                    fusion_rows=0,
@@ -264,6 +268,7 @@ public class DataProcessTaskRepository {
             cleanTaskNamesJson,
             standardTablesJson,
             strategy,
+            fusionConfigJson,
             remark,
             now(),
             ownerUsername,
@@ -359,12 +364,22 @@ public class DataProcessTaskRepository {
         row.put("cleanTaskNames", fromJsonToStringList(rs.getString("clean_task_names_json")));
         row.put("standardTables", fromJsonToStringList(rs.getString("standard_tables_json")));
         row.put("strategy", rs.getString("strategy"));
+        row.put("fusionConfig", fromJsonToMap(rs.getString("fusion_config_json")));
         row.put("status", rs.getString("status"));
         row.put("fusionRows", rs.getInt("fusion_rows"));
         row.put("remark", nvl(rs.getString("remark")));
         row.put("createdAt", formatDateTime(rs.getTimestamp("created_at")));
         row.put("updatedAt", formatDateTime(rs.getTimestamp("updated_at")));
         return row;
+    }
+
+    private Map<String, Object> fromJsonToMap(String json) {
+        if (isBlank(json)) return Map.of();
+        try {
+            return objectMapper.readValue(json, new TypeReference<>() {});
+        } catch (Exception ex) {
+            return Map.of();
+        }
     }
 
     private List<Map<String, Object>> fromJsonToMapList(String json) {

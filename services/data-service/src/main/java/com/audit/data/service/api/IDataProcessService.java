@@ -24,11 +24,22 @@ public interface IDataProcessService {
     Map<String, Object> toggleCleanStrategy(String ownerUsername, Long id, boolean enabled);
     void deleteCleanStrategy(String ownerUsername, Long id);
 
+    // 融合主键同义词管理
+    List<Map<String, Object>> listFusionKeySynonyms(String ownerUsername);
+    Map<String, Object> createFusionKeySynonym(String ownerUsername, Map<String, Object> payload);
+    Map<String, Object> getFusionKeySynonymDetail(String ownerUsername, Long id);
+    Map<String, Object> updateFusionKeySynonym(String ownerUsername, Long id, Map<String, Object> payload);
+    Map<String, Object> toggleFusionKeySynonym(String ownerUsername, Long id, boolean enabled);
+    void deleteFusionKeySynonym(String ownerUsername, Long id);
+    List<Map<String, Object>> listFusionKeySynonymHistory(String ownerUsername, Long id, Integer limit);
+    List<Map<String, Object>> listFusionKeySynonymHistoryByCanonicalKey(String ownerUsername, String canonicalKey, Integer limit);
+
     // 清洗任务管理
     List<Map<String, Object>> listCleanTasks(String ownerUsername, String keyword, String sourceId, String status);
     Map<String, Object> createCleanTask(String ownerUsername, Map<String, Object> payload);
     Map<String, Object> updateCleanTask(String ownerUsername, Long id, Map<String, Object> payload);
     Map<String, Object> runCleanTask(String ownerUsername, Long id);
+    Map<String, Object> previewCleanTask(String ownerUsername, Long id, Integer limit);
     void deleteCleanTask(String ownerUsername, Long id);
 
     // 融合任务管理
@@ -44,6 +55,14 @@ public interface IDataProcessService {
 
     // 工作流编排
     Map<String, Object> runWorkflow(String ownerUsername, Map<String, Object> payload);
+
+    // NiFi 控制平面
+    Map<String, Object> getNifiStatus(String ownerUsername);
+    Map<String, Object> triggerNifiFlow(String ownerUsername, Map<String, Object> payload);
+    List<Map<String, Object>> listNifiFlowRuns(String ownerUsername, Integer limit);
+    List<Map<String, Object>> listNifiFlowTemplates(String ownerUsername);
+    Map<String, Object> saveNifiFlowTemplate(String ownerUsername, Map<String, Object> payload);
+    Map<String, Object> getLayerStats(String ownerUsername, String taskType, Long taskId);
 
     // 数据治理
     List<Map<String, Object>> listLineageRecords(String ownerUsername, String taskType, Long taskId);

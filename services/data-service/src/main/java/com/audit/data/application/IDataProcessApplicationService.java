@@ -23,9 +23,19 @@ public interface IDataProcessApplicationService {
     Map<String, Object> toggleCleanStrategy(String username, Long id, boolean enabled);
     void deleteCleanStrategy(String username, Long id);
 
+    List<Map<String, Object>> listFusionKeySynonyms(String username);
+    Map<String, Object> createFusionKeySynonym(String username, Map<String, Object> payload);
+    Map<String, Object> getFusionKeySynonymDetail(String username, Long id);
+    Map<String, Object> updateFusionKeySynonym(String username, Long id, Map<String, Object> payload);
+    Map<String, Object> toggleFusionKeySynonym(String username, Long id, boolean enabled);
+    void deleteFusionKeySynonym(String username, Long id);
+    List<Map<String, Object>> listFusionKeySynonymHistory(String username, Long id, Integer limit);
+    List<Map<String, Object>> listFusionKeySynonymHistoryByCanonicalKey(String username, String canonicalKey, Integer limit);
+
     Map<String, Object> createCleanTask(String username, Map<String, Object> payload);
     Map<String, Object> updateCleanTask(String username, Long id, Map<String, Object> payload);
     Map<String, Object> runCleanTask(String username, Long id);
+    Map<String, Object> previewCleanTask(String username, Long id, Integer limit);
     Map<String, Object> runCleanTaskAsync(String username, Long id, String idempotencyKey);
     void deleteCleanTask(String username, Long id);
 
@@ -41,6 +51,12 @@ public interface IDataProcessApplicationService {
     Map<String, Object> cleanupOrphanGeneratedTables(String username);
 
     Map<String, Object> runWorkflow(String username, Map<String, Object> payload);
+    Map<String, Object> getNifiStatus(String username);
+    Map<String, Object> triggerNifiFlow(String username, Map<String, Object> payload);
+    List<Map<String, Object>> listNifiFlowRuns(String username, Integer limit);
+    List<Map<String, Object>> listNifiFlowTemplates(String username);
+    Map<String, Object> saveNifiFlowTemplate(String username, Map<String, Object> payload);
+    Map<String, Object> getLayerStats(String username, String taskType, Long taskId);
     List<Map<String, Object>> listLineageRecords(String username, String taskType, Long taskId);
     List<Map<String, Object>> listQualityReports(String username, String taskType, Long taskId);
     List<Map<String, Object>> listSnapshotRecords(String username, String taskType, Long taskId);
