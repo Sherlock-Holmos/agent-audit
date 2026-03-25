@@ -260,8 +260,9 @@ function normalizeLoadedColumnWidths() {
 
 function resolveHeaderMinWidth(column) {
   const label = String(column?.label || '').trim()
+  const domMin = resolveHeaderDomMinWidth(column)
   if (!label) {
-    return 80
+    return Math.max(100, domMin)
   }
 
   if (minWidthCache.has(label)) {
@@ -278,9 +279,24 @@ function resolveHeaderMinWidth(column) {
     }
   }
 
-  const width = Math.max(100, Math.ceil((measured || label.length * 14) + 56))
+  const width = Math.max(100, Math.ceil((measured || label.length * 14) + 56), domMin)
   minWidthCache.set(label, width)
   return width
+}
+
+function resolveHeaderDomMinWidth(column) {
+  if (typeof document === 'undefined') {
+    return 0
+  }
+  const columnId = String(column?.id || '').trim()
+  if (!columnId) {
+    return 0
+  }
+  const cell = document.querySelector(`th.${columnId} .cell`)
+  if (!cell) {
+    return 0
+  }
+  return Math.ceil(cell.scrollWidth + 24)
 }
 
 function toWidthNumber(value) {
