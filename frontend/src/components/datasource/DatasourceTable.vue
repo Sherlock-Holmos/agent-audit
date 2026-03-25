@@ -86,7 +86,7 @@
       </el-table-column>
     </el-table>
 
-    <div v-if="!data.length && !loading" class="empty-tip">暂无数据源，请点击“新增数据源”进行配置。</div>
+    <TableEmptyTip :show="!data.length && !loading" :text="emptyText" />
   </el-card>
 </template>
 
@@ -95,6 +95,7 @@ import { onMounted, ref } from 'vue'
 import { useTableColumnLayout } from '../../composables/useTableColumnLayout'
 import { useTableCardHeight } from '../../composables/useTableCardHeight'
 import TableLayoutActions from '../shared/TableLayoutActions.vue'
+import TableEmptyTip from '../shared/TableEmptyTip.vue'
 
 const props = defineProps({
   data: {
@@ -116,6 +117,10 @@ const props = defineProps({
   bottomOffset: {
     type: Number,
     default: 8
+  },
+  emptyText: {
+    type: String,
+    default: '暂无数据源，请点击“新增数据源”进行配置。'
   }
 })
 defineEmits(['status-change', 'delete', 'edit'])
@@ -205,9 +210,4 @@ function chineseScore(text) {
   height: 100%;
 }
 
-.empty-tip {
-  margin-top: 14px;
-  text-align: center;
-  color: #909399;
-}
 </style>

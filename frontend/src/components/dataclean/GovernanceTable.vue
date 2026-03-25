@@ -17,6 +17,8 @@
     >
       <slot :resolveWidth="resolveWidth" :resolveMinWidth="resolveMinWidth" />
     </el-table>
+
+    <TableEmptyTip :show="!data.length && !loading && !!emptyText" :text="emptyText" />
   </div>
 </template>
 
@@ -24,6 +26,7 @@
 import { onBeforeUnmount, onMounted, reactive } from 'vue'
 import { useTableColumnLayout } from '../../composables/useTableColumnLayout'
 import TableLayoutActions from '../shared/TableLayoutActions.vue'
+import TableEmptyTip from '../shared/TableEmptyTip.vue'
 
 const props = defineProps({
   data: {
@@ -37,6 +40,10 @@ const props = defineProps({
   layoutStorageKey: {
     type: String,
     required: true
+  },
+  emptyText: {
+    type: String,
+    default: ''
   }
 })
 

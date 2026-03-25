@@ -108,6 +108,8 @@
       </el-table-column>
     </el-table>
 
+    <TableEmptyTip :show="!data.length && !loading && !!emptyText" :text="emptyText" />
+
   </el-card>
 </template>
 
@@ -116,6 +118,7 @@ import { onMounted, ref } from 'vue'
 import { useTableColumnLayout } from '../../composables/useTableColumnLayout'
 import { useTableCardHeight } from '../../composables/useTableCardHeight'
 import TableLayoutActions from '../shared/TableLayoutActions.vue'
+import TableEmptyTip from '../shared/TableEmptyTip.vue'
 
 const props = defineProps({
   data: {
@@ -137,6 +140,10 @@ const props = defineProps({
   bottomOffset: {
     type: Number,
     default: 8
+  },
+  emptyText: {
+    type: String,
+    default: ''
   }
 })
 
