@@ -88,12 +88,20 @@ const menuList = ref([
     children: [
       { title: '数据源管理', path: '/datasource' },
       { title: '数据清洗', path: '/datasource/clean' },
-      { title: '治理中心', path: '/datasource/clean-rules' },
+      { title: '数据融合', path: '/datasource/fusion' }
+    ]
+  },
+  {
+    title: '治理中心',
+    path: '/datasource/clean-rules',
+    icon: Setting,
+    open: false,
+    children: [
+      { title: '治理总览', path: '/datasource/clean-rules' },
       { title: '规则与策略', path: '/datasource/clean-rules/rules' },
       { title: '主键同义词', path: '/datasource/clean-rules/synonyms' },
       { title: 'NiFi 模板', path: '/datasource/clean-rules/nifi-templates' },
-      { title: '分层统计', path: '/datasource/clean-rules/layer-stats' },
-      { title: '数据融合', path: '/datasource/fusion' }
+      { title: '分层统计', path: '/datasource/clean-rules/layer-stats' }
     ]
   },
   { title: 'AI分析', path: '/ai', icon: Cpu },
