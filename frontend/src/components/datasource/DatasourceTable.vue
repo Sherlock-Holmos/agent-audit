@@ -188,7 +188,8 @@ function resolveWidth(key, fallback = 80) {
 }
 
 function resolveMinWidth(key, fallback) {
-  return columnWidths.value[key] ? undefined : fallback
+  const width = toWidthNumber(columnWidths.value[key])
+  return width == null ? fallback : undefined
 }
 
 function handleHeaderDragEnd(newWidth, _oldWidth, column) {
@@ -332,7 +333,8 @@ function chineseScore(text) {
 
 .table-wrap :deep(.el-table th.el-table__cell .cell) {
   white-space: nowrap;
-  text-overflow: clip;
+  overflow: visible !important;
+  text-overflow: clip !important;
 }
 
 .table-wrap {
