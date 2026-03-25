@@ -166,6 +166,7 @@ import GovernancePageShell from '../components/dataclean/GovernancePageShell.vue
 import GovernanceSectionHeader from '../components/dataclean/GovernanceSectionHeader.vue'
 import RuleUploadDialog from '../components/dataclean/RuleUploadDialog.vue'
 import StrategyUploadDialog from '../components/dataclean/StrategyUploadDialog.vue'
+import { useAsyncTask } from '../composables/useAsyncTask'
 import {
   deleteCleanRule,
   getCleanRuleDetail,
@@ -182,24 +183,26 @@ import {
   toggleCleanStrategy,
   updateCleanStrategy
 } from '../api/clean-strategy'
-import { getErrorMessage } from '../utils/error'
 
-const loading = ref(false)
-const uploading = ref(false)
+const { loading, run: runLoadRules } = useAsyncTask()
+const { loading: uploading, run: runUploadRule } = useAsyncTask()
+const { loading: updatingRule, run: runUpdateRule } = useAsyncTask()
+const { loading: loadingStrategies, run: runLoadStrategies } = useAsyncTask()
+const { loading: creatingStrategy, run: runCreateStrategy } = useAsyncTask()
+const { loading: updatingStrategy, run: runUpdateStrategy } = useAsyncTask()
+const { run: runRuleOperation } = useAsyncTask()
+const { run: runStrategyOperation } = useAsyncTask()
+
 const rules = ref([])
 const ruleUploadVisible = ref(false)
 const ruleEditorVisible = ref(false)
-const updatingRule = ref(false)
 const ruleEditorReadonly = ref(false)
 const editingRuleId = ref('')
 
-const loadingStrategies = ref(false)
-const creatingStrategy = ref(false)
 const strategyUploadVisible = ref(false)
 const strategies = ref([])
 const strategyEditorVisible = ref(false)
 const strategyEditorReadonly = ref(false)
-const updatingStrategy = ref(false)
 const editingStrategyId = ref('')
 
 const ruleEditorForm = reactive({
@@ -217,69 +220,66 @@ const strategyEditorForm = reactive({
 })
 
 async function loadRules() {
-  loading.value = true
-  try {
-    const { data } = await listCleanRules()
-    rules.value = data.data || []
-  } catch (error) {
-    rules.value = []
-    ElMessage.error(getErrorMessage(error, '加载清洗规则失败'))
-  } finally {
-    loading.value = false
+  const result = await runLoadRules(() => listCleanRules(), {
+    errorMessage: '加载清洗规则失败',
+    onError: () => {
+      rules.value = []
+    }
+  })
+  if (result) {
+    rules.value = result.data?.data || []
   }
 }
 
 async function loadStrategies() {
-  loadingStrategies.value = true
-  try {
-    const { data } = await listCleanStrategies()
-    strategies.value = data.data || []
-  } catch (error) {
-    strategies.value = []
-    ElMessage.error(getErrorMessage(error, '加载清洗策略失败'))
-  } finally {
-    loadingStrategies.value = false
+  const result = await runLoadStrategies(() => listCleanStrategies(), {
+    errorMessage: '加载清洗策略失败',
+    onError: () => {
+      strategies.value = []
+    }
+  })
+  if (result) {
+    strategies.value = result.data?.data || []
   }
 }
 
 async function handleRuleUpload(payload) {
-  uploading.value = true
-  try {
-    await uploadCleanRule(payload)
-    ElMessage.success('规则上传成功')
+  const result = await runUploadRule(() => uploadCleanRule(payload), {
+    errorMessage: '上传失败',
+    successMessage: '规则上传成功'
+  })
+  if (result) {
     ruleUploadVisible.value = false
     await loadRules()
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '上传失败'))
-  } finally {
-    uploading.value = false
   }
 }
 
 async function handleToggle(id, enabled) {
-  try {
-    await toggleCleanRule(id, enabled)
-    ElMessage.success('规则状态已更新')
+  const result = await runRuleOperation(() => toggleCleanRule(id, enabled), {
+    errorMessage: '更新失败',
+    successMessage: '规则状态已更新'
+  })
+  if (result) {
     await loadRules()
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '更新失败'))
   }
 }
 
 async function handleDelete(rule) {
-  try {
-    await deleteCleanRule(rule.id)
-    ElMessage.success('删除成功')
+  const result = await runRuleOperation(() => deleteCleanRule(rule.id), {
+    errorMessage: '删除失败',
+    successMessage: '删除成功'
+  })
+  if (result) {
     await loadRules()
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '删除失败'))
   }
 }
 
 async function openRuleEditor(rule) {
-  try {
-    const { data } = await getCleanRuleDetail(rule.id)
-    const detail = data.data || {}
+  const result = await runRuleOperation(() => getCleanRuleDetail(rule.id), {
+    errorMessage: '获取规则详情失败'
+  })
+  if (result) {
+    const detail = result.data?.data || {}
     editingRuleId.value = String(detail.id || '')
     ruleEditorForm.name = detail.name || ''
     ruleEditorForm.fileName = detail.fileName || ''
@@ -287,8 +287,6 @@ async function openRuleEditor(rule) {
     ruleEditorForm.remark = detail.remark || ''
     ruleEditorReadonly.value = detail.category === 'SYSTEM'
     ruleEditorVisible.value = true
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '获取规则详情失败'))
   }
 }
 
@@ -299,62 +297,58 @@ async function saveRuleEditor() {
     return
   }
 
-  updatingRule.value = true
-  try {
-    await updateCleanRule(editingRuleId.value, {
+  const result = await runUpdateRule(() => updateCleanRule(editingRuleId.value, {
       name: ruleEditorForm.name.trim(),
       fileName: ruleEditorForm.fileName.trim(),
       content: ruleEditorForm.content,
       remark: ruleEditorForm.remark.trim()
-    })
-    ElMessage.success('规则已更新')
+    }), {
+    errorMessage: '规则更新失败',
+    successMessage: '规则已更新'
+  })
+  if (result) {
     ruleEditorVisible.value = false
     await loadRules()
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '规则更新失败'))
-  } finally {
-    updatingRule.value = false
   }
 }
 
 async function handleStrategyUpload(payload) {
-  creatingStrategy.value = true
-  try {
-    await createCleanStrategy(payload)
-    ElMessage.success('策略新增成功')
+  const result = await runCreateStrategy(() => createCleanStrategy(payload), {
+    errorMessage: '新增失败',
+    successMessage: '策略新增成功'
+  })
+  if (result) {
     strategyUploadVisible.value = false
     await loadStrategies()
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '新增失败'))
-  } finally {
-    creatingStrategy.value = false
   }
 }
 
 async function handleToggleStrategy(id, enabled) {
-  try {
-    await toggleCleanStrategy(id, enabled)
-    ElMessage.success('策略状态已更新')
+  const result = await runStrategyOperation(() => toggleCleanStrategy(id, enabled), {
+    errorMessage: '更新失败',
+    successMessage: '策略状态已更新'
+  })
+  if (result) {
     await loadStrategies()
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '更新失败'))
   }
 }
 
 async function handleDeleteStrategy(strategy) {
-  try {
-    await deleteCleanStrategy(strategy.id)
-    ElMessage.success('删除成功')
+  const result = await runStrategyOperation(() => deleteCleanStrategy(strategy.id), {
+    errorMessage: '删除失败',
+    successMessage: '删除成功'
+  })
+  if (result) {
     await loadStrategies()
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '删除失败'))
   }
 }
 
 async function openStrategyEditor(strategy) {
-  try {
-    const { data } = await getCleanStrategyDetail(strategy.id)
-    const detail = data.data || {}
+  const result = await runStrategyOperation(() => getCleanStrategyDetail(strategy.id), {
+    errorMessage: '获取策略详情失败'
+  })
+  if (result) {
+    const detail = result.data?.data || {}
     editingStrategyId.value = String(detail.id || '')
     strategyEditorForm.name = detail.name || ''
     strategyEditorForm.code = detail.code || ''
@@ -362,8 +356,6 @@ async function openStrategyEditor(strategy) {
     strategyEditorForm.remark = detail.remark || ''
     strategyEditorReadonly.value = !!detail.builtIn
     strategyEditorVisible.value = true
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '获取策略详情失败'))
   }
 }
 
@@ -374,21 +366,18 @@ async function saveStrategyEditor() {
     return
   }
 
-  updatingStrategy.value = true
-  try {
-    await updateCleanStrategy(editingStrategyId.value, {
+  const result = await runUpdateStrategy(() => updateCleanStrategy(editingStrategyId.value, {
       name: strategyEditorForm.name.trim(),
       code: strategyEditorForm.code.trim().toUpperCase(),
       content: strategyEditorForm.content,
       remark: strategyEditorForm.remark.trim()
-    })
-    ElMessage.success('策略已更新')
+    }), {
+    errorMessage: '策略更新失败',
+    successMessage: '策略已更新'
+  })
+  if (result) {
     strategyEditorVisible.value = false
     await loadStrategies()
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '策略更新失败'))
-  } finally {
-    updatingStrategy.value = false
   }
 }
 

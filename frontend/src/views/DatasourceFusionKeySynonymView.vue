@@ -119,6 +119,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import GovernancePageShell from '../components/dataclean/GovernancePageShell.vue'
 import GovernanceSectionHeader from '../components/dataclean/GovernanceSectionHeader.vue'
+import { useAsyncTask } from '../composables/useAsyncTask'
 import {
   createFusionKeySynonym,
   deleteFusionKeySynonym,
@@ -129,17 +130,18 @@ import {
   toggleFusionKeySynonym,
   updateFusionKeySynonym
 } from '../api/fusion-key-synonym'
-import { getErrorMessage } from '../utils/error'
 
-const loadingSynonyms = ref(false)
+const { loading: loadingSynonyms, run: runLoadSynonyms } = useAsyncTask()
+const { loading: savingSynonym, run: runSaveSynonym } = useAsyncTask()
+const { loading: loadingSynonymHistory, run: runLoadSynonymHistory } = useAsyncTask()
+const { run: runSynonymOperation } = useAsyncTask()
+
 const synonyms = ref([])
 const synonymEditorVisible = ref(false)
 const synonymEditorTitle = ref('新增主键映射')
 const synonymEditorBuiltIn = ref(false)
-const savingSynonym = ref(false)
 const editingSynonymId = ref('')
 const synonymHistoryVisible = ref(false)
-const loadingSynonymHistory = ref(false)
 const synonymHistoryRows = ref([])
 const historyCanonicalKey = ref('')
 
@@ -150,15 +152,14 @@ const synonymEditorForm = reactive({
 })
 
 async function loadSynonyms() {
-  loadingSynonyms.value = true
-  try {
-    const { data } = await listFusionKeySynonyms()
-    synonyms.value = data.data || []
-  } catch (error) {
-    synonyms.value = []
-    ElMessage.error(getErrorMessage(error, '加载主键映射失败'))
-  } finally {
-    loadingSynonyms.value = false
+  const result = await runLoadSynonyms(() => listFusionKeySynonyms(), {
+    errorMessage: '加载主键映射失败',
+    onError: () => {
+      synonyms.value = []
+    }
+  })
+  if (result) {
+    synonyms.value = result.data?.data || []
   }
 }
 
@@ -177,9 +178,11 @@ function openSynonymCreate() {
 }
 
 async function openSynonymEditor(row) {
-  try {
-    const { data } = await getFusionKeySynonymDetail(row.id)
-    const detail = data.data || {}
+  const result = await runSynonymOperation(() => getFusionKeySynonymDetail(row.id), {
+    errorMessage: '获取映射详情失败'
+  })
+  if (result) {
+    const detail = result.data?.data || {}
     editingSynonymId.value = String(detail.id || '')
     synonymEditorTitle.value = '编辑主键映射'
     synonymEditorBuiltIn.value = !!detail.builtIn
@@ -187,8 +190,6 @@ async function openSynonymEditor(row) {
     synonymEditorForm.aliasesText = Array.isArray(detail.aliases) ? detail.aliases.join(', ') : ''
     synonymEditorForm.remark = detail.remark || ''
     synonymEditorVisible.value = true
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '获取映射详情失败'))
   }
 }
 
@@ -203,62 +204,68 @@ async function saveSynonymEditor() {
     .map((it) => it.trim())
     .filter(Boolean)
 
-  savingSynonym.value = true
-  try {
-    const payload = {
+  let result = null
+  if (editingSynonymId.value) {
+    result = await runSaveSynonym(() => updateFusionKeySynonym(editingSynonymId.value, {
       canonicalKey: synonymEditorForm.canonicalKey.trim(),
       aliases,
       remark: synonymEditorForm.remark.trim()
-    }
+    }), {
+      errorMessage: '保存主键映射失败'
+    })
+  } else {
+    result = await runSaveSynonym(() => createFusionKeySynonym({
+      canonicalKey: synonymEditorForm.canonicalKey.trim(),
+      aliases,
+      remark: synonymEditorForm.remark.trim()
+    }), {
+      errorMessage: '保存主键映射失败'
+    })
+  }
+
+  if (result) {
     if (editingSynonymId.value) {
-      await updateFusionKeySynonym(editingSynonymId.value, payload)
       ElMessage.success('主键映射已更新')
     } else {
-      await createFusionKeySynonym(payload)
       ElMessage.success('主键映射已新增')
     }
     synonymEditorVisible.value = false
     resetSynonymEditor()
     await loadSynonyms()
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '保存主键映射失败'))
-  } finally {
-    savingSynonym.value = false
   }
 }
 
 async function handleToggleSynonym(id, enabled) {
-  try {
-    await toggleFusionKeySynonym(id, enabled)
-    ElMessage.success('映射状态已更新')
+  const result = await runSynonymOperation(() => toggleFusionKeySynonym(id, enabled), {
+    errorMessage: '更新失败',
+    successMessage: '映射状态已更新'
+  })
+  if (result) {
     await loadSynonyms()
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '更新失败'))
   }
 }
 
 async function handleDeleteSynonym(row) {
-  try {
-    await deleteFusionKeySynonym(row.id)
-    ElMessage.success('删除成功')
+  const result = await runSynonymOperation(() => deleteFusionKeySynonym(row.id), {
+    errorMessage: '删除失败',
+    successMessage: '删除成功'
+  })
+  if (result) {
     await loadSynonyms()
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '删除失败'))
   }
 }
 
 async function openSynonymHistory(row) {
   synonymHistoryVisible.value = true
-  loadingSynonymHistory.value = true
   historyCanonicalKey.value = row.canonicalKey || ''
-  try {
-    const { data } = await listFusionKeySynonymHistory(row.id, { limit: 100 })
-    synonymHistoryRows.value = data.data || []
-  } catch (error) {
-    synonymHistoryRows.value = []
-    ElMessage.error(getErrorMessage(error, '加载映射历史失败'))
-  } finally {
-    loadingSynonymHistory.value = false
+  const result = await runLoadSynonymHistory(() => listFusionKeySynonymHistory(row.id, { limit: 100 }), {
+    errorMessage: '加载映射历史失败',
+    onError: () => {
+      synonymHistoryRows.value = []
+    }
+  })
+  if (result) {
+    synonymHistoryRows.value = result.data?.data || []
   }
 }
 
@@ -274,18 +281,17 @@ async function querySynonymHistoryByCanonicalKey() {
     return
   }
 
-  loadingSynonymHistory.value = true
-  try {
-    const { data } = await listFusionKeySynonymHistoryByCanonicalKey({
-      canonicalKey: historyCanonicalKey.value.trim(),
-      limit: 200
-    })
-    synonymHistoryRows.value = data.data || []
-  } catch (error) {
-    synonymHistoryRows.value = []
-    ElMessage.error(getErrorMessage(error, '加载映射历史失败'))
-  } finally {
-    loadingSynonymHistory.value = false
+  const result = await runLoadSynonymHistory(() => listFusionKeySynonymHistoryByCanonicalKey({
+    canonicalKey: historyCanonicalKey.value.trim(),
+    limit: 200
+  }), {
+    errorMessage: '加载映射历史失败',
+    onError: () => {
+      synonymHistoryRows.value = []
+    }
+  })
+  if (result) {
+    synonymHistoryRows.value = result.data?.data || []
   }
 }
 
