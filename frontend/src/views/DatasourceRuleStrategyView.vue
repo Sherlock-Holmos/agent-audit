@@ -180,6 +180,7 @@ import {
   toggleCleanStrategy,
   updateCleanStrategy
 } from '../api/clean-strategy'
+import { getErrorMessage } from '../utils/error'
 
 const loading = ref(false)
 const uploading = ref(false)
@@ -213,10 +214,6 @@ const strategyEditorForm = reactive({
   remark: ''
 })
 
-function errorMessage(error, fallback) {
-  return error?.response?.data?.message || error?.message || fallback
-}
-
 async function loadRules() {
   loading.value = true
   try {
@@ -224,7 +221,7 @@ async function loadRules() {
     rules.value = data.data || []
   } catch (error) {
     rules.value = []
-    ElMessage.error(errorMessage(error, '加载清洗规则失败'))
+    ElMessage.error(getErrorMessage(error, '加载清洗规则失败'))
   } finally {
     loading.value = false
   }
@@ -237,7 +234,7 @@ async function loadStrategies() {
     strategies.value = data.data || []
   } catch (error) {
     strategies.value = []
-    ElMessage.error(errorMessage(error, '加载清洗策略失败'))
+    ElMessage.error(getErrorMessage(error, '加载清洗策略失败'))
   } finally {
     loadingStrategies.value = false
   }
@@ -251,7 +248,7 @@ async function handleRuleUpload(payload) {
     ruleUploadVisible.value = false
     await loadRules()
   } catch (error) {
-    ElMessage.error(errorMessage(error, '上传失败'))
+    ElMessage.error(getErrorMessage(error, '上传失败'))
   } finally {
     uploading.value = false
   }
@@ -263,7 +260,7 @@ async function handleToggle(id, enabled) {
     ElMessage.success('规则状态已更新')
     await loadRules()
   } catch (error) {
-    ElMessage.error(errorMessage(error, '更新失败'))
+    ElMessage.error(getErrorMessage(error, '更新失败'))
   }
 }
 
@@ -273,7 +270,7 @@ async function handleDelete(rule) {
     ElMessage.success('删除成功')
     await loadRules()
   } catch (error) {
-    ElMessage.error(errorMessage(error, '删除失败'))
+    ElMessage.error(getErrorMessage(error, '删除失败'))
   }
 }
 
@@ -289,7 +286,7 @@ async function openRuleEditor(rule) {
     ruleEditorReadonly.value = detail.category === 'SYSTEM'
     ruleEditorVisible.value = true
   } catch (error) {
-    ElMessage.error(errorMessage(error, '获取规则详情失败'))
+    ElMessage.error(getErrorMessage(error, '获取规则详情失败'))
   }
 }
 
@@ -312,7 +309,7 @@ async function saveRuleEditor() {
     ruleEditorVisible.value = false
     await loadRules()
   } catch (error) {
-    ElMessage.error(errorMessage(error, '规则更新失败'))
+    ElMessage.error(getErrorMessage(error, '规则更新失败'))
   } finally {
     updatingRule.value = false
   }
@@ -326,7 +323,7 @@ async function handleStrategyUpload(payload) {
     strategyUploadVisible.value = false
     await loadStrategies()
   } catch (error) {
-    ElMessage.error(errorMessage(error, '新增失败'))
+    ElMessage.error(getErrorMessage(error, '新增失败'))
   } finally {
     creatingStrategy.value = false
   }
@@ -338,7 +335,7 @@ async function handleToggleStrategy(id, enabled) {
     ElMessage.success('策略状态已更新')
     await loadStrategies()
   } catch (error) {
-    ElMessage.error(errorMessage(error, '更新失败'))
+    ElMessage.error(getErrorMessage(error, '更新失败'))
   }
 }
 
@@ -348,7 +345,7 @@ async function handleDeleteStrategy(strategy) {
     ElMessage.success('删除成功')
     await loadStrategies()
   } catch (error) {
-    ElMessage.error(errorMessage(error, '删除失败'))
+    ElMessage.error(getErrorMessage(error, '删除失败'))
   }
 }
 
@@ -364,7 +361,7 @@ async function openStrategyEditor(strategy) {
     strategyEditorReadonly.value = !!detail.builtIn
     strategyEditorVisible.value = true
   } catch (error) {
-    ElMessage.error(errorMessage(error, '获取策略详情失败'))
+    ElMessage.error(getErrorMessage(error, '获取策略详情失败'))
   }
 }
 
@@ -387,7 +384,7 @@ async function saveStrategyEditor() {
     strategyEditorVisible.value = false
     await loadStrategies()
   } catch (error) {
-    ElMessage.error(errorMessage(error, '策略更新失败'))
+    ElMessage.error(getErrorMessage(error, '策略更新失败'))
   } finally {
     updatingStrategy.value = false
   }

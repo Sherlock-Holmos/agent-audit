@@ -101,6 +101,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import GovernanceSubNav from '../components/dataclean/GovernanceSubNav.vue'
 import { listNifiFlowTemplates, saveNifiFlowTemplate, triggerNifiFlow } from '../api/nifi-control-plane'
+import { getErrorMessage } from '../utils/error'
 
 const loadingNifiTemplates = ref(false)
 const nifiTemplates = ref([])
@@ -124,10 +125,6 @@ const templateRunForm = reactive({
   parametersJson: '{}'
 })
 
-function errorMessage(error, fallback) {
-  return error?.response?.data?.message || error?.message || fallback
-}
-
 async function loadNifiTemplates() {
   loadingNifiTemplates.value = true
   try {
@@ -135,7 +132,7 @@ async function loadNifiTemplates() {
     nifiTemplates.value = data.data || []
   } catch (error) {
     nifiTemplates.value = []
-    ElMessage.error(errorMessage(error, '加载 NiFi 模板失败'))
+    ElMessage.error(getErrorMessage(error, '加载 NiFi 模板失败'))
   } finally {
     loadingNifiTemplates.value = false
   }
@@ -199,7 +196,7 @@ async function runTemplateFlow() {
     }
     templateRunVisible.value = false
   } catch (error) {
-    ElMessage.error(errorMessage(error, '触发失败'))
+    ElMessage.error(getErrorMessage(error, '触发失败'))
   } finally {
     runningTemplate.value = false
   }
@@ -231,7 +228,7 @@ async function saveTemplateEditor() {
     templateEditorVisible.value = false
     await loadNifiTemplates()
   } catch (error) {
-    ElMessage.error(errorMessage(error, '模板保存失败'))
+    ElMessage.error(getErrorMessage(error, '模板保存失败'))
   } finally {
     savingTemplate.value = false
   }

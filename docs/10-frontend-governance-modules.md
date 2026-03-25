@@ -29,7 +29,7 @@
 - `frontend/src/api/nifi-control-plane.js`
 - `frontend/src/api/layer-stats.js`
 
-兼容层：`frontend/src/api/cleanrule.js`，用于历史引用平滑迁移。
+已移除历史兼容入口 `frontend/src/api/cleanrule.js`，所有调用统一走子域 API。
 
 ## 4. 设计原则
 1. 子域自治：每个页面只负责单一治理能力。

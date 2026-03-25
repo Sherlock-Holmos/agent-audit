@@ -128,6 +128,7 @@ import {
   toggleFusionKeySynonym,
   updateFusionKeySynonym
 } from '../api/fusion-key-synonym'
+import { getErrorMessage } from '../utils/error'
 
 const loadingSynonyms = ref(false)
 const synonyms = ref([])
@@ -147,10 +148,6 @@ const synonymEditorForm = reactive({
   remark: ''
 })
 
-function errorMessage(error, fallback) {
-  return error?.response?.data?.message || error?.message || fallback
-}
-
 async function loadSynonyms() {
   loadingSynonyms.value = true
   try {
@@ -158,7 +155,7 @@ async function loadSynonyms() {
     synonyms.value = data.data || []
   } catch (error) {
     synonyms.value = []
-    ElMessage.error(errorMessage(error, '加载主键映射失败'))
+    ElMessage.error(getErrorMessage(error, '加载主键映射失败'))
   } finally {
     loadingSynonyms.value = false
   }
@@ -190,7 +187,7 @@ async function openSynonymEditor(row) {
     synonymEditorForm.remark = detail.remark || ''
     synonymEditorVisible.value = true
   } catch (error) {
-    ElMessage.error(errorMessage(error, '获取映射详情失败'))
+    ElMessage.error(getErrorMessage(error, '获取映射详情失败'))
   }
 }
 
@@ -223,7 +220,7 @@ async function saveSynonymEditor() {
     resetSynonymEditor()
     await loadSynonyms()
   } catch (error) {
-    ElMessage.error(errorMessage(error, '保存主键映射失败'))
+    ElMessage.error(getErrorMessage(error, '保存主键映射失败'))
   } finally {
     savingSynonym.value = false
   }
@@ -235,7 +232,7 @@ async function handleToggleSynonym(id, enabled) {
     ElMessage.success('映射状态已更新')
     await loadSynonyms()
   } catch (error) {
-    ElMessage.error(errorMessage(error, '更新失败'))
+    ElMessage.error(getErrorMessage(error, '更新失败'))
   }
 }
 
@@ -245,7 +242,7 @@ async function handleDeleteSynonym(row) {
     ElMessage.success('删除成功')
     await loadSynonyms()
   } catch (error) {
-    ElMessage.error(errorMessage(error, '删除失败'))
+    ElMessage.error(getErrorMessage(error, '删除失败'))
   }
 }
 
@@ -258,7 +255,7 @@ async function openSynonymHistory(row) {
     synonymHistoryRows.value = data.data || []
   } catch (error) {
     synonymHistoryRows.value = []
-    ElMessage.error(errorMessage(error, '加载映射历史失败'))
+    ElMessage.error(getErrorMessage(error, '加载映射历史失败'))
   } finally {
     loadingSynonymHistory.value = false
   }
@@ -285,7 +282,7 @@ async function querySynonymHistoryByCanonicalKey() {
     synonymHistoryRows.value = data.data || []
   } catch (error) {
     synonymHistoryRows.value = []
-    ElMessage.error(errorMessage(error, '加载映射历史失败'))
+    ElMessage.error(getErrorMessage(error, '加载映射历史失败'))
   } finally {
     loadingSynonymHistory.value = false
   }

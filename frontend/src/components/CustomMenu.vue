@@ -70,7 +70,7 @@
 import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import { ArrowRight, DataBoard, Coin, Cpu, Setting, QuestionFilled } from '@element-plus/icons-vue'
+import { ArrowRight, DataBoard, Coin, Cpu, Operation, Setting } from '@element-plus/icons-vue'
 import { useAppStore } from '../store/app'
 
 const appStore = useAppStore()
@@ -94,7 +94,7 @@ const menuList = ref([
   {
     title: '治理中心',
     path: '/datasource/clean-rules',
-    icon: Setting,
+    icon: Operation,
     open: false,
     children: [
       { title: '治理总览', path: '/datasource/clean-rules' },

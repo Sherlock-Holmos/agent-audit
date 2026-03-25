@@ -47,6 +47,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import GovernanceSubNav from '../components/dataclean/GovernanceSubNav.vue'
 import { listLayerStats } from '../api/layer-stats'
+import { getErrorMessage } from '../utils/error'
 
 const layerDetails = ref([])
 const loadingLayerStats = ref(false)
@@ -62,10 +63,6 @@ const layerSummary = reactive({
   goldRows: 0,
   taskCount: 0
 })
-
-function errorMessage(error, fallback) {
-  return error?.response?.data?.message || error?.message || fallback
-}
 
 async function queryLayerStats() {
   loadingLayerStats.value = true
@@ -94,7 +91,7 @@ async function queryLayerStats() {
       goldRows: 0,
       taskCount: 0
     })
-    ElMessage.error(errorMessage(error, '加载分层统计失败'))
+    ElMessage.error(getErrorMessage(error, '加载分层统计失败'))
   } finally {
     loadingLayerStats.value = false
   }

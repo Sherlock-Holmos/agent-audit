@@ -96,9 +96,11 @@
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { listCleanRules, listCleanStrategies } from '../api/cleanrule'
+import { listCleanRules } from '../api/clean-rule'
+import { listCleanStrategies } from '../api/clean-strategy'
 import { listDataSourceObjects, listDataSources } from '../api/datasource'
 import { createCleanTask, deleteCleanTask, getCleanTaskPreview, listCleanTasks, runCleanTask, updateCleanTask } from '../api/dataclean'
+import { getErrorMessage } from '../utils/error'
 import CleanToolbar from '../components/dataclean/CleanToolbar.vue'
 import CleanTable from '../components/dataclean/CleanTable.vue'
 import CleanFormDialog from '../components/dataclean/CleanFormDialog.vue'
@@ -187,7 +189,7 @@ async function loadRules() {
       .map((item) => ({ id: item.id, name: item.name }))
   } else {
     ruleOptions.value = []
-    ElMessage.error(rulesRes.reason?.response?.data?.message || rulesRes.reason?.message || '加载清洗规则失败')
+    ElMessage.error(getErrorMessage(rulesRes.reason, '加载清洗规则失败'))
   }
 
   if (strategiesRes.status === 'fulfilled') {
@@ -196,7 +198,7 @@ async function loadRules() {
       .map((item) => ({ code: item.code, name: item.name }))
   } else {
     strategyOptions.value = []
-    ElMessage.error(strategiesRes.reason?.response?.data?.message || strategiesRes.reason?.message || '加载清洗策略失败')
+    ElMessage.error(getErrorMessage(strategiesRes.reason, '加载清洗策略失败'))
   }
 }
 
@@ -240,7 +242,7 @@ async function handleSubmit(payload) {
     dialogVisible.value = false
     await loadData()
   } catch (error) {
-    ElMessage.error(error?.response?.data?.message || error?.message || '创建失败')
+    ElMessage.error(getErrorMessage(error, '创建失败'))
   } finally {
     submitting.value = false
   }
@@ -252,7 +254,7 @@ async function handleRun(id) {
     ElMessage.success('清洗任务执行成功')
     await loadData()
   } catch (error) {
-    ElMessage.error(error?.response?.data?.message || error?.message || '执行失败')
+    ElMessage.error(getErrorMessage(error, '执行失败'))
   }
 }
 
@@ -262,7 +264,7 @@ async function handleDelete(id) {
     ElMessage.success('删除成功')
     await loadData()
   } catch (error) {
-    ElMessage.error(error?.response?.data?.message || error?.message || '删除失败')
+    ElMessage.error(getErrorMessage(error, '删除失败'))
   }
 }
 
@@ -289,7 +291,7 @@ async function handlePreview(row) {
     })
   } catch (error) {
     previewVisible.value = false
-    ElMessage.error(error?.response?.data?.message || error?.message || '加载清洗结果失败')
+    ElMessage.error(getErrorMessage(error, '加载清洗结果失败'))
   } finally {
     previewLoading.value = false
   }
