@@ -1,17 +1,10 @@
 <template>
   <GovernancePageShell>
 
-    <el-card shadow="never" style="margin-bottom: 12px">
-      <template #header>
-        <GovernanceSectionHeader title="清洗规则管理">
-          <template #actions>
+    <GovernanceCardSection title="清洗规则管理" card-style="margin-bottom: 16px">
+      <template #actions>
           <el-button type="primary" @click="ruleUploadVisible = true">上传规则</el-button>
-          </template>
-        </GovernanceSectionHeader>
       </template>
-    </el-card>
-
-    <el-card shadow="never" style="margin-bottom: 16px">
       <GovernanceTable :data="rules" :loading="loading" layout-storage-key="governance-clean-rules-table">
         <template #default="{ resolveWidth, resolveMinWidth }">
           <el-table-column column-key="name" prop="name" label="规则名称" :width="resolveWidth('name', 180)" :min-width="resolveMinWidth('name', 180)" />
@@ -41,7 +34,7 @@
           </el-table-column>
         </template>
       </GovernanceTable>
-    </el-card>
+    </GovernanceCardSection>
 
     <el-dialog v-model="ruleEditorVisible" width="760px" title="规则在线查看与编辑" destroy-on-close>
       <el-form label-width="100px">
@@ -75,17 +68,10 @@
       </template>
     </el-dialog>
 
-    <el-card shadow="never" style="margin-bottom: 12px">
-      <template #header>
-        <GovernanceSectionHeader title="清洗策略管理">
-          <template #actions>
+    <GovernanceCardSection title="清洗策略管理">
+      <template #actions>
           <el-button type="primary" @click="strategyUploadVisible = true">新增策略</el-button>
-          </template>
-        </GovernanceSectionHeader>
       </template>
-    </el-card>
-
-    <el-card shadow="never">
       <GovernanceTable :data="strategies" :loading="loadingStrategies" layout-storage-key="governance-clean-strategy-table">
         <template #default="{ resolveWidth, resolveMinWidth }">
           <el-table-column column-key="name" prop="name" label="策略名称" :width="resolveWidth('name', 180)" :min-width="resolveMinWidth('name', 180)" />
@@ -115,7 +101,7 @@
           </el-table-column>
         </template>
       </GovernanceTable>
-    </el-card>
+    </GovernanceCardSection>
 
     <el-dialog v-model="strategyEditorVisible" width="760px" title="策略在线查看与编辑" destroy-on-close>
       <el-form label-width="100px">
@@ -167,7 +153,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import GovernancePageShell from '../components/dataclean/GovernancePageShell.vue'
-import GovernanceSectionHeader from '../components/dataclean/GovernanceSectionHeader.vue'
+import GovernanceCardSection from '../components/dataclean/GovernanceCardSection.vue'
 import GovernanceTable from '../components/dataclean/GovernanceTable.vue'
 import RuleUploadDialog from '../components/dataclean/RuleUploadDialog.vue'
 import StrategyUploadDialog from '../components/dataclean/StrategyUploadDialog.vue'
