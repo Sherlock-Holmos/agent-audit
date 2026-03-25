@@ -1,5 +1,7 @@
 <template>
   <div>
+    <GovernanceSubNav />
+
     <el-card shadow="never" style="margin-top: 0">
       <template #header>
         <div class="section-header">
@@ -43,6 +45,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import GovernanceSubNav from '../components/dataclean/GovernanceSubNav.vue'
 import { listLayerStats } from '../api/layer-stats'
 
 const layerDetails = ref([])

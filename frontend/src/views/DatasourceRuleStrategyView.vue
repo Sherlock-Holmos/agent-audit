@@ -1,5 +1,7 @@
 <template>
   <div>
+    <GovernanceSubNav />
+
     <el-card shadow="never" style="margin-bottom: 12px">
       <template #header>
         <div class="section-header">
@@ -159,6 +161,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import GovernanceSubNav from '../components/dataclean/GovernanceSubNav.vue'
 import RuleUploadDialog from '../components/dataclean/RuleUploadDialog.vue'
 import StrategyUploadDialog from '../components/dataclean/StrategyUploadDialog.vue'
 import {

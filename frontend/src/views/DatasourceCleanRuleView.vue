@@ -1,5 +1,7 @@
 <template>
   <div class="governance-hub">
+    <GovernanceSubNav />
+
     <el-card shadow="never">
       <template #header>
         <div class="hub-header">
@@ -48,6 +50,7 @@
 
 <script setup>
 import { useRouter } from 'vue-router'
+import GovernanceSubNav from '../components/dataclean/GovernanceSubNav.vue'
 
 const router = useRouter()
 
