@@ -1,13 +1,6 @@
 <template>
   <el-card ref="cardRef" shadow="never" class="table-wrap" :style="{ '--row-height': `${FIXED_ROW_HEIGHT}px` }">
-    <div class="table-layout-actions">
-      <el-tooltip content="重置列宽" placement="left">
-        <el-button class="table-layout-reset-btn" size="small" @click="resetColumnLayout">
-          <el-icon><RefreshRight /></el-icon>
-          <span>重置列宽</span>
-        </el-button>
-      </el-tooltip>
-    </div>
+    <TableLayoutActions @reset="resetColumnLayout" />
 
     <el-table
       :data="data"
@@ -99,8 +92,8 @@
 
 <script setup>
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { RefreshRight } from '@element-plus/icons-vue'
 import { useTableColumnLayout } from '../../composables/useTableColumnLayout'
+import TableLayoutActions from '../shared/TableLayoutActions.vue'
 
 const props = defineProps({
   data: {
@@ -254,18 +247,6 @@ function chineseScore(text) {
 
 .table-wrap {
   height: 100%;
-}
-
-.table-layout-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 8px;
-}
-
-.table-layout-reset-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
 }
 
 .empty-tip {

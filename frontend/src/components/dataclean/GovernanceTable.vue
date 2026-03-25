@@ -1,13 +1,6 @@
 <template>
   <div class="governance-table-wrap">
-    <div class="table-layout-actions">
-      <el-tooltip content="重置列宽" placement="left">
-        <el-button class="table-layout-reset-btn" size="small" @click="resetColumnLayout">
-          <el-icon><RefreshRight /></el-icon>
-          <span>重置列宽</span>
-        </el-button>
-      </el-tooltip>
-    </div>
+    <TableLayoutActions @reset="resetColumnLayout" />
 
     <el-table
       :data="data"
@@ -29,8 +22,8 @@
 
 <script setup>
 import { onBeforeUnmount, onMounted, reactive } from 'vue'
-import { RefreshRight } from '@element-plus/icons-vue'
 import { useTableColumnLayout } from '../../composables/useTableColumnLayout'
+import TableLayoutActions from '../shared/TableLayoutActions.vue'
 
 const props = defineProps({
   data: {
@@ -101,18 +94,6 @@ onBeforeUnmount(() => {
 <style scoped>
 :deep(.governance-table-wrap) {
   width: 100%;
-}
-
-.table-layout-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 8px;
-}
-
-.table-layout-reset-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
 }
 
 :deep(.el-table th.el-table__cell .cell) {
