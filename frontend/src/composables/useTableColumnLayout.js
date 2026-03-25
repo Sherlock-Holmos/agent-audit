@@ -32,12 +32,15 @@ export function useTableColumnLayout(options = {}) {
   function resolveWidth(key, fallback = 80) {
     const width = toWidthNumber(columnWidths.value[key])
     if (width == null) {
-      return fallback
+      return undefined
     }
     return Math.max(width, fallback)
   }
 
-  function resolveMinWidth() {
+  function resolveMinWidth(_key, fallback) {
+    if (typeof fallback === 'number' && Number.isFinite(fallback)) {
+      return fallback
+    }
     return undefined
   }
 
