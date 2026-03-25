@@ -1,5 +1,14 @@
 <template>
   <el-card ref="cardRef" shadow="never" class="table-wrap" :style="{ '--row-height': `${FIXED_ROW_HEIGHT}px` }">
+    <div class="table-layout-actions">
+      <el-tooltip content="重置列宽" placement="left">
+        <el-button class="table-layout-reset-btn" size="small" @click="resetColumnLayout">
+          <el-icon><RefreshRight /></el-icon>
+          <span>重置列宽</span>
+        </el-button>
+      </el-tooltip>
+    </div>
+
     <el-table
       :data="data"
       v-loading="loading"
@@ -108,6 +117,7 @@
 
 <script setup>
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { RefreshRight } from '@element-plus/icons-vue'
 
 const props = defineProps({
   data: {
@@ -218,6 +228,11 @@ function handleHeaderDragEnd(newWidth, _oldWidth, column) {
     [key]: Math.max(minWidth, Math.round(newWidth || 0))
   }
   localStorage.setItem(`${props.layoutStorageKey}:columns`, JSON.stringify(columnWidths.value))
+}
+
+function resetColumnLayout() {
+  columnWidths.value = {}
+  localStorage.removeItem(`${props.layoutStorageKey}:columns`)
 }
 
 function normalizeLoadedColumnWidths() {
@@ -339,6 +354,18 @@ function headerRowStyle() {
 
 .table-wrap {
   height: 100%;
+}
+
+.table-layout-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.table-layout-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 </style>
