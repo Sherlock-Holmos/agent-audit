@@ -4,6 +4,7 @@
     v-loading="loading"
     border
     fit
+    show-overflow-tooltip
     style="width: 100%"
     :size="tableLayout.size"
     :row-style="rowStyle"
@@ -38,6 +39,7 @@ const tableLayout = reactive({
   size: 'default'
 })
 const columnWidths = ref({})
+const minWidthCache = new Map()
 
 function loadTableLayout() {
   try {
@@ -85,11 +87,37 @@ function resolveMinWidth(key, fallback) {
 function handleHeaderDragEnd(newWidth, _oldWidth, column) {
   const key = String(column?.columnKey || column?.property || column?.label || '').trim()
   if (!key) return
+  const minWidth = resolveHeaderMinWidth(column)
   columnWidths.value = {
     ...columnWidths.value,
-    [key]: Math.max(80, Math.round(newWidth || 0))
+    [key]: Math.max(minWidth, Math.round(newWidth || 0))
   }
   localStorage.setItem(`${props.layoutStorageKey}:columns`, JSON.stringify(columnWidths.value))
+}
+
+function resolveHeaderMinWidth(column) {
+  const label = String(column?.label || '').trim()
+  if (!label) {
+    return 80
+  }
+
+  if (minWidthCache.has(label)) {
+    return minWidthCache.get(label)
+  }
+
+  let measured = 0
+  if (typeof document !== 'undefined') {
+    const canvas = resolveHeaderMinWidth._canvas || (resolveHeaderMinWidth._canvas = document.createElement('canvas'))
+    const context = canvas.getContext('2d')
+    if (context) {
+      context.font = '14px sans-serif'
+      measured = context.measureText(label).width
+    }
+  }
+
+  const width = Math.max(80, Math.ceil((measured || label.length * 14) + 40))
+  minWidthCache.set(label, width)
+  return width
 }
 
 function rowStyle() {
