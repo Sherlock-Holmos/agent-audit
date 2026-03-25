@@ -4,13 +4,14 @@
 
     <el-card shadow="never" style="margin-top: 0">
       <template #header>
-        <div class="section-header">
-          <span>融合主键同义词管理</span>
+        <GovernanceSectionHeader title="融合主键同义词管理">
+          <template #actions>
           <el-space>
             <el-button @click="openSynonymHistorySearch">历史查询</el-button>
             <el-button type="primary" @click="openSynonymCreate">新增映射</el-button>
           </el-space>
-        </div>
+          </template>
+        </GovernanceSectionHeader>
       </template>
       <el-table :data="synonyms" v-loading="loadingSynonyms" border style="width: 100%">
         <el-table-column prop="canonicalKey" label="标准主键" min-width="180" />
@@ -118,6 +119,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import GovernanceSubNav from '../components/dataclean/GovernanceSubNav.vue'
+import GovernanceSectionHeader from '../components/dataclean/GovernanceSectionHeader.vue'
 import {
   createFusionKeySynonym,
   deleteFusionKeySynonym,
@@ -300,12 +302,6 @@ onMounted(loadSynonyms)
 </script>
 
 <style scoped>
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
 .history-header {
   margin-bottom: 10px;
 }

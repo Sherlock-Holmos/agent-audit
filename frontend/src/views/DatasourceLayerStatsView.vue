@@ -4,8 +4,8 @@
 
     <el-card shadow="never" style="margin-top: 0">
       <template #header>
-        <div class="section-header">
-          <span>Bronze/Silver/Gold 分层统计</span>
+        <GovernanceSectionHeader title="Bronze/Silver/Gold 分层统计">
+          <template #actions>
           <el-space>
             <el-select v-model="layerFilter.taskType" clearable placeholder="任务类型" style="width: 130px">
               <el-option label="CLEAN" value="CLEAN" />
@@ -15,7 +15,8 @@
             <el-button type="primary" :loading="loadingLayerStats" @click="queryLayerStats">查询</el-button>
             <el-button @click="resetLayerFilter">重置</el-button>
           </el-space>
-        </div>
+          </template>
+        </GovernanceSectionHeader>
       </template>
       <el-row :gutter="12" style="margin-bottom: 10px">
         <el-col :span="6">
@@ -46,6 +47,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import GovernanceSubNav from '../components/dataclean/GovernanceSubNav.vue'
+import GovernanceSectionHeader from '../components/dataclean/GovernanceSectionHeader.vue'
 import { listLayerStats } from '../api/layer-stats'
 import { getErrorMessage } from '../utils/error'
 
@@ -105,11 +107,3 @@ function resetLayerFilter() {
 
 onMounted(queryLayerStats)
 </script>
-
-<style scoped>
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-</style>

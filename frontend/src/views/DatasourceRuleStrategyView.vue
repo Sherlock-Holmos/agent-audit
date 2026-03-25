@@ -4,10 +4,11 @@
 
     <el-card shadow="never" style="margin-bottom: 12px">
       <template #header>
-        <div class="section-header">
-          <span>清洗规则管理</span>
+        <GovernanceSectionHeader title="清洗规则管理">
+          <template #actions>
           <el-button type="primary" @click="ruleUploadVisible = true">上传规则</el-button>
-        </div>
+          </template>
+        </GovernanceSectionHeader>
       </template>
     </el-card>
 
@@ -75,10 +76,11 @@
 
     <el-card shadow="never" style="margin-bottom: 12px">
       <template #header>
-        <div class="section-header">
-          <span>清洗策略管理</span>
+        <GovernanceSectionHeader title="清洗策略管理">
+          <template #actions>
           <el-button type="primary" @click="strategyUploadVisible = true">新增策略</el-button>
-        </div>
+          </template>
+        </GovernanceSectionHeader>
       </template>
     </el-card>
 
@@ -162,6 +164,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import GovernanceSubNav from '../components/dataclean/GovernanceSubNav.vue'
+import GovernanceSectionHeader from '../components/dataclean/GovernanceSectionHeader.vue'
 import RuleUploadDialog from '../components/dataclean/RuleUploadDialog.vue'
 import StrategyUploadDialog from '../components/dataclean/StrategyUploadDialog.vue'
 import {
@@ -394,11 +397,3 @@ onMounted(async () => {
   await Promise.allSettled([loadRules(), loadStrategies()])
 })
 </script>
-
-<style scoped>
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-</style>

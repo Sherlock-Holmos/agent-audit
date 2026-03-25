@@ -4,13 +4,14 @@
 
     <el-card shadow="never" style="margin-top: 0">
       <template #header>
-        <div class="section-header">
-          <span>NiFi 模板管理</span>
+        <GovernanceSectionHeader title="NiFi 模板管理">
+          <template #actions>
           <el-space>
             <el-button @click="loadNifiTemplates">刷新</el-button>
             <el-button type="primary" @click="openTemplateCreate">新增模板</el-button>
           </el-space>
-        </div>
+          </template>
+        </GovernanceSectionHeader>
       </template>
       <el-table :data="nifiTemplates" v-loading="loadingNifiTemplates" border style="width: 100%">
         <el-table-column prop="flowType" label="Flow 类型" width="140" />
@@ -100,6 +101,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import GovernanceSubNav from '../components/dataclean/GovernanceSubNav.vue'
+import GovernanceSectionHeader from '../components/dataclean/GovernanceSectionHeader.vue'
 import { listNifiFlowTemplates, saveNifiFlowTemplate, triggerNifiFlow } from '../api/nifi-control-plane'
 import { getErrorMessage } from '../utils/error'
 
@@ -236,11 +238,3 @@ async function saveTemplateEditor() {
 
 onMounted(loadNifiTemplates)
 </script>
-
-<style scoped>
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-</style>
