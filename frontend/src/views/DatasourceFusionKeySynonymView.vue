@@ -8,7 +8,12 @@
           <el-button type="primary" @click="openSynonymCreate">新增映射</el-button>
         </el-space>
       </template>
-      <GovernanceTable :data="synonyms" :loading="loadingSynonyms" layout-storage-key="governance-synonym-table">
+      <GovernanceTable
+        :data="synonyms"
+        :loading="loadingSynonyms"
+        layout-storage-key="governance-synonym-table"
+        :column-keys="['canonicalKey', 'aliases', 'builtIn', 'enabled', 'updatedAt', 'actions']"
+      >
         <template #default="{ resolveWidth, resolveMinWidth }">
           <el-table-column
             column-key="canonicalKey"

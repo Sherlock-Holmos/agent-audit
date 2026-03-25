@@ -8,7 +8,12 @@
           <el-button type="primary" @click="openTemplateCreate">新增模板</el-button>
         </el-space>
       </template>
-      <GovernanceTable :data="nifiTemplates" :loading="loadingNifiTemplates" layout-storage-key="governance-nifi-template-table">
+      <GovernanceTable
+        :data="nifiTemplates"
+        :loading="loadingNifiTemplates"
+        layout-storage-key="governance-nifi-template-table"
+        :column-keys="['flowType', 'processGroupId', 'versionNo', 'enabled', 'updatedAt', 'parameterSchema', 'actions']"
+      >
         <template #default="{ resolveWidth, resolveMinWidth }">
           <el-table-column
             column-key="flowType"

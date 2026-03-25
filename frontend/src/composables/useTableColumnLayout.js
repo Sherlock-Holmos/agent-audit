@@ -4,6 +4,7 @@ export function useTableColumnLayout(options = {}) {
   const {
     layoutStorageKey = '',
     minByKey = {},
+    columnKeys = [],
     fixedRowHeight = 44
   } = options
 
@@ -49,7 +50,7 @@ export function useTableColumnLayout(options = {}) {
   }
 
   function handleHeaderDragEnd(newWidth, _oldWidth, column) {
-    const knownKeys = Object.keys(minByKey || {})
+    const knownKeys = resolveKnownKeys()
     let key = ''
 
     if (knownKeys.length > 0) {
@@ -79,10 +80,10 @@ export function useTableColumnLayout(options = {}) {
     const next = { ...columnWidths.value }
     let changed = false
 
-    const knownKeys = Object.keys(minByKey || {})
+    const knownKeys = resolveKnownKeys()
     if (knownKeys.length > 0) {
       Object.keys(next).forEach((key) => {
-        if (!Object.prototype.hasOwnProperty.call(minByKey, key)) {
+        if (!knownKeys.includes(key)) {
           delete next[key]
           changed = true
         }
@@ -120,7 +121,7 @@ export function useTableColumnLayout(options = {}) {
       column?.label
     ].map((it) => String(it || '').trim()).filter(Boolean)
 
-    const direct = candidates.find((candidate) => Object.prototype.hasOwnProperty.call(minByKey, candidate))
+    const direct = candidates.find((candidate) => knownKeys.includes(candidate))
     if (direct) {
       return direct
     }
@@ -141,6 +142,16 @@ export function useTableColumnLayout(options = {}) {
       return ''
     }
     return knownKeys[index]
+  }
+
+  function resolveKnownKeys() {
+    const explicitKeys = Array.isArray(columnKeys)
+      ? columnKeys.map((it) => String(it || '').trim()).filter(Boolean)
+      : []
+    if (explicitKeys.length > 0) {
+      return explicitKeys
+    }
+    return Object.keys(minByKey || {})
   }
 
   function toWidthNumber(value) {

@@ -5,7 +5,12 @@
       <template #actions>
           <el-button type="primary" @click="ruleUploadVisible = true">上传规则</el-button>
       </template>
-      <GovernanceTable :data="rules" :loading="loading" layout-storage-key="governance-clean-rules-table">
+      <GovernanceTable
+        :data="rules"
+        :loading="loading"
+        layout-storage-key="governance-clean-rules-table"
+        :column-keys="['name', 'category', 'fileName', 'updatedAt', 'enabled', 'actions']"
+      >
         <template #default="{ resolveWidth, resolveMinWidth }">
           <el-table-column column-key="name" prop="name" label="规则名称" :width="resolveWidth('name', 180)" :min-width="resolveMinWidth('name', 180)" />
           <el-table-column column-key="category" label="类型" :width="resolveWidth('category', 100)" :min-width="resolveMinWidth('category', 100)" align="center">
@@ -72,7 +77,12 @@
       <template #actions>
           <el-button type="primary" @click="strategyUploadVisible = true">新增策略</el-button>
       </template>
-      <GovernanceTable :data="strategies" :loading="loadingStrategies" layout-storage-key="governance-clean-strategy-table">
+      <GovernanceTable
+        :data="strategies"
+        :loading="loadingStrategies"
+        layout-storage-key="governance-clean-strategy-table"
+        :column-keys="['name', 'code', 'builtIn', 'updatedAt', 'enabled', 'actions']"
+      >
         <template #default="{ resolveWidth, resolveMinWidth }">
           <el-table-column column-key="name" prop="name" label="策略名称" :width="resolveWidth('name', 180)" :min-width="resolveMinWidth('name', 180)" />
           <el-table-column column-key="code" prop="code" label="策略编码" :width="resolveWidth('code', 180)" :min-width="resolveMinWidth('code', 180)" />

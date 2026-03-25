@@ -27,7 +27,12 @@
           <el-statistic title="任务数" :value="layerSummary.taskCount || 0" />
         </el-col>
       </el-row>
-      <GovernanceTable :data="layerDetails" :loading="loadingLayerStats" layout-storage-key="governance-layer-stats-table">
+      <GovernanceTable
+        :data="layerDetails"
+        :loading="loadingLayerStats"
+        layout-storage-key="governance-layer-stats-table"
+        :column-keys="['taskType', 'taskId', 'bronzeRows', 'silverRows', 'goldRows']"
+      >
         <template #default="{ resolveWidth, resolveMinWidth }">
           <el-table-column
             column-key="taskType"

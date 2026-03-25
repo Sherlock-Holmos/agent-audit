@@ -55,6 +55,10 @@ const props = defineProps({
     type: String,
     required: true
   },
+  columnKeys: {
+    type: Array,
+    default: () => []
+  },
   emptyText: {
     type: String,
     default: ''
@@ -78,6 +82,7 @@ const {
   headerRowStyle
 } = useTableColumnLayout({
   layoutStorageKey: () => props.layoutStorageKey,
+  columnKeys: props.columnKeys,
   fixedRowHeight: FIXED_ROW_HEIGHT
 })
 
