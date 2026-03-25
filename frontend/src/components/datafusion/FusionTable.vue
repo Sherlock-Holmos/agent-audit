@@ -200,14 +200,13 @@ onBeforeUnmount(() => {
 function resolveWidth(key, fallback = 80) {
   const width = toWidthNumber(columnWidths.value[key])
   if (width == null) {
-    return undefined
+    return fallback
   }
   return Math.max(width, fallback)
 }
 
 function resolveMinWidth(key, fallback) {
-  const width = toWidthNumber(columnWidths.value[key])
-  return width == null ? fallback : undefined
+  return undefined
 }
 
 function handleHeaderDragEnd(newWidth, _oldWidth, column) {
