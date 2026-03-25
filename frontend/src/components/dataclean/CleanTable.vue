@@ -201,8 +201,8 @@ onBeforeUnmount(() => {
 })
 
 function resolveWidth(key, fallback = 80) {
-  const width = columnWidths.value[key]
-  if (!width) {
+  const width = toWidthNumber(columnWidths.value[key])
+  if (width == null) {
     return undefined
   }
   return Math.max(width, fallback)
@@ -238,9 +238,19 @@ function normalizeLoadedColumnWidths() {
   const next = { ...columnWidths.value }
   let changed = false
   Object.entries(minByKey).forEach(([key, min]) => {
-    const current = next[key]
-    if (typeof current === 'number' && current < min) {
+    const current = toWidthNumber(next[key])
+    if (current == null) {
+      if (next[key] !== undefined) {
+        delete next[key]
+        changed = true
+      }
+      return
+    }
+    if (current < min) {
       next[key] = min
+      changed = true
+    } else if (next[key] !== current) {
+      next[key] = current
       changed = true
     }
   })
@@ -270,9 +280,24 @@ function resolveHeaderMinWidth(column) {
     }
   }
 
-  const width = Math.max(80, Math.ceil((measured || label.length * 14) + 40))
+  const width = Math.max(100, Math.ceil((measured || label.length * 14) + 56))
   minWidthCache.set(label, width)
   return width
+}
+
+function toWidthNumber(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return null
+    }
+    const parsed = Number.parseFloat(trimmed)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
 }
 
 function rowStyle() {
@@ -295,6 +320,7 @@ function headerRowStyle() {
 
 .table-wrap :deep(.el-table th.el-table__cell .cell) {
   white-space: nowrap;
+  text-overflow: clip;
 }
 
 .table-wrap {
