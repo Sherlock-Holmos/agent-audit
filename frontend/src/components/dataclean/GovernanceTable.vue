@@ -3,7 +3,7 @@
     <TableLayoutActions @reset="resetColumnLayout" />
 
     <el-table
-      :data="data"
+      :data="pagedData"
       v-loading="loading"
       border
       :fit="shouldAutoFit()"
@@ -18,6 +18,19 @@
       <slot :resolveWidth="resolveWidth" :resolveMinWidth="resolveMinWidth" />
     </el-table>
 
+    <div v-if="showPagination" class="table-pagination">
+      <el-pagination
+        background
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="total"
+        :current-page="currentPage"
+        :page-size="pageSize"
+        :page-sizes="pageSizes"
+        @current-change="handleCurrentChange"
+        @size-change="handleSizeChange"
+      />
+    </div>
+
     <TableEmptyTip :show="!data.length && !loading && !!emptyText" :text="emptyText" />
   </div>
 </template>
@@ -25,6 +38,7 @@
 <script setup>
 import { onBeforeUnmount, onMounted, reactive } from 'vue'
 import { useTableColumnLayout } from '../../composables/useTableColumnLayout'
+import { useTablePagination } from '../../composables/useTablePagination'
 import TableLayoutActions from '../shared/TableLayoutActions.vue'
 import TableEmptyTip from '../shared/TableEmptyTip.vue'
 
@@ -67,6 +81,17 @@ const {
   fixedRowHeight: FIXED_ROW_HEIGHT
 })
 
+const {
+  currentPage,
+  pageSize,
+  pageSizes,
+  total,
+  pagedData,
+  showPagination,
+  handleCurrentChange,
+  handleSizeChange
+} = useTablePagination(() => props.data)
+
 function loadTableLayout() {
   try {
     const cached = localStorage.getItem(TABLE_LAYOUT_KEY)
@@ -107,5 +132,11 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   overflow: visible !important;
   text-overflow: clip !important;
+}
+
+.table-pagination {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

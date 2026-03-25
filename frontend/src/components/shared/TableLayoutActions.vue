@@ -1,9 +1,8 @@
 <template>
   <div class="table-layout-actions">
     <el-tooltip content="重置列宽" placement="left">
-      <el-button class="table-layout-reset-btn" size="small" @click="$emit('reset')">
+      <el-button class="table-layout-reset-btn" size="small" circle @click="$emit('reset')">
         <el-icon><RefreshRight /></el-icon>
-        <span>重置列宽</span>
       </el-button>
     </el-tooltip>
   </div>
@@ -25,6 +24,5 @@ defineEmits(['reset'])
 .table-layout-reset-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
 }
 </style>

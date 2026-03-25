@@ -1,15 +1,14 @@
 <template>
-  <el-card ref="cardRef" shadow="never" class="table-wrap" :style="{ '--row-height': `${FIXED_ROW_HEIGHT}px` }">
+  <el-card shadow="never" class="table-wrap" :style="{ '--row-height': `${FIXED_ROW_HEIGHT}px` }">
     <TableLayoutActions @reset="resetColumnLayout" />
 
     <el-table
-      :data="data"
+      :data="pagedData"
       v-loading="loading"
       border
       style="width: 100%"
       show-overflow-tooltip
       :show-header-overflow-tooltip="false"
-      :height="tableHeight"
       :size="tableSize"
       :row-style="rowStyle"
       :header-row-style="headerRowStyle"
@@ -86,6 +85,19 @@
       </el-table-column>
     </el-table>
 
+    <div v-if="showPagination" class="table-pagination">
+      <el-pagination
+        background
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="total"
+        :current-page="currentPage"
+        :page-size="pageSize"
+        :page-sizes="pageSizes"
+        @current-change="handleCurrentChange"
+        @size-change="handleSizeChange"
+      />
+    </div>
+
     <TableEmptyTip :show="!data.length && !loading" :text="emptyText" />
   </el-card>
 </template>
@@ -93,7 +105,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useTableColumnLayout } from '../../composables/useTableColumnLayout'
-import { useTableCardHeight } from '../../composables/useTableCardHeight'
+import { useTablePagination } from '../../composables/useTablePagination'
 import TableLayoutActions from '../shared/TableLayoutActions.vue'
 import TableEmptyTip from '../shared/TableEmptyTip.vue'
 
@@ -125,12 +137,17 @@ const props = defineProps({
 })
 defineEmits(['status-change', 'delete', 'edit'])
 
-const cardRef = ref()
 const FIXED_ROW_HEIGHT = 44
-const { tableHeight } = useTableCardHeight({
-  cardRef,
-  bottomOffset: () => props.bottomOffset
-})
+const {
+  currentPage,
+  pageSize,
+  pageSizes,
+  total,
+  pagedData,
+  showPagination,
+  handleCurrentChange,
+  handleSizeChange
+} = useTablePagination(() => props.data)
 
 const {
   loadColumnWidths,
@@ -206,8 +223,10 @@ function chineseScore(text) {
   text-overflow: clip !important;
 }
 
-.table-wrap {
-  height: 100%;
+.table-pagination {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
 }
 
 </style>
