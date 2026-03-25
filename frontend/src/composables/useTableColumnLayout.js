@@ -49,7 +49,20 @@ export function useTableColumnLayout(options = {}) {
   }
 
   function handleHeaderDragEnd(newWidth, _oldWidth, column) {
-    const key = String(column?.columnKey || column?.property || column?.label || '').trim()
+    let key = String(column?.columnKey || column?.property || column?.label || '').trim()
+    const knownKeys = Object.keys(minByKey || {})
+    if (knownKeys.length > 0 && !Object.prototype.hasOwnProperty.call(minByKey, key)) {
+      const candidates = [
+        column?.columnKey,
+        column?.rawColumnKey,
+        column?.property,
+        column?.label
+      ].map((it) => String(it || '').trim()).filter(Boolean)
+      const matched = candidates.find((candidate) => Object.prototype.hasOwnProperty.call(minByKey, candidate))
+      if (matched) {
+        key = matched
+      }
+    }
     if (!key) return
     const minWidth = Number(minByKey[key]) || 0
     columnWidths.value = {
