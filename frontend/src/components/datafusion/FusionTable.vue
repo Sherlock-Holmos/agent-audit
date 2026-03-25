@@ -109,8 +109,9 @@
 </template>
 
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useTableColumnLayout } from '../../composables/useTableColumnLayout'
+import { useTableCardHeight } from '../../composables/useTableCardHeight'
 import TableLayoutActions from '../shared/TableLayoutActions.vue'
 
 const props = defineProps({
@@ -139,9 +140,11 @@ const props = defineProps({
 defineEmits(['preview', 'run', 'delete', 'edit'])
 
 const cardRef = ref()
-const tableHeight = ref(420)
 const FIXED_ROW_HEIGHT = 44
-let resizeObserver
+const { tableHeight } = useTableCardHeight({
+  cardRef,
+  bottomOffset: () => props.bottomOffset
+})
 
 const {
   loadColumnWidths,
@@ -168,54 +171,8 @@ const {
   }
 })
 
-function updateTableHeight() {
-  const cardEl = cardRef.value?.$el || cardRef.value
-  if (!cardEl) return
-  const cardStyle = window.getComputedStyle(cardEl)
-  const borderTop = Number.parseFloat(cardStyle.borderTopWidth || '0') || 0
-  const borderBottom = Number.parseFloat(cardStyle.borderBottomWidth || '0') || 0
-  const bodyEl = cardEl.querySelector('.el-card__body')
-  let bodyPadding = 0
-  if (bodyEl) {
-    const bodyStyle = window.getComputedStyle(bodyEl)
-    bodyPadding += Number.parseFloat(bodyStyle.paddingTop || '0') || 0
-    bodyPadding += Number.parseFloat(bodyStyle.paddingBottom || '0') || 0
-  }
-  const chromeHeight = borderTop + borderBottom + bodyPadding
-  const parentHeight = cardEl.parentElement?.clientHeight || 0
-
-  let available = 0
-  if (parentHeight > 0) {
-    available = parentHeight - props.bottomOffset
-  } else {
-    const top = cardEl.getBoundingClientRect().top
-    const viewportHeight = document.documentElement.clientHeight || window.innerHeight
-    available = viewportHeight - top - props.bottomOffset
-  }
-
-  tableHeight.value = Math.max(260, Math.floor(available - chromeHeight))
-}
-
 onMounted(() => {
   loadColumnWidths()
-
-  nextTick(() => {
-    updateTableHeight()
-    window.addEventListener('resize', updateTableHeight)
-    const cardEl = cardRef.value?.$el || cardRef.value
-    if (cardEl && window.ResizeObserver) {
-      resizeObserver = new ResizeObserver(() => updateTableHeight())
-      resizeObserver.observe(cardEl)
-    }
-  })
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', updateTableHeight)
-  if (resizeObserver) {
-    resizeObserver.disconnect()
-    resizeObserver = null
-  }
 })
 </script>
 
