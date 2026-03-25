@@ -3,6 +3,7 @@
     <TableLayoutActions @reset="resetColumnLayout" />
 
     <el-table
+      ref="tableRef"
       :data="pagedData"
       v-loading="loading"
       border
@@ -159,6 +160,7 @@ const props = defineProps({
 defineEmits(['preview', 'run', 'delete', 'edit'])
 
 const FIXED_ROW_HEIGHT = 44
+const tableRef = ref()
 const {
   currentPage,
   pageSize,
@@ -181,6 +183,7 @@ const {
   headerRowStyle
 } = useTableColumnLayout({
   layoutStorageKey: () => props.layoutStorageKey,
+  tableRef,
   fixedRowHeight: FIXED_ROW_HEIGHT,
   minByKey: {
     taskName: 180,

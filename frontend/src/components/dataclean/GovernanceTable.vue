@@ -3,6 +3,7 @@
     <TableLayoutActions @reset="resetColumnLayout" />
 
     <el-table
+      ref="tableRef"
       :data="pagedData"
       v-loading="loading"
       border
@@ -36,7 +37,7 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, reactive } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useTableColumnLayout } from '../../composables/useTableColumnLayout'
 import { useTablePagination } from '../../composables/useTablePagination'
 import TableLayoutActions from '../shared/TableLayoutActions.vue'
@@ -70,6 +71,7 @@ const tableLayout = reactive({
   size: 'default'
 })
 const FIXED_ROW_HEIGHT = 44
+const tableRef = ref()
 
 const {
   loadColumnWidths,
@@ -83,6 +85,7 @@ const {
 } = useTableColumnLayout({
   layoutStorageKey: () => props.layoutStorageKey,
   columnKeys: props.columnKeys,
+  tableRef,
   fixedRowHeight: FIXED_ROW_HEIGHT
 })
 

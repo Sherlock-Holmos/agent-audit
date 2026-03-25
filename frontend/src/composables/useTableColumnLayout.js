@@ -5,6 +5,7 @@ export function useTableColumnLayout(options = {}) {
     layoutStorageKey = '',
     minByKey = {},
     columnKeys = [],
+    tableRef = null,
     fixedRowHeight = 44
   } = options
 
@@ -52,7 +53,7 @@ export function useTableColumnLayout(options = {}) {
   function handleHeaderDragEnd(newWidth, _oldWidth, column) {
     const knownKeys = resolveKnownKeys()
     if (knownKeys.length > 0) {
-      const widthsByOrder = collectHeaderWidthsByOrder(column)
+      const widthsByOrder = collectHeaderWidthsByOrder()
       if (widthsByOrder.length > 0) {
         const next = { ...columnWidths.value }
         let changed = false
@@ -144,14 +145,8 @@ export function useTableColumnLayout(options = {}) {
     if (typeof document === 'undefined') {
       return []
     }
-    const columnId = String(column?.id || '').trim()
-    if (!columnId) {
-      return []
-    }
-
-    const escapedColumnId = escapeClassName(columnId)
-    const anchorCell = document.querySelector(`th.${escapedColumnId}`)
-    const tableRoot = anchorCell?.closest('.el-table')
+    const root = tableRef?.value?.$el || tableRef?.value
+    const tableRoot = root?.classList?.contains('el-table') ? root : root?.querySelector?.('.el-table')
     if (!tableRoot) {
       return []
     }
@@ -164,13 +159,6 @@ export function useTableColumnLayout(options = {}) {
     return [...mainHeaders, ...rightHeaders]
       .map((th) => Math.round(th.getBoundingClientRect().width || 0))
       .filter((width) => Number.isFinite(width) && width > 0)
-  }
-
-  function escapeClassName(value) {
-    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
-      return CSS.escape(value)
-    }
-    return String(value).replace(/[^a-zA-Z0-9_-]/g, '\\$&')
   }
 
   function toWidthNumber(value) {
