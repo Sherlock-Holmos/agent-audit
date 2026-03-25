@@ -18,25 +18,25 @@
             column-key="flowType"
             prop="flowType"
             label="Flow 类型"
-            :width="resolveWidth('flowType')"
+            :width="resolveWidth('flowType', 140)"
             :min-width="resolveMinWidth('flowType', 140)"
           />
           <el-table-column
             column-key="processGroupId"
             prop="processGroupId"
             label="Process Group ID"
-            :width="resolveWidth('processGroupId')"
+            :width="resolveWidth('processGroupId', 240)"
             :min-width="resolveMinWidth('processGroupId', 240)"
           />
           <el-table-column
             column-key="versionNo"
             prop="versionNo"
             label="版本"
-            :width="resolveWidth('versionNo')"
+            :width="resolveWidth('versionNo', 100)"
             :min-width="resolveMinWidth('versionNo', 100)"
             align="center"
           />
-          <el-table-column column-key="enabled" label="启用" :width="resolveWidth('enabled')" :min-width="resolveMinWidth('enabled', 100)" align="center">
+          <el-table-column column-key="enabled" label="启用" :width="resolveWidth('enabled', 100)" :min-width="resolveMinWidth('enabled', 100)" align="center">
             <template #default="scope">
               <el-tag :type="scope.row.enabled ? 'success' : 'info'">{{ scope.row.enabled ? '启用' : '停用' }}</el-tag>
             </template>
@@ -45,10 +45,10 @@
             column-key="updatedAt"
             prop="updatedAt"
             label="更新时间"
-            :width="resolveWidth('updatedAt')"
+            :width="resolveWidth('updatedAt', 180)"
             :min-width="resolveMinWidth('updatedAt', 180)"
           />
-          <el-table-column column-key="parameterSchema" label="参数规则" :width="resolveWidth('parameterSchema')" :min-width="resolveMinWidth('parameterSchema', 220)">
+          <el-table-column column-key="parameterSchema" label="参数规则" :width="resolveWidth('parameterSchema', 220)" :min-width="resolveMinWidth('parameterSchema', 220)">
             <template #default="scope">
               <el-space wrap>
                 <el-tag
@@ -59,7 +59,7 @@
               </el-space>
             </template>
           </el-table-column>
-          <el-table-column column-key="actions" label="操作" :width="resolveWidth('actions')" :min-width="resolveMinWidth('actions', 160)" align="center" fixed="right">
+          <el-table-column column-key="actions" label="操作" :width="resolveWidth('actions', 160)" :min-width="resolveMinWidth('actions', 160)" align="center" fixed="right">
             <template #default="scope">
               <el-button type="primary" link @click="openTemplateEditor(scope.row)">编辑</el-button>
               <el-button type="success" link @click="openTemplateRun(scope.row)">触发测试</el-button>

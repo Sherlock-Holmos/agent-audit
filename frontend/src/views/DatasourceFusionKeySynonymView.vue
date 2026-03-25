@@ -18,24 +18,24 @@
             column-key="canonicalKey"
             prop="canonicalKey"
             label="标准主键"
-            :width="resolveWidth('canonicalKey')"
+            :width="resolveWidth('canonicalKey', 180)"
             :min-width="resolveMinWidth('canonicalKey', 180)"
           />
-          <el-table-column column-key="aliases" label="同义字段" :width="resolveWidth('aliases')" :min-width="resolveMinWidth('aliases', 320)">
+          <el-table-column column-key="aliases" label="同义字段" :width="resolveWidth('aliases', 320)" :min-width="resolveMinWidth('aliases', 320)">
             <template #default="scope">
               <el-space wrap>
                 <el-tag v-for="item in scope.row.aliases || []" :key="`${scope.row.id}-${item}`" type="info">{{ item }}</el-tag>
               </el-space>
             </template>
           </el-table-column>
-          <el-table-column column-key="builtIn" label="类型" :width="resolveWidth('builtIn')" :min-width="resolveMinWidth('builtIn', 100)" align="center">
+          <el-table-column column-key="builtIn" label="类型" :width="resolveWidth('builtIn', 100)" :min-width="resolveMinWidth('builtIn', 100)" align="center">
             <template #default="scope">
               <el-tag :type="scope.row.builtIn ? 'info' : 'success'">
                 {{ scope.row.builtIn ? '系统' : '用户' }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column column-key="enabled" label="启用" :width="resolveWidth('enabled')" :min-width="resolveMinWidth('enabled', 90)" align="center">
+          <el-table-column column-key="enabled" label="启用" :width="resolveWidth('enabled', 90)" :min-width="resolveMinWidth('enabled', 90)" align="center">
             <template #default="scope">
               <el-switch :model-value="scope.row.enabled" @change="(val) => handleToggleSynonym(scope.row.id, val)" />
             </template>
@@ -44,10 +44,10 @@
             column-key="updatedAt"
             prop="updatedAt"
             label="更新时间"
-            :width="resolveWidth('updatedAt')"
+            :width="resolveWidth('updatedAt', 180)"
             :min-width="resolveMinWidth('updatedAt', 180)"
           />
-          <el-table-column column-key="actions" label="操作" :width="resolveWidth('actions')" :min-width="resolveMinWidth('actions', 180)" align="center" fixed="right">
+          <el-table-column column-key="actions" label="操作" :width="resolveWidth('actions', 180)" :min-width="resolveMinWidth('actions', 180)" align="center" fixed="right">
             <template #default="scope">
               <el-button type="primary" link @click="openSynonymEditor(scope.row)">编辑</el-button>
               <el-button type="primary" link @click="openSynonymHistory(scope.row)">历史</el-button>

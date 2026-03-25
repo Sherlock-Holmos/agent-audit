@@ -5,6 +5,7 @@
     border
     fit
     show-overflow-tooltip
+    :show-header-overflow-tooltip="false"
     style="width: 100%"
     :size="tableLayout.size"
     :row-style="rowStyle"
@@ -70,8 +71,12 @@ function handleTableLayoutChanged(event) {
   }
 }
 
-function resolveWidth(key) {
-  return columnWidths.value[key] || undefined
+function resolveWidth(key, fallback = 80) {
+  const width = columnWidths.value[key]
+  if (!width) {
+    return undefined
+  }
+  return Math.max(width, fallback)
 }
 
 function resolveMinWidth(key, fallback) {
@@ -136,3 +141,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('table-layout-config-changed', handleTableLayoutChanged)
 })
 </script>
+
+<style scoped>
+:deep(.el-table th.el-table__cell .cell) {
+  white-space: nowrap;
+}
+</style>

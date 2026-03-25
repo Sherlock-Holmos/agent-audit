@@ -1,11 +1,12 @@
 <template>
-  <el-card ref="cardRef" shadow="never" class="table-wrap" :style="{ '--row-height': `${rowHeight}px` }">
+  <el-card ref="cardRef" shadow="never" class="table-wrap" :style="{ '--row-height': `${FIXED_ROW_HEIGHT}px` }">
     <el-table
       :data="data"
       v-loading="loading"
       border
       style="width: 100%"
       show-overflow-tooltip
+      :show-header-overflow-tooltip="false"
       :height="tableHeight"
       :size="tableSize"
       :row-style="rowStyle"
@@ -17,20 +18,20 @@
         column-key="taskName"
         prop="taskName"
         label="任务名称"
-        :width="resolveWidth('taskName')"
+        :width="resolveWidth('taskName', 180)"
         :min-width="resolveMinWidth('taskName', 180)"
       />
       <el-table-column
         column-key="targetTable"
         prop="targetTable"
         label="目标整合表"
-        :width="resolveWidth('targetTable')"
+        :width="resolveWidth('targetTable', 180)"
         :min-width="resolveMinWidth('targetTable', 180)"
       />
       <el-table-column
         column-key="cleanTaskNames"
         label="清洗任务"
-        :width="resolveWidth('cleanTaskNames')"
+        :width="resolveWidth('cleanTaskNames', 220)"
         :min-width="resolveMinWidth('cleanTaskNames', 220)"
       >
         <template #default="scope">
@@ -40,7 +41,7 @@
       <el-table-column
         column-key="standardTables"
         label="标准化表"
-        :width="resolveWidth('standardTables')"
+        :width="resolveWidth('standardTables', 220)"
         :min-width="resolveMinWidth('standardTables', 220)"
       >
         <template #default="scope">
@@ -51,21 +52,21 @@
         column-key="strategy"
         prop="strategy"
         label="融合策略"
-        :width="resolveWidth('strategy')"
+        :width="resolveWidth('strategy', 150)"
         :min-width="resolveMinWidth('strategy', 150)"
       />
       <el-table-column
         column-key="fusionRows"
         prop="fusionRows"
         label="融合数据量"
-        :width="resolveWidth('fusionRows')"
+        :width="resolveWidth('fusionRows', 120)"
         :min-width="resolveMinWidth('fusionRows', 120)"
         align="right"
       />
       <el-table-column
         column-key="status"
         label="状态"
-        :width="resolveWidth('status')"
+        :width="resolveWidth('status', 120)"
         :min-width="resolveMinWidth('status', 120)"
         align="center"
       >
@@ -79,7 +80,7 @@
         column-key="updatedAt"
         prop="updatedAt"
         label="更新时间"
-        :width="resolveWidth('updatedAt')"
+        :width="resolveWidth('updatedAt', 180)"
         :min-width="resolveMinWidth('updatedAt', 180)"
       />
       <el-table-column column-key="actions" label="操作" :width="resolveWidth('actions', 270)" align="center" fixed="right">
@@ -177,6 +178,7 @@ onMounted(() => {
   }
 
   nextTick(() => {
+    normalizeLoadedColumnWidths()
     updateTableHeight()
     window.addEventListener('resize', updateTableHeight)
     const cardEl = cardRef.value?.$el || cardRef.value
@@ -195,8 +197,12 @@ onBeforeUnmount(() => {
   }
 })
 
-function resolveWidth(key) {
-  return columnWidths.value[key] || undefined
+function resolveWidth(key, fallback = 80) {
+  const width = columnWidths.value[key]
+  if (!width) {
+    return undefined
+  }
+  return Math.max(width, fallback)
 }
 
 function resolveMinWidth(key, fallback) {
@@ -212,6 +218,33 @@ function handleHeaderDragEnd(newWidth, _oldWidth, column) {
     [key]: Math.max(minWidth, Math.round(newWidth || 0))
   }
   localStorage.setItem(`${props.layoutStorageKey}:columns`, JSON.stringify(columnWidths.value))
+}
+
+function normalizeLoadedColumnWidths() {
+  const minByKey = {
+    taskName: 180,
+    targetTable: 180,
+    cleanTaskNames: 220,
+    standardTables: 220,
+    strategy: 150,
+    fusionRows: 120,
+    status: 120,
+    updatedAt: 180,
+    actions: 270
+  }
+  const next = { ...columnWidths.value }
+  let changed = false
+  Object.entries(minByKey).forEach(([key, min]) => {
+    const current = next[key]
+    if (typeof current === 'number' && current < min) {
+      next[key] = min
+      changed = true
+    }
+  })
+  if (changed) {
+    columnWidths.value = next
+    localStorage.setItem(`${props.layoutStorageKey}:columns`, JSON.stringify(next))
+  }
 }
 
 function resolveHeaderMinWidth(column) {
@@ -255,6 +288,10 @@ function headerRowStyle() {
 <style scoped>
 .table-wrap :deep(.el-table .cell) {
   line-height: calc(var(--row-height) - 12px);
+}
+
+.table-wrap :deep(.el-table th.el-table__cell .cell) {
+  white-space: nowrap;
 }
 
 .table-wrap {

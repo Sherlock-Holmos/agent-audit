@@ -37,21 +37,21 @@
             column-key="taskType"
             prop="taskType"
             label="任务类型"
-            :width="resolveWidth('taskType')"
+            :width="resolveWidth('taskType', 140)"
             :min-width="resolveMinWidth('taskType', 140)"
           />
           <el-table-column
             column-key="taskId"
             prop="taskId"
             label="任务ID"
-            :width="resolveWidth('taskId')"
+            :width="resolveWidth('taskId', 120)"
             :min-width="resolveMinWidth('taskId', 120)"
           />
           <el-table-column
             column-key="bronzeRows"
             prop="bronzeRows"
             label="Bronze"
-            :width="resolveWidth('bronzeRows')"
+            :width="resolveWidth('bronzeRows', 160)"
             :min-width="resolveMinWidth('bronzeRows', 160)"
             align="right"
           />
@@ -59,7 +59,7 @@
             column-key="silverRows"
             prop="silverRows"
             label="Silver"
-            :width="resolveWidth('silverRows')"
+            :width="resolveWidth('silverRows', 160)"
             :min-width="resolveMinWidth('silverRows', 160)"
             align="right"
           />
@@ -67,7 +67,7 @@
             column-key="goldRows"
             prop="goldRows"
             label="Gold"
-            :width="resolveWidth('goldRows')"
+            :width="resolveWidth('goldRows', 160)"
             :min-width="resolveMinWidth('goldRows', 160)"
             align="right"
           />

@@ -1,11 +1,12 @@
 <template>
-  <el-card ref="cardRef" shadow="never" class="table-wrap" :style="{ '--row-height': `${rowHeight}px` }">
+  <el-card ref="cardRef" shadow="never" class="table-wrap" :style="{ '--row-height': `${FIXED_ROW_HEIGHT}px` }">
     <el-table
       :data="data"
       v-loading="loading"
       border
       style="width: 100%"
       show-overflow-tooltip
+      :show-header-overflow-tooltip="false"
       :height="tableHeight"
       :size="tableSize"
       :row-style="rowStyle"
@@ -17,13 +18,13 @@
         column-key="taskName"
         prop="taskName"
         label="任务名称"
-        :width="resolveWidth('taskName')"
+        :width="resolveWidth('taskName', 180)"
         :min-width="resolveMinWidth('taskName', 180)"
       />
       <el-table-column
         column-key="cleanObjectNames"
         label="清洗对象"
-        :width="resolveWidth('cleanObjectNames')"
+        :width="resolveWidth('cleanObjectNames', 260)"
         :min-width="resolveMinWidth('cleanObjectNames', 260)"
       >
         <template #default="scope">
@@ -33,7 +34,7 @@
       <el-table-column
         column-key="cleanRuleNames"
         label="应用规则"
-        :width="resolveWidth('cleanRuleNames')"
+        :width="resolveWidth('cleanRuleNames', 180)"
         :min-width="resolveMinWidth('cleanRuleNames', 180)"
       >
         <template #default="scope">
@@ -43,7 +44,7 @@
       <el-table-column
         column-key="strategy"
         label="清洗策略"
-        :width="resolveWidth('strategy')"
+        :width="resolveWidth('strategy', 160)"
         :min-width="resolveMinWidth('strategy', 160)"
       >
         <template #default="scope">
@@ -54,21 +55,21 @@
         column-key="standardTable"
         prop="standardTable"
         label="标准化表"
-        :width="resolveWidth('standardTable')"
+        :width="resolveWidth('standardTable', 180)"
         :min-width="resolveMinWidth('standardTable', 180)"
       />
       <el-table-column
         column-key="cleanedRows"
         prop="cleanedRows"
         label="清洗数据量"
-        :width="resolveWidth('cleanedRows')"
+        :width="resolveWidth('cleanedRows', 120)"
         :min-width="resolveMinWidth('cleanedRows', 120)"
         align="right"
       />
       <el-table-column
         column-key="status"
         label="状态"
-        :width="resolveWidth('status')"
+        :width="resolveWidth('status', 120)"
         :min-width="resolveMinWidth('status', 120)"
         align="center"
       >
@@ -82,7 +83,7 @@
         column-key="updatedAt"
         prop="updatedAt"
         label="更新时间"
-        :width="resolveWidth('updatedAt')"
+        :width="resolveWidth('updatedAt', 180)"
         :min-width="resolveMinWidth('updatedAt', 180)"
       />
       <el-table-column column-key="actions" label="操作" :width="resolveWidth('actions', 260)" align="center" fixed="right">
@@ -180,6 +181,7 @@ onMounted(() => {
   }
 
   nextTick(() => {
+    normalizeLoadedColumnWidths()
     updateTableHeight()
     window.addEventListener('resize', updateTableHeight)
     const cardEl = cardRef.value?.$el || cardRef.value
@@ -198,8 +200,12 @@ onBeforeUnmount(() => {
   }
 })
 
-function resolveWidth(key) {
-  return columnWidths.value[key] || undefined
+function resolveWidth(key, fallback = 80) {
+  const width = columnWidths.value[key]
+  if (!width) {
+    return undefined
+  }
+  return Math.max(width, fallback)
 }
 
 function resolveMinWidth(key, fallback) {
@@ -215,6 +221,33 @@ function handleHeaderDragEnd(newWidth, _oldWidth, column) {
     [key]: Math.max(minWidth, Math.round(newWidth || 0))
   }
   localStorage.setItem(`${props.layoutStorageKey}:columns`, JSON.stringify(columnWidths.value))
+}
+
+function normalizeLoadedColumnWidths() {
+  const minByKey = {
+    taskName: 180,
+    cleanObjectNames: 260,
+    cleanRuleNames: 180,
+    strategy: 160,
+    standardTable: 180,
+    cleanedRows: 120,
+    status: 120,
+    updatedAt: 180,
+    actions: 260
+  }
+  const next = { ...columnWidths.value }
+  let changed = false
+  Object.entries(minByKey).forEach(([key, min]) => {
+    const current = next[key]
+    if (typeof current === 'number' && current < min) {
+      next[key] = min
+      changed = true
+    }
+  })
+  if (changed) {
+    columnWidths.value = next
+    localStorage.setItem(`${props.layoutStorageKey}:columns`, JSON.stringify(next))
+  }
 }
 
 function resolveHeaderMinWidth(column) {
@@ -258,6 +291,10 @@ function headerRowStyle() {
 <style scoped>
 .table-wrap :deep(.el-table .cell) {
   line-height: calc(var(--row-height) - 12px);
+}
+
+.table-wrap :deep(.el-table th.el-table__cell .cell) {
+  white-space: nowrap;
 }
 
 .table-wrap {

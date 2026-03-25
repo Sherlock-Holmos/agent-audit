@@ -1,10 +1,12 @@
 <template>
-  <el-card ref="cardRef" shadow="never" class="table-wrap" :style="{ '--row-height': `${rowHeight}px` }">
+  <el-card ref="cardRef" shadow="never" class="table-wrap" :style="{ '--row-height': `${FIXED_ROW_HEIGHT}px` }">
     <el-table
       :data="data"
       v-loading="loading"
       border
       style="width: 100%"
+      show-overflow-tooltip
+      :show-header-overflow-tooltip="false"
       :height="tableHeight"
       :size="tableSize"
       :row-style="rowStyle"
@@ -15,7 +17,7 @@
       <el-table-column
         column-key="name"
         label="数据源名称"
-        :width="resolveWidth('name')"
+        :width="resolveWidth('name', 180)"
         :min-width="resolveMinWidth('name', 180)"
       >
         <template #default="scope">
@@ -25,7 +27,7 @@
       <el-table-column
         column-key="type"
         label="类型"
-        :width="resolveWidth('type')"
+        :width="resolveWidth('type', 120)"
         :min-width="resolveMinWidth('type', 120)"
       >
         <template #default="scope">
@@ -37,7 +39,7 @@
       <el-table-column
         column-key="connection"
         label="连接信息"
-        :width="resolveWidth('connection')"
+        :width="resolveWidth('connection', 280)"
         :min-width="resolveMinWidth('connection', 280)"
       >
         <template #default="scope">
@@ -52,7 +54,7 @@
       <el-table-column
         column-key="status"
         label="状态"
-        :width="resolveWidth('status')"
+        :width="resolveWidth('status', 120)"
         :min-width="resolveMinWidth('status', 120)"
         align="center"
       >
@@ -67,7 +69,7 @@
         column-key="createdAt"
         prop="createdAt"
         label="创建时间"
-        :width="resolveWidth('createdAt')"
+        :width="resolveWidth('createdAt', 180)"
         :min-width="resolveMinWidth('createdAt', 180)"
       />
       <el-table-column column-key="actions" label="操作" :width="resolveWidth('actions', 170)" align="center" fixed="right">
@@ -102,10 +104,6 @@ const props = defineProps({
     type: String,
     default: 'default'
   },
-  rowHeight: {
-    type: Number,
-    default: 44
-  },
   layoutStorageKey: {
     type: String,
     default: 'datasource-table-layout'
@@ -120,6 +118,8 @@ defineEmits(['status-change', 'delete', 'edit'])
 const cardRef = ref()
 const tableHeight = ref(420)
 const columnWidths = ref({})
+const minWidthCache = new Map()
+const FIXED_ROW_HEIGHT = 44
 let resizeObserver
 
 function updateTableHeight() {
@@ -160,6 +160,7 @@ onMounted(() => {
   }
 
   nextTick(() => {
+    normalizeLoadedColumnWidths()
     updateTableHeight()
     window.addEventListener('resize', updateTableHeight)
     const cardEl = cardRef.value?.$el || cardRef.value
@@ -178,8 +179,12 @@ onBeforeUnmount(() => {
   }
 })
 
-function resolveWidth(key) {
-  return columnWidths.value[key] || undefined
+function resolveWidth(key, fallback = 80) {
+  const width = columnWidths.value[key]
+  if (!width) {
+    return undefined
+  }
+  return Math.max(width, fallback)
 }
 
 function resolveMinWidth(key, fallback) {
@@ -189,22 +194,72 @@ function resolveMinWidth(key, fallback) {
 function handleHeaderDragEnd(newWidth, _oldWidth, column) {
   const key = String(column?.columnKey || column?.property || column?.label || '').trim()
   if (!key) return
+  const minWidth = resolveHeaderMinWidth(column)
   columnWidths.value = {
     ...columnWidths.value,
-    [key]: Math.max(80, Math.round(newWidth || 0))
+    [key]: Math.max(minWidth, Math.round(newWidth || 0))
   }
   localStorage.setItem(`${props.layoutStorageKey}:columns`, JSON.stringify(columnWidths.value))
 }
 
+function normalizeLoadedColumnWidths() {
+  const minByKey = {
+    name: 180,
+    type: 120,
+    connection: 280,
+    status: 120,
+    createdAt: 180,
+    actions: 170
+  }
+  const next = { ...columnWidths.value }
+  let changed = false
+  Object.entries(minByKey).forEach(([key, min]) => {
+    const current = next[key]
+    if (typeof current === 'number' && current < min) {
+      next[key] = min
+      changed = true
+    }
+  })
+  if (changed) {
+    columnWidths.value = next
+    localStorage.setItem(`${props.layoutStorageKey}:columns`, JSON.stringify(next))
+  }
+}
+
+function resolveHeaderMinWidth(column) {
+  const label = String(column?.label || '').trim()
+  if (!label) {
+    return 80
+  }
+
+  if (minWidthCache.has(label)) {
+    return minWidthCache.get(label)
+  }
+
+  let measured = 0
+  if (typeof document !== 'undefined') {
+    const canvas = resolveHeaderMinWidth._canvas || (resolveHeaderMinWidth._canvas = document.createElement('canvas'))
+    const context = canvas.getContext('2d')
+    if (context) {
+      context.font = '14px sans-serif'
+      measured = context.measureText(label).width
+    }
+  }
+
+  const width = Math.max(80, Math.ceil((measured || label.length * 14) + 40))
+  minWidthCache.set(label, width)
+  return width
+}
+
 function rowStyle() {
   return {
-    height: `${props.rowHeight}px`
+    height: `${FIXED_ROW_HEIGHT}px`
   }
 }
 
 function headerRowStyle() {
   return {
-    height: `${props.rowHeight}px`
+    height: `${FIXED_ROW_HEIGHT}px`
   }
 }
 
@@ -248,6 +303,10 @@ function chineseScore(text) {
 <style scoped>
 .table-wrap :deep(.el-table .cell) {
   line-height: calc(var(--row-height) - 12px);
+}
+
+.table-wrap :deep(.el-table th.el-table__cell .cell) {
+  white-space: nowrap;
 }
 
 .table-wrap {
