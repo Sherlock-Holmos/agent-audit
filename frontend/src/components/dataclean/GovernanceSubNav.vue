@@ -23,7 +23,6 @@ const route = useRoute()
 const router = useRouter()
 
 const items = [
-  { label: '治理中心', path: '/datasource/clean-rules' },
   { label: '规则与策略', path: '/datasource/clean-rules/rules' },
   { label: '主键同义词', path: '/datasource/clean-rules/synonyms' },
   { label: 'NiFi 模板', path: '/datasource/clean-rules/nifi-templates' },

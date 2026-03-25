@@ -33,9 +33,7 @@ export const routes = [
   },
   {
     path: '/datasource/clean-rules',
-    name: 'datasource-clean-rules',
-    component: () => import('./views/DatasourceCleanRuleView.vue'),
-    meta: { requiresAuth: true }
+    redirect: '/datasource/clean-rules/rules'
   },
   {
     path: '/datasource/clean-rules/rules',

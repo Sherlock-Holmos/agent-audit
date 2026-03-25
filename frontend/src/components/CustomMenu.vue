@@ -93,11 +93,10 @@ const menuList = ref([
   },
   {
     title: '治理中心',
-    path: '/datasource/clean-rules',
+    path: '/datasource/clean-rules/rules',
     icon: Operation,
     open: false,
     children: [
-      { title: '治理总览', path: '/datasource/clean-rules' },
       { title: '规则与策略', path: '/datasource/clean-rules/rules' },
       { title: '主键同义词', path: '/datasource/clean-rules/synonyms' },
       { title: 'NiFi 模板', path: '/datasource/clean-rules/nifi-templates' },

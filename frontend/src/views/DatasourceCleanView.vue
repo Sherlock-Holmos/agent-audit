@@ -298,7 +298,7 @@ async function handlePreview(row) {
 }
 
 function openRuleManagement() {
-  router.push('/datasource/clean-rules')
+  router.push('/datasource/clean-rules/rules')
 }
 
 function repairName(name, item) {
