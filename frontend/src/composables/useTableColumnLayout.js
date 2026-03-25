@@ -51,18 +51,35 @@ export function useTableColumnLayout(options = {}) {
 
   function handleHeaderDragEnd(newWidth, _oldWidth, column) {
     const knownKeys = resolveKnownKeys()
-    let key = ''
-
     if (knownKeys.length > 0) {
-      key = resolveKnownColumnKey(column, knownKeys)
-      if (!key) {
+      const widthsByOrder = collectHeaderWidthsByOrder(column)
+      if (widthsByOrder.length > 0) {
+        const next = { ...columnWidths.value }
+        let changed = false
+        knownKeys.forEach((key, index) => {
+          const width = widthsByOrder[index]
+          if (!Number.isFinite(width)) {
+            return
+          }
+          const minWidth = Number(minByKey[key]) || 0
+          const safeWidth = Math.max(minWidth, Math.round(width))
+          if (next[key] !== safeWidth) {
+            next[key] = safeWidth
+            changed = true
+          }
+        })
+        if (changed) {
+          columnWidths.value = next
+          persistColumnWidths()
+        }
         return
       }
-    } else {
-      key = String(column?.columnKey || column?.property || column?.label || '').trim()
     }
 
-    if (!key) return
+    const key = String(column?.columnKey || column?.property || column?.label || '').trim()
+    if (!key) {
+      return
+    }
     const minWidth = Number(minByKey[key]) || 0
     columnWidths.value = {
       ...columnWidths.value,
@@ -113,37 +130,6 @@ export function useTableColumnLayout(options = {}) {
     }
   }
 
-  function resolveKnownColumnKey(column, knownKeys) {
-    const candidates = [
-      column?.columnKey,
-      column?.rawColumnKey,
-      column?.property,
-      column?.label
-    ].map((it) => String(it || '').trim()).filter(Boolean)
-
-    const direct = candidates.find((candidate) => knownKeys.includes(candidate))
-    if (direct) {
-      return direct
-    }
-
-    const columnId = String(column?.id || '').trim()
-    if (!columnId) {
-      return ''
-    }
-
-    const allMatches = [...columnId.matchAll(/column_(\d+)/g)]
-    if (allMatches.length === 0) {
-      return ''
-    }
-
-    const last = allMatches[allMatches.length - 1]
-    const index = Number.parseInt(last[1], 10) - 1
-    if (!Number.isInteger(index) || index < 0 || index >= knownKeys.length) {
-      return ''
-    }
-    return knownKeys[index]
-  }
-
   function resolveKnownKeys() {
     const explicitKeys = Array.isArray(columnKeys)
       ? columnKeys.map((it) => String(it || '').trim()).filter(Boolean)
@@ -152,6 +138,39 @@ export function useTableColumnLayout(options = {}) {
       return explicitKeys
     }
     return Object.keys(minByKey || {})
+  }
+
+  function collectHeaderWidthsByOrder(column) {
+    if (typeof document === 'undefined') {
+      return []
+    }
+    const columnId = String(column?.id || '').trim()
+    if (!columnId) {
+      return []
+    }
+
+    const escapedColumnId = escapeClassName(columnId)
+    const anchorCell = document.querySelector(`th.${escapedColumnId}`)
+    const tableRoot = anchorCell?.closest('.el-table')
+    if (!tableRoot) {
+      return []
+    }
+
+    const mainHeaders = Array.from(tableRoot.querySelectorAll('.el-table__header-wrapper > table thead th.is-leaf'))
+      .filter((th) => !th.classList.contains('gutter'))
+    const rightHeaders = Array.from(tableRoot.querySelectorAll('.el-table__fixed-right .el-table__header-wrapper > table thead th.is-leaf'))
+      .filter((th) => !th.classList.contains('gutter'))
+
+    return [...mainHeaders, ...rightHeaders]
+      .map((th) => Math.round(th.getBoundingClientRect().width || 0))
+      .filter((width) => Number.isFinite(width) && width > 0)
+  }
+
+  function escapeClassName(value) {
+    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+      return CSS.escape(value)
+    }
+    return String(value).replace(/[^a-zA-Z0-9_-]/g, '\\$&')
   }
 
   function toWidthNumber(value) {
