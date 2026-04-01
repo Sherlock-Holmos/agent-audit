@@ -5,6 +5,8 @@
       <template #actions>
         <el-space>
           <el-button @click="loadNifiTemplates">刷新</el-button>
+          <el-button :loading="reconcilingTasks" @click="reconcileTasks">任务对账</el-button>
+          <el-button type="warning" :loading="bootstrappingTemplates" @click="bootstrapTemplates">一键初始化清洗/融合模板</el-button>
           <el-button type="primary" @click="openTemplateCreate">新增模板</el-button>
         </el-space>
       </template>
@@ -64,6 +66,47 @@
             <template #default="scope">
               <el-button type="primary" link @click="openTemplateEditor(scope.row)">编辑</el-button>
               <el-button type="success" link @click="openTemplateRun(scope.row)">触发测试</el-button>
+            </template>
+          </el-table-column>
+        </template>
+      </GovernanceTable>
+    </GovernanceCardSection>
+
+    <GovernanceCardSection title="任务对账历史" card-style="margin-top: 12px">
+      <template #actions>
+        <el-space wrap>
+          <el-select v-model="singleReconcile.taskType" style="width: 140px" placeholder="任务类型">
+            <el-option label="清洗任务" value="CLEAN" />
+            <el-option label="融合任务" value="FUSION" />
+          </el-select>
+          <el-input-number v-model="singleReconcile.taskId" :min="1" :step="1" :precision="0" style="width: 160px" />
+          <el-button :loading="reconcilingSingleTask" @click="reconcileSingleTask">单任务对账</el-button>
+          <el-button :loading="loadingReconcileHistory" @click="loadReconcileHistory">刷新历史</el-button>
+        </el-space>
+      </template>
+      <GovernanceTable
+        :data="reconcileHistory"
+        :loading="loadingReconcileHistory"
+        layout-storage-key="governance-nifi-reconcile-history-table"
+        :column-keys="['createdAt', 'triggerType', 'triggerUser', 'reconcileMode', 'taskType', 'taskId', 'result']"
+      >
+        <template #default="{ resolveWidth, resolveMinWidth }">
+          <el-table-column column-key="createdAt" prop="createdAt" label="时间" :width="resolveWidth('createdAt', 180)" :min-width="resolveMinWidth('createdAt', 180)" />
+          <el-table-column column-key="triggerType" prop="triggerType" label="触发来源" :width="resolveWidth('triggerType', 100)" :min-width="resolveMinWidth('triggerType', 100)" align="center" />
+          <el-table-column column-key="triggerUser" prop="triggerUser" label="触发用户" :width="resolveWidth('triggerUser', 140)" :min-width="resolveMinWidth('triggerUser', 140)" />
+          <el-table-column column-key="reconcileMode" prop="reconcileMode" label="模式" :width="resolveWidth('reconcileMode', 90)" :min-width="resolveMinWidth('reconcileMode', 90)" align="center" />
+          <el-table-column column-key="taskType" prop="taskType" label="任务类型" :width="resolveWidth('taskType', 100)" :min-width="resolveMinWidth('taskType', 100)" align="center" />
+          <el-table-column column-key="taskId" prop="taskId" label="任务ID" :width="resolveWidth('taskId', 100)" :min-width="resolveMinWidth('taskId', 100)" align="center" />
+          <el-table-column column-key="result" label="结果摘要" :width="resolveWidth('result', 420)" :min-width="resolveMinWidth('result', 420)">
+            <template #default="scope">
+              <el-space wrap>
+                <el-tag v-if="scope.row.result?.completedClean !== undefined" type="success">清洗完成 {{ scope.row.result.completedClean || 0 }}</el-tag>
+                <el-tag v-if="scope.row.result?.completedFusion !== undefined" type="success">融合完成 {{ scope.row.result.completedFusion || 0 }}</el-tag>
+                <el-tag v-if="scope.row.result?.failedTimeout !== undefined" type="danger">超时失败 {{ scope.row.result.failedTimeout || 0 }}</el-tag>
+                <el-tag v-if="scope.row.result?.stillRunning !== undefined" type="warning">仍运行 {{ scope.row.result.stillRunning || 0 }}</el-tag>
+                <el-tag v-if="scope.row.result?.outcome" :type="scope.row.result.outcome === 'COMPLETED' ? 'success' : (scope.row.result.outcome === 'FAILED_TIMEOUT' ? 'danger' : 'info')">{{ scope.row.result.outcome }}</el-tag>
+                <span v-if="scope.row.result?.taskId">#{{ scope.row.result.taskId }}</span>
+              </el-space>
             </template>
           </el-table-column>
         </template>
@@ -130,17 +173,22 @@ import { ElMessage } from 'element-plus'
 import GovernancePageShell from '../components/dataclean/GovernancePageShell.vue'
 import GovernanceCardSection from '../components/dataclean/GovernanceCardSection.vue'
 import GovernanceTable from '../components/dataclean/GovernanceTable.vue'
-import { listNifiFlowTemplates, saveNifiFlowTemplate, triggerNifiFlow } from '../api/nifi-control-plane'
+import { bootstrapNifiEtlTemplates, listNifiFlowTemplates, listNifiReconcileHistory, reconcileNifiRunningTasks, reconcileNifiTask, saveNifiFlowTemplate, triggerNifiFlow } from '../api/nifi-control-plane'
 import { useAsyncTask } from '../composables/useAsyncTask'
 
 const nifiTemplates = ref([])
 const templateEditorVisible = ref(false)
 const templateEditorTitle = ref('新增模板')
 const templateRunVisible = ref(false)
+const reconcileHistory = ref([])
 
 const { loading: loadingNifiTemplates, run: runLoadNifiTemplates } = useAsyncTask()
 const { loading: savingTemplate, run: runSaveTemplate } = useAsyncTask()
 const { loading: runningTemplate, run: runTemplateTrigger } = useAsyncTask()
+const { loading: bootstrappingTemplates, run: runTemplateBootstrap } = useAsyncTask()
+const { loading: reconcilingTasks, run: runTaskReconcile } = useAsyncTask()
+const { loading: loadingReconcileHistory, run: runLoadReconcileHistory } = useAsyncTask()
+const { loading: reconcilingSingleTask, run: runSingleTaskReconcile } = useAsyncTask()
 
 const templateEditorForm = reactive({
   flowType: 'INGEST',
@@ -156,6 +204,11 @@ const templateRunForm = reactive({
   parametersJson: '{}'
 })
 
+const singleReconcile = reactive({
+  taskType: 'CLEAN',
+  taskId: 1
+})
+
 async function loadNifiTemplates() {
   const result = await runLoadNifiTemplates(() => listNifiFlowTemplates(), {
     errorMessage: '加载 NiFi 模板失败',
@@ -166,6 +219,62 @@ async function loadNifiTemplates() {
   if (result) {
     nifiTemplates.value = result.data?.data || []
   }
+}
+
+async function loadReconcileHistory() {
+  const result = await runLoadReconcileHistory(() => listNifiReconcileHistory({ limit: 100 }), {
+    errorMessage: '加载对账历史失败',
+    onError: () => {
+      reconcileHistory.value = []
+    }
+  })
+  if (result) {
+    reconcileHistory.value = result.data?.data || []
+  }
+}
+
+async function bootstrapTemplates() {
+  const result = await runTemplateBootstrap(() => bootstrapNifiEtlTemplates(), {
+    errorMessage: '初始化 NiFi 模板失败',
+    successMessage: '清洗/融合模板初始化完成'
+  })
+  if (result) {
+    await loadNifiTemplates()
+  }
+}
+
+async function reconcileTasks() {
+  const result = await runTaskReconcile(() => reconcileNifiRunningTasks({ limit: 100 }), {
+    errorMessage: '任务对账失败'
+  })
+  if (!result) {
+    return
+  }
+  const payload = result.data?.data || {}
+  ElMessage.success(
+    `对账完成：清洗完成 ${payload.completedClean || 0}，融合完成 ${payload.completedFusion || 0}，超时失败 ${payload.failedTimeout || 0}，仍运行 ${payload.stillRunning || 0}`
+  )
+  await loadReconcileHistory()
+}
+
+async function reconcileSingleTask() {
+  const taskId = Number(singleReconcile.taskId)
+  if (!taskId || taskId <= 0) {
+    ElMessage.warning('请输入有效的任务ID')
+    return
+  }
+  const result = await runSingleTaskReconcile(() => reconcileNifiTask({
+    taskType: singleReconcile.taskType,
+    taskId
+  }), {
+    errorMessage: '单任务对账失败'
+  })
+  if (!result) {
+    return
+  }
+  const payload = result.data?.data || {}
+  ElMessage.success(`单任务对账完成：${payload.outcome || 'UNKNOWN'}`)
+  await loadReconcileHistory()
 }
 
 function resetTemplateEditor() {
@@ -260,5 +369,8 @@ async function saveTemplateEditor() {
   }
 }
 
-onMounted(loadNifiTemplates)
+onMounted(async () => {
+  await loadNifiTemplates()
+  await loadReconcileHistory()
+})
 </script>

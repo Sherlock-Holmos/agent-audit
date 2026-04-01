@@ -14,11 +14,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import jakarta.annotation.PostConstruct;
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -26,8 +29,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
@@ -38,6 +45,8 @@ import org.springframework.transaction.annotation.Transactional;
  * 数据处理编排服务：协调清洗、融合、工作流执行及治理审计落库。
  */
 public class DataProcessService implements IDataProcessService {
+
+    private static final Logger log = LoggerFactory.getLogger(DataProcessService.class);
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
@@ -58,6 +67,13 @@ public class DataProcessService implements IDataProcessService {
     private final NifiOrchestrationService nifiOrchestrationService;
     private final MeterRegistry meterRegistry;
     private final String stagingSchema;
+    private final String etlEngine;
+    private final int nifiAwaitSeconds;
+    private final long nifiPollMillis;
+    private final long nifiRunningTimeoutSeconds;
+    private final boolean nifiAutoReconcileEnabled;
+    private final int nifiAutoReconcileOwnerLimit;
+    private final int nifiAutoReconcileTaskLimit;
     private final Counter cleanRunSuccessCounter;
     private final Counter cleanRunFailedCounter;
     private final Counter fusionRunSuccessCounter;
@@ -76,6 +92,13 @@ public class DataProcessService implements IDataProcessService {
         WorkflowDefinitionService workflowDefinitionService,
         NifiOrchestrationService nifiOrchestrationService,
         MeterRegistry meterRegistry,
+        @Value("${app.etl.engine:NIFI}") String etlEngine,
+        @Value("${app.nifi.await-seconds:12}") int nifiAwaitSeconds,
+        @Value("${app.nifi.poll-millis:500}") long nifiPollMillis,
+        @Value("${app.nifi.running-timeout-seconds:1800}") long nifiRunningTimeoutSeconds,
+        @Value("${app.nifi.auto-reconcile.enabled:true}") boolean nifiAutoReconcileEnabled,
+        @Value("${app.nifi.auto-reconcile.owner-limit:200}") int nifiAutoReconcileOwnerLimit,
+        @Value("${app.nifi.auto-reconcile.task-limit:100}") int nifiAutoReconcileTaskLimit,
         @Value("${app.datasource.staging-schema:agent_audit_staging}") String stagingSchema
     ) {
         this.jdbcTemplate = jdbcTemplate;
@@ -90,11 +113,66 @@ public class DataProcessService implements IDataProcessService {
         this.workflowDefinitionService = workflowDefinitionService;
         this.nifiOrchestrationService = nifiOrchestrationService;
         this.meterRegistry = meterRegistry;
+        this.etlEngine = normalizeEtlEngine(etlEngine);
+        this.nifiAwaitSeconds = Math.max(0, nifiAwaitSeconds);
+        this.nifiPollMillis = Math.max(200L, nifiPollMillis);
+        this.nifiRunningTimeoutSeconds = Math.max(60L, nifiRunningTimeoutSeconds);
+        this.nifiAutoReconcileEnabled = nifiAutoReconcileEnabled;
+        this.nifiAutoReconcileOwnerLimit = Math.max(20, nifiAutoReconcileOwnerLimit);
+        this.nifiAutoReconcileTaskLimit = Math.max(10, nifiAutoReconcileTaskLimit);
         this.stagingSchema = sanitizeSchemaName(stagingSchema);
         this.cleanRunSuccessCounter = Counter.builder("audit.process.clean.run.success").register(meterRegistry);
         this.cleanRunFailedCounter = Counter.builder("audit.process.clean.run.failed").register(meterRegistry);
         this.fusionRunSuccessCounter = Counter.builder("audit.process.fusion.run.success").register(meterRegistry);
         this.fusionRunFailedCounter = Counter.builder("audit.process.fusion.run.failed").register(meterRegistry);
+    }
+
+    @PostConstruct
+    public void startupEtlSelfCheck() {
+        if (!useNifiEtl()) {
+            log.info("ETL engine initialized in LOCAL mode");
+            return;
+        }
+
+        try {
+            Map<String, Object> status = nifiOrchestrationService.getStatus();
+            boolean nifiEnabled = Boolean.TRUE.equals(status.get("enabled"));
+            boolean nifiReachable = Boolean.TRUE.equals(status.get("reachable"));
+            String statusMessage = text(status.get("message"));
+
+            if (!nifiEnabled) {
+                log.warn("ETL engine is NIFI but NiFi integration is disabled. Set APP_NIFI_ENABLED=true to dispatch ETL tasks to NiFi.");
+                return;
+            }
+
+            int cleanTemplateCount = countEnabledTemplate("CLEAN");
+            int fusionTemplateCount = countEnabledTemplate("FUSION");
+
+            if (!nifiReachable) {
+                log.warn("NiFi is not reachable at startup. statusMessage={} cleanTemplateCount={} fusionTemplateCount={}",
+                    nvl(statusMessage), cleanTemplateCount, fusionTemplateCount);
+                return;
+            }
+
+            if (cleanTemplateCount <= 0 || fusionTemplateCount <= 0) {
+                log.warn("NiFi ETL self-check warning: missing enabled template. cleanTemplateCount={} fusionTemplateCount={}. Please configure /api/data/control-plane/nifi/templates.",
+                    cleanTemplateCount, fusionTemplateCount);
+                return;
+            }
+
+            log.info("NiFi ETL self-check passed. cleanTemplateCount={} fusionTemplateCount={}", cleanTemplateCount, fusionTemplateCount);
+        } catch (RuntimeException ex) {
+            log.warn("NiFi ETL self-check failed: {}", nvl(ex.getMessage()));
+        }
+    }
+
+    private int countEnabledTemplate(String flowType) {
+        Integer count = jdbcTemplate.queryForObject(
+            "SELECT COUNT(1) FROM nifi_flow_template_record WHERE flow_type=? AND enabled=1",
+            Integer.class,
+            text(flowType).toUpperCase()
+        );
+        return count == null ? 0 : count;
     }
 
     public List<Map<String, Object>> listCleanRules(String ownerUsername) {
@@ -348,28 +426,51 @@ public class DataProcessService implements IDataProcessService {
         List<Map<String, Object>> cleanObjects = castMapList(task.get("cleanObjects"));
         String strategyCode = text(task.get("strategy"));
         List<String> ruleNames = castStringList(task.get("cleanRuleNames"));
+        boolean dispatchedToNifi = false;
 
         dataProcessTaskRepository.markCleanTaskRunning(ownerUsername, id);
 
         int cleanedRows;
         Map<String, Object> layerResult = Map.of();
+        boolean nifiLanded = false;
         try {
-            stagingTableService.recreateRawTable(rawTable);
-            stagingTableService.loadObjectsIntoRawTable(ownerUsername, id, cleanObjects, rawTable);
-            stagingTableService.recreateStandardTable(outputTable);
-            stagingTableService.loadStandardFromRawTable(id, rawTable, outputTable);
-            cleanRuleEngineService.applyCleanStrategy(ownerUsername, outputTableRef, strategyCode, ruleNames);
+            if (useNifiEtl()) {
+                Map<String, Object> nifiResult = dispatchCleanTaskToNifi(ownerUsername, id, task, outputTable, strategyCode, cleanObjects, ruleNames);
+                Integer landedRows = awaitCleanRowsFromNifi(outputTable, id);
+                nifiLanded = landedRows != null;
+                cleanedRows = landedRows == null ? 0 : landedRows;
+                layerResult = Map.of("nifiDispatch", nifiResult);
+                dispatchedToNifi = true;
+            } else {
+                stagingTableService.recreateRawTable(rawTable);
+                stagingTableService.loadObjectsIntoRawTable(ownerUsername, id, cleanObjects, rawTable);
+                stagingTableService.recreateStandardTable(outputTable);
+                stagingTableService.loadStandardFromRawTable(id, rawTable, outputTable);
+                cleanRuleEngineService.applyCleanStrategy(ownerUsername, outputTableRef, strategyCode, ruleNames);
 
-            Integer count = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM " + outputTableRef, Integer.class);
-            cleanedRows = count == null ? 0 : count;
-            layerResult = stagingTableService.persistCleanResultToLayers(ownerUsername, id, outputTable);
+                Integer count = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM " + outputTableRef, Integer.class);
+                cleanedRows = count == null ? 0 : count;
+                layerResult = stagingTableService.persistCleanResultToLayers(ownerUsername, id, outputTable);
+            }
 
-            dataProcessTaskRepository.markCleanTaskCompleted(ownerUsername, id, cleanedRows);
-            cleanRunSuccessCounter.increment();
-            persistGovernanceArtifacts(ownerUsername, "CLEAN", id, outputTable, cleanObjects.stream()
-                .map(it -> text(it.get("objectName")))
-                .filter(it -> !isBlank(it))
-                .toList());
+            if (!dispatchedToNifi || nifiLanded) {
+                dataProcessTaskRepository.markCleanTaskCompleted(ownerUsername, id, cleanedRows);
+                cleanRunSuccessCounter.increment();
+            }
+
+            if (!dispatchedToNifi) {
+                persistGovernanceArtifacts(ownerUsername, "CLEAN", id, outputTable, cleanObjects.stream()
+                    .map(it -> text(it.get("objectName")))
+                    .filter(it -> !isBlank(it))
+                    .toList());
+            } else if (nifiLanded) {
+                persistGovernanceArtifacts(ownerUsername, "CLEAN", id, outputTable, cleanObjects.stream()
+                    .map(it -> text(it.get("objectName")))
+                    .filter(it -> !isBlank(it))
+                    .toList());
+            } else {
+                log.info("NiFi clean dispatched but data not landed within await window. taskId={}, table={}, awaitSeconds={}", id, outputTable, nifiAwaitSeconds);
+            }
             recordAudit(ownerUsername, "RUN", "CLEAN_TASK", String.valueOf(id), "SUCCESS", Map.of("outputTable", outputTable, "layers", layerResult));
         } catch (RuntimeException ex) {
             dataProcessTaskRepository.markCleanTaskFailed(ownerUsername, id);
@@ -380,7 +481,12 @@ public class DataProcessService implements IDataProcessService {
             sample.stop(Timer.builder("audit.process.clean.run.duration").register(meterRegistry));
         }
 
-        Map<String, Object> completed = getCleanTaskById(ownerUsername, id);
+        Map<String, Object> completed = new LinkedHashMap<>(getCleanTaskById(ownerUsername, id));
+        if (useNifiEtl() && "RUNNING".equalsIgnoreCase(text(completed.get("status")))) {
+            completed.put("message", "NiFi 清洗流程已下发，正在等待目标标准表落地，请稍后刷新或预览");
+            completed.put("dataReady", false);
+            completed.put("executionMode", "NIFI");
+        }
         invalidateDashboardCache(ownerUsername);
         return completed;
     }
@@ -391,26 +497,45 @@ public class DataProcessService implements IDataProcessService {
         String standardTableRef = stagingTableRef(standardTable);
         int safeLimit = (limit == null || limit <= 0) ? 20 : Math.min(limit, 200);
 
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-            "SELECT id,task_id,source_id,object_name,row_no,raw_json,normalized_json,created_at FROM " +
-                standardTableRef + " WHERE task_id=? ORDER BY row_no ASC LIMIT " + safeLimit,
-            id
-        );
+        try {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT id,task_id,source_id,object_name,row_no,raw_json,normalized_json,created_at FROM " +
+                    standardTableRef + " WHERE task_id=? ORDER BY row_no ASC LIMIT " + safeLimit,
+                id
+            );
 
-        Integer total = jdbcTemplate.queryForObject(
-            "SELECT COUNT(1) FROM " + standardTableRef + " WHERE task_id=?",
-            Integer.class,
-            id
-        );
+            Integer total = jdbcTemplate.queryForObject(
+                "SELECT COUNT(1) FROM " + standardTableRef + " WHERE task_id=?",
+                Integer.class,
+                id
+            );
 
-        return Map.of(
-            "task", task,
-            "standardTable", standardTable,
-            "rows", rows,
-            "size", rows.size(),
-            "totalRows", total == null ? 0 : total,
-            "previewLimit", safeLimit
-        );
+            return Map.of(
+                "task", task,
+                "standardTable", standardTable,
+                "rows", rows,
+                "size", rows.size(),
+                "totalRows", total == null ? 0 : total,
+                "previewLimit", safeLimit,
+                "dataReady", true,
+                "executionMode", useNifiEtl() ? "NIFI" : "LOCAL"
+            );
+        } catch (DataAccessException ex) {
+            if (useNifiEtl() && isMissingTableException(ex)) {
+                return Map.of(
+                    "task", task,
+                    "standardTable", standardTable,
+                    "rows", List.of(),
+                    "size", 0,
+                    "totalRows", 0,
+                    "previewLimit", safeLimit,
+                    "dataReady", false,
+                    "executionMode", "NIFI",
+                    "message", "NiFi 清洗流程已下发，目标标准表尚未落地，请稍后重试预览"
+                );
+            }
+            throw ex;
+        }
     }
 
     @Transactional
@@ -560,6 +685,7 @@ public class DataProcessService implements IDataProcessService {
         List<String> standardTables = castStringList(task.get("standardTables"));
         String strategy = text(task.get("strategy"));
         Map<String, Object> fusionConfig = castMap(task.get("fusionConfig"));
+        boolean dispatchedToNifi = false;
         if (standardTables.isEmpty()) {
             throw new IllegalArgumentException("缺少可融合的标准表");
         }
@@ -568,14 +694,34 @@ public class DataProcessService implements IDataProcessService {
 
         int fusionRows;
         Map<String, Object> goldResult = Map.of();
+        boolean nifiLanded = false;
         try {
-            stagingTableService.recreateFusionTable(targetTable);
-            fusionRows = stagingTableService.mergeStandardTablesToTarget(ownerUsername, id, targetTable, standardTables, strategy, fusionConfig);
-            goldResult = stagingTableService.persistFusionResultToGold(ownerUsername, id, targetTable, strategy);
+            if (useNifiEtl()) {
+                Map<String, Object> nifiResult = dispatchFusionTaskToNifi(ownerUsername, id, task, targetTable, standardTables, strategy, fusionConfig);
+                Integer landedRows = awaitFusionRowsFromNifi(targetTable, id);
+                nifiLanded = landedRows != null;
+                fusionRows = landedRows == null ? 0 : landedRows;
+                goldResult = Map.of("nifiDispatch", nifiResult);
+                dispatchedToNifi = true;
+            } else {
+                stagingTableService.recreateFusionTable(targetTable);
+                fusionRows = stagingTableService.mergeStandardTablesToTarget(ownerUsername, id, targetTable, standardTables, strategy, fusionConfig);
+                goldResult = stagingTableService.persistFusionResultToGold(ownerUsername, id, targetTable, strategy);
+            }
 
-            dataProcessTaskRepository.markFusionTaskCompleted(ownerUsername, id, fusionRows);
-            fusionRunSuccessCounter.increment();
-            persistGovernanceArtifacts(ownerUsername, "FUSION", id, targetTable, standardTables);
+            if (!dispatchedToNifi || nifiLanded) {
+                dataProcessTaskRepository.markFusionTaskCompleted(ownerUsername, id, fusionRows);
+                fusionRunSuccessCounter.increment();
+            }
+
+            if (!dispatchedToNifi) {
+                persistGovernanceArtifacts(ownerUsername, "FUSION", id, targetTable, standardTables);
+            } else if (nifiLanded) {
+                goldResult = stagingTableService.persistFusionResultToGold(ownerUsername, id, targetTable, strategy);
+                persistGovernanceArtifacts(ownerUsername, "FUSION", id, targetTable, standardTables);
+            } else {
+                log.info("NiFi fusion dispatched but data not landed within await window. taskId={}, table={}, awaitSeconds={}", id, targetTable, nifiAwaitSeconds);
+            }
             recordAudit(ownerUsername, "RUN", "FUSION_TASK", String.valueOf(id), "SUCCESS", Map.of("targetTable", targetTable, "layers", goldResult));
         } catch (RuntimeException ex) {
             dataProcessTaskRepository.markFusionTaskFailed(ownerUsername, id);
@@ -586,7 +732,12 @@ public class DataProcessService implements IDataProcessService {
             sample.stop(Timer.builder("audit.process.fusion.run.duration").register(meterRegistry));
         }
 
-        Map<String, Object> completed = getFusionTaskById(ownerUsername, id);
+        Map<String, Object> completed = new LinkedHashMap<>(getFusionTaskById(ownerUsername, id));
+        if (useNifiEtl() && "RUNNING".equalsIgnoreCase(text(completed.get("status")))) {
+            completed.put("message", "NiFi 融合流程已下发，正在等待目标融合表落地，请稍后刷新或预览");
+            completed.put("dataReady", false);
+            completed.put("executionMode", "NIFI");
+        }
         invalidateDashboardCache(ownerUsername);
         return completed;
     }
@@ -597,20 +748,38 @@ public class DataProcessService implements IDataProcessService {
         String targetTableRef = stagingTableRef(targetTable);
         int safeLimit = (limit == null || limit <= 0) ? 20 : Math.min(limit, 200);
 
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-            "SELECT * FROM " + targetTableRef + " LIMIT " + safeLimit
-        );
+        try {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT * FROM " + targetTableRef + " WHERE fusion_task_id=? ORDER BY row_no ASC LIMIT " + safeLimit,
+                id
+            );
 
-        List<String> columns = rows.isEmpty()
-            ? List.of()
-            : new ArrayList<>(rows.get(0).keySet());
+            List<String> columns = rows.isEmpty()
+                ? List.of()
+                : new ArrayList<>(rows.get(0).keySet());
 
-        return Map.of(
-            "targetTable", targetTable,
-            "columns", columns,
-            "rows", rows,
-            "size", rows.size()
-        );
+            return Map.of(
+                "targetTable", targetTable,
+                "columns", columns,
+                "rows", rows,
+                "size", rows.size(),
+                "dataReady", true,
+                "executionMode", useNifiEtl() ? "NIFI" : "LOCAL"
+            );
+        } catch (DataAccessException ex) {
+            if (useNifiEtl() && isMissingTableException(ex)) {
+                return Map.of(
+                    "targetTable", targetTable,
+                    "columns", List.of(),
+                    "rows", List.of(),
+                    "size", 0,
+                    "dataReady", false,
+                    "executionMode", "NIFI",
+                    "message", "NiFi 融合流程已下发，目标融合表尚未落地，请稍后重试预览"
+                );
+            }
+            throw ex;
+        }
     }
 
     @Transactional
@@ -921,6 +1090,265 @@ public class DataProcessService implements IDataProcessService {
     }
 
     @Transactional
+    public Map<String, Object> bootstrapNifiEtlTemplates(String ownerUsername) {
+        requireAuthenticated(ownerUsername);
+
+        Map<String, Object> status = nifiOrchestrationService.getStatus();
+        if (!Boolean.TRUE.equals(status.get("enabled"))) {
+            throw new IllegalStateException("NiFi integration is disabled, cannot bootstrap templates");
+        }
+
+        String cleanPgId = nifiOrchestrationService.ensureProcessGroupForFlowType("CLEAN");
+        String fusionPgId = nifiOrchestrationService.ensureProcessGroupForFlowType("FUSION");
+
+        Map<String, Object> cleanTemplate = saveNifiFlowTemplate(ownerUsername, Map.of(
+            "flowType", "CLEAN",
+            "processGroupId", cleanPgId,
+            "parameterSchema", Map.of("requiredKeys", List.of("ownerUsername", "taskId", "standardTable")),
+            "enabled", true,
+            "remark", "Auto bootstrap by system"
+        ));
+
+        Map<String, Object> fusionTemplate = saveNifiFlowTemplate(ownerUsername, Map.of(
+            "flowType", "FUSION",
+            "processGroupId", fusionPgId,
+            "parameterSchema", Map.of("requiredKeys", List.of("ownerUsername", "taskId", "targetTable")),
+            "enabled", true,
+            "remark", "Auto bootstrap by system"
+        ));
+
+        return Map.of(
+            "status", "BOOTSTRAPPED",
+            "clean", cleanTemplate,
+            "fusion", fusionTemplate
+        );
+    }
+
+    @Scheduled(
+        initialDelayString = "${app.nifi.auto-reconcile.initial-delay-ms:30000}",
+        fixedDelayString = "${app.nifi.auto-reconcile.fixed-delay-ms:60000}"
+    )
+    public void autoReconcileNifiRunningTasks() {
+        if (!nifiAutoReconcileEnabled || !useNifiEtl()) {
+            return;
+        }
+
+        Set<String> owners = new LinkedHashSet<>();
+        owners.addAll(dataProcessTaskRepository.listOwnersWithRunningCleanTasks(nifiAutoReconcileOwnerLimit));
+        owners.addAll(dataProcessTaskRepository.listOwnersWithRunningFusionTasks(nifiAutoReconcileOwnerLimit));
+        if (owners.isEmpty()) {
+            return;
+        }
+
+        for (String owner : owners) {
+            if (isBlank(owner) || "anonymous".equalsIgnoreCase(owner)) {
+                continue;
+            }
+            try {
+                Map<String, Object> result = reconcileNifiRunningTasksInternal(owner, nifiAutoReconcileTaskLimit, "AUTO", "system");
+                log.info("NiFi auto reconcile finished. owner={} result={}", owner, result);
+            } catch (RuntimeException ex) {
+                log.warn("NiFi auto reconcile failed. owner={} error={}", owner, nvl(ex.getMessage()));
+            }
+        }
+    }
+
+    @Transactional
+    public Map<String, Object> reconcileNifiRunningTasks(String ownerUsername, Integer limit) {
+        return reconcileNifiRunningTasksInternal(ownerUsername, limit, "MANUAL", ownerUsername);
+    }
+
+    @Transactional
+    public Map<String, Object> reconcileNifiTask(String ownerUsername, String taskType, Long taskId) {
+        requireAuthenticated(ownerUsername);
+        if (!useNifiEtl()) {
+            return Map.of(
+                "owner", ownerUsername,
+                "engine", "LOCAL",
+                "message", "当前为 LOCAL 引擎，无需 NiFi 运行态对账"
+            );
+        }
+
+        String normalizedTaskType = text(taskType).toUpperCase();
+        if (!"CLEAN".equals(normalizedTaskType) && !"FUSION".equals(normalizedTaskType)) {
+            throw new IllegalArgumentException("taskType 仅支持 CLEAN 或 FUSION");
+        }
+        if (taskId == null || taskId <= 0) {
+            throw new IllegalArgumentException("taskId 必须大于0");
+        }
+
+        Map<String, Object> result;
+        if ("CLEAN".equals(normalizedTaskType)) {
+            result = reconcileSingleCleanTask(ownerUsername, getCleanTaskById(ownerUsername, taskId));
+        } else {
+            result = reconcileSingleFusionTask(ownerUsername, getFusionTaskById(ownerUsername, taskId));
+        }
+
+        recordNifiReconcile(ownerUsername, "MANUAL", ownerUsername, "SINGLE", normalizedTaskType, taskId, result);
+        invalidateDashboardCache(ownerUsername);
+        return result;
+    }
+
+    public List<Map<String, Object>> listNifiReconcileRecords(String ownerUsername, Integer limit) {
+        int safeLimit = (limit == null || limit <= 0) ? 100 : Math.min(limit, 500);
+        return jdbcTemplate.query(
+            """
+            SELECT id, trigger_type, trigger_user, reconcile_mode, task_type, task_id, result_json, created_at
+              FROM nifi_task_reconcile_record
+             WHERE owner_username=?
+             ORDER BY id DESC
+             LIMIT ?
+            """,
+            (rs, i) -> Map.of(
+                "id", rs.getLong("id"),
+                "triggerType", nvl(rs.getString("trigger_type")),
+                "triggerUser", nvl(rs.getString("trigger_user")),
+                "reconcileMode", nvl(rs.getString("reconcile_mode")),
+                "taskType", nvl(rs.getString("task_type")),
+                "taskId", rs.getObject("task_id") == null ? 0L : rs.getLong("task_id"),
+                "result", castMap(parseJson(rs.getString("result_json"))),
+                "createdAt", formatDateTime(rs.getTimestamp("created_at"))
+            ),
+            ownerUsername,
+            safeLimit
+        );
+    }
+
+    private Map<String, Object> reconcileNifiRunningTasksInternal(String ownerUsername, Integer limit, String triggerType, String triggerUser) {
+        requireAuthenticated(ownerUsername);
+        if (!useNifiEtl()) {
+            return Map.of(
+                "owner", ownerUsername,
+                "engine", "LOCAL",
+                "message", "当前为 LOCAL 引擎，无需 NiFi 运行态对账",
+                "completedClean", 0,
+                "completedFusion", 0,
+                "failedTimeout", 0,
+                "stillRunning", 0
+            );
+        }
+
+        int safeLimit = (limit == null || limit <= 0) ? 100 : Math.min(limit, 500);
+        int completedClean = 0;
+        int completedFusion = 0;
+        int failedTimeout = 0;
+        int stillRunning = 0;
+
+        List<Map<String, Object>> runningCleanTasks = dataProcessTaskRepository.listRunningCleanTasks(ownerUsername, safeLimit);
+        for (Map<String, Object> cleanTask : runningCleanTasks) {
+            Map<String, Object> single = reconcileSingleCleanTask(ownerUsername, cleanTask);
+            String outcome = text(single.get("outcome"));
+            if ("COMPLETED".equals(outcome)) {
+                completedClean++;
+            } else if ("FAILED_TIMEOUT".equals(outcome)) {
+                failedTimeout++;
+            } else {
+                stillRunning++;
+            }
+        }
+
+        List<Map<String, Object>> runningFusionTasks = dataProcessTaskRepository.listRunningFusionTasks(ownerUsername, safeLimit);
+        for (Map<String, Object> fusionTask : runningFusionTasks) {
+            Map<String, Object> single = reconcileSingleFusionTask(ownerUsername, fusionTask);
+            String outcome = text(single.get("outcome"));
+            if ("COMPLETED".equals(outcome)) {
+                completedFusion++;
+            } else if ("FAILED_TIMEOUT".equals(outcome)) {
+                failedTimeout++;
+            } else {
+                stillRunning++;
+            }
+        }
+
+        invalidateDashboardCache(ownerUsername);
+        Map<String, Object> result = Map.of(
+            "owner", ownerUsername,
+            "engine", "NIFI",
+            "scanLimit", safeLimit,
+            "completedClean", completedClean,
+            "completedFusion", completedFusion,
+            "failedTimeout", failedTimeout,
+            "stillRunning", stillRunning,
+            "runningTimeoutSeconds", nifiRunningTimeoutSeconds
+        );
+        recordNifiReconcile(ownerUsername, triggerType, triggerUser, "BATCH", "", 0L, result);
+        return result;
+    }
+
+    private Map<String, Object> reconcileSingleCleanTask(String ownerUsername, Map<String, Object> cleanTask) {
+        Long taskId = toLong(cleanTask.get("id"));
+        String status = text(cleanTask.get("status")).toUpperCase();
+        if (taskId == null) {
+            return Map.of("taskType", "CLEAN", "taskId", 0L, "outcome", "SKIPPED", "reason", "INVALID_TASK");
+        }
+        if (!"RUNNING".equals(status)) {
+            return Map.of("taskType", "CLEAN", "taskId", taskId, "outcome", "SKIPPED", "reason", "STATUS_" + status);
+        }
+
+        String standardTable = sanitizeTableName(text(cleanTask.get("standardTable")));
+        Integer landedRows = queryCleanRows(standardTable, taskId);
+        if (landedRows != null && landedRows > 0) {
+            dataProcessTaskRepository.markCleanTaskCompleted(ownerUsername, taskId, landedRows);
+            persistCleanLayersAndGovernance(ownerUsername, taskId, standardTable, castMapList(cleanTask.get("cleanObjects")));
+            return Map.of("taskType", "CLEAN", "taskId", taskId, "outcome", "COMPLETED", "landedRows", landedRows, "table", standardTable);
+        }
+
+        if (isTaskRunningTimeout(cleanTask)) {
+            dataProcessTaskRepository.markCleanTaskFailed(ownerUsername, taskId);
+            recordAudit(ownerUsername, "RECONCILE", "CLEAN_TASK", String.valueOf(taskId), "FAILED", Map.of("reason", "NIFI_RUNNING_TIMEOUT"));
+            return Map.of("taskType", "CLEAN", "taskId", taskId, "outcome", "FAILED_TIMEOUT", "table", standardTable);
+        }
+
+        return Map.of("taskType", "CLEAN", "taskId", taskId, "outcome", "STILL_RUNNING", "table", standardTable);
+    }
+
+    private Map<String, Object> reconcileSingleFusionTask(String ownerUsername, Map<String, Object> fusionTask) {
+        Long taskId = toLong(fusionTask.get("id"));
+        String status = text(fusionTask.get("status")).toUpperCase();
+        if (taskId == null) {
+            return Map.of("taskType", "FUSION", "taskId", 0L, "outcome", "SKIPPED", "reason", "INVALID_TASK");
+        }
+        if (!"RUNNING".equals(status)) {
+            return Map.of("taskType", "FUSION", "taskId", taskId, "outcome", "SKIPPED", "reason", "STATUS_" + status);
+        }
+
+        String targetTable = sanitizeTableName(text(fusionTask.get("targetTable")));
+        Integer landedRows = queryFusionRows(targetTable, taskId);
+        if (landedRows != null && landedRows > 0) {
+            dataProcessTaskRepository.markFusionTaskCompleted(ownerUsername, taskId, landedRows);
+            String strategy = text(fusionTask.get("strategy"));
+            List<String> sourceTables = castStringList(fusionTask.get("standardTables"));
+            stagingTableService.persistFusionResultToGold(ownerUsername, taskId, targetTable, strategy);
+            persistGovernanceArtifacts(ownerUsername, "FUSION", taskId, targetTable, sourceTables);
+            return Map.of("taskType", "FUSION", "taskId", taskId, "outcome", "COMPLETED", "landedRows", landedRows, "table", targetTable);
+        }
+
+        if (isTaskRunningTimeout(fusionTask)) {
+            dataProcessTaskRepository.markFusionTaskFailed(ownerUsername, taskId);
+            recordAudit(ownerUsername, "RECONCILE", "FUSION_TASK", String.valueOf(taskId), "FAILED", Map.of("reason", "NIFI_RUNNING_TIMEOUT"));
+            return Map.of("taskType", "FUSION", "taskId", taskId, "outcome", "FAILED_TIMEOUT", "table", targetTable);
+        }
+
+        return Map.of("taskType", "FUSION", "taskId", taskId, "outcome", "STILL_RUNNING", "table", targetTable);
+    }
+
+    private void recordNifiReconcile(String ownerUsername, String triggerType, String triggerUser, String mode, String taskType, Long taskId, Map<String, Object> result) {
+        String tenantId = resolveTenantId(ownerUsername);
+        jdbcTemplate.update(
+            "INSERT INTO nifi_task_reconcile_record(tenant_id,owner_username,trigger_type,trigger_user,reconcile_mode,task_type,task_id,result_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+            tenantId,
+            ownerUsername,
+            text(triggerType).toUpperCase(),
+            isBlank(triggerUser) ? ownerUsername : triggerUser,
+            text(mode).toUpperCase(),
+            isBlank(taskType) ? null : text(taskType).toUpperCase(),
+            taskId != null && taskId > 0 ? taskId : null,
+            toJson(result),
+            now()
+        );
+    }
+
+    @Transactional
     public Map<String, Object> triggerNifiFlow(String ownerUsername, Map<String, Object> payload) {
         requireAuthenticated(ownerUsername);
         String flowType = text(payload.get("flowType")).toUpperCase();
@@ -929,6 +1357,16 @@ public class DataProcessService implements IDataProcessService {
         Map<String, Object> template = findEnabledNifiTemplate(ownerUsername, flowType);
         if (isBlank(processGroupId)) {
             processGroupId = text(template.get("processGroupId"));
+        }
+        if (isBlank(processGroupId)) {
+            processGroupId = nifiOrchestrationService.autoDiscoverProcessGroupId(flowType);
+        }
+
+        int processorCount = nifiOrchestrationService.getProcessGroupProcessorCount(processGroupId);
+        if (processorCount <= 0) {
+            throw new IllegalStateException(
+                "NiFi " + flowType + " 流程组未配置处理器，当前仅创建了空流程组。请先在 NiFi 中配置处理链后再执行任务。processGroupId=" + processGroupId
+            );
         }
         validateFlowParameters(flowType, parameters, template);
 
@@ -1295,6 +1733,18 @@ public class DataProcessService implements IDataProcessService {
         return value == null ? "" : value;
     }
 
+    private boolean isMissingTableException(Throwable ex) {
+        Throwable cursor = ex;
+        while (cursor != null) {
+            String msg = nvl(cursor.getMessage()).toLowerCase();
+            if (msg.contains("doesn't exist") || msg.contains("does not exist") || msg.contains("not exist")) {
+                return true;
+            }
+            cursor = cursor.getCause();
+        }
+        return false;
+    }
+
     private static Long toLong(Object value) {
         if (value == null) return null;
         if (value instanceof Number number) return number.longValue();
@@ -1307,6 +1757,195 @@ public class DataProcessService implements IDataProcessService {
 
     private static String now() {
         return DATE_TIME_FORMATTER.format(Instant.now());
+    }
+
+    private Integer awaitCleanRowsFromNifi(String tableName, Long taskId) {
+        if (nifiAwaitSeconds <= 0) {
+            return null;
+        }
+
+        String tableRef = stagingTableRef(tableName);
+        long deadline = System.currentTimeMillis() + (long) nifiAwaitSeconds * 1000L;
+        while (System.currentTimeMillis() <= deadline) {
+            try {
+                Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(1) FROM " + tableRef + " WHERE task_id=?",
+                    Integer.class,
+                    taskId
+                );
+                if (count != null) {
+                    return count;
+                }
+            } catch (DataAccessException ex) {
+                if (!isMissingTableException(ex)) {
+                    throw ex;
+                }
+            }
+
+            try {
+                Thread.sleep(nifiPollMillis);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private Integer awaitFusionRowsFromNifi(String tableName, Long taskId) {
+        if (nifiAwaitSeconds <= 0) {
+            return null;
+        }
+
+        String tableRef = stagingTableRef(tableName);
+        long deadline = System.currentTimeMillis() + (long) nifiAwaitSeconds * 1000L;
+        while (System.currentTimeMillis() <= deadline) {
+            try {
+                Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(1) FROM " + tableRef + " WHERE fusion_task_id=?",
+                    Integer.class,
+                    taskId
+                );
+                if (count != null) {
+                    return count;
+                }
+            } catch (DataAccessException ex) {
+                if (!isMissingTableException(ex)) {
+                    throw ex;
+                }
+            }
+
+            try {
+                Thread.sleep(nifiPollMillis);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private Integer queryCleanRows(String tableName, Long taskId) {
+        try {
+            return jdbcTemplate.queryForObject(
+                "SELECT COUNT(1) FROM " + stagingTableRef(tableName) + " WHERE task_id=?",
+                Integer.class,
+                taskId
+            );
+        } catch (DataAccessException ex) {
+            if (isMissingTableException(ex)) {
+                return null;
+            }
+            throw ex;
+        }
+    }
+
+    private Integer queryFusionRows(String tableName, Long taskId) {
+        try {
+            return jdbcTemplate.queryForObject(
+                "SELECT COUNT(1) FROM " + stagingTableRef(tableName) + " WHERE fusion_task_id=?",
+                Integer.class,
+                taskId
+            );
+        } catch (DataAccessException ex) {
+            if (isMissingTableException(ex)) {
+                return null;
+            }
+            throw ex;
+        }
+    }
+
+    private void persistCleanLayersAndGovernance(String ownerUsername, Long taskId, String standardTable, List<Map<String, Object>> cleanObjects) {
+        stagingTableService.persistCleanResultToLayers(ownerUsername, taskId, standardTable);
+        persistGovernanceArtifacts(ownerUsername, "CLEAN", taskId, standardTable, cleanObjects.stream()
+            .map(it -> text(it.get("objectName")))
+            .filter(it -> !isBlank(it))
+            .toList());
+    }
+
+    private boolean isTaskRunningTimeout(Map<String, Object> task) {
+        String updatedAt = text(task.get("updatedAt"));
+        if (isBlank(updatedAt)) {
+            return false;
+        }
+        try {
+            LocalDateTime updateTime = LocalDateTime.parse(updatedAt, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            long runningSeconds = java.time.Duration.between(updateTime.atZone(ZoneId.systemDefault()).toInstant(), Instant.now()).getSeconds();
+            return runningSeconds >= nifiRunningTimeoutSeconds;
+        } catch (RuntimeException ex) {
+            return false;
+        }
+    }
+
+    private boolean useNifiEtl() {
+        return "NIFI".equals(etlEngine);
+    }
+
+    private String normalizeEtlEngine(String engine) {
+        String normalized = text(engine).toUpperCase();
+        if ("LOCAL".equals(normalized)) {
+            return "LOCAL";
+        }
+        return "NIFI";
+    }
+
+    private Map<String, Object> dispatchCleanTaskToNifi(
+        String ownerUsername,
+        Long taskId,
+        Map<String, Object> task,
+        String outputTable,
+        String strategyCode,
+        List<Map<String, Object>> cleanObjects,
+        List<String> ruleNames
+    ) {
+        Map<String, Object> payload = Map.of(
+            "flowType", "CLEAN",
+            "parameters", Map.of(
+                "ownerUsername", ownerUsername,
+                "taskId", taskId,
+                "taskName", text(task.get("taskName")),
+                "standardTable", outputTable,
+                "strategy", strategyCode,
+                "ruleNames", toJson(ruleNames),
+                "cleanObjects", toJson(cleanObjects)
+            )
+        );
+        Map<String, Object> result = triggerNifiFlow(ownerUsername, payload);
+        assertNifiSubmitted(result, "CLEAN", taskId);
+        return result;
+    }
+
+    private Map<String, Object> dispatchFusionTaskToNifi(
+        String ownerUsername,
+        Long taskId,
+        Map<String, Object> task,
+        String targetTable,
+        List<String> standardTables,
+        String strategy,
+        Map<String, Object> fusionConfig
+    ) {
+        Map<String, Object> payload = Map.of(
+            "flowType", "FUSION",
+            "parameters", Map.of(
+                "ownerUsername", ownerUsername,
+                "taskId", taskId,
+                "taskName", text(task.get("taskName")),
+                "targetTable", targetTable,
+                "strategy", strategy,
+                "standardTables", toJson(standardTables),
+                "fusionConfig", toJson(fusionConfig)
+            )
+        );
+        Map<String, Object> result = triggerNifiFlow(ownerUsername, payload);
+        assertNifiSubmitted(result, "FUSION", taskId);
+        return result;
+    }
+
+    private void assertNifiSubmitted(Map<String, Object> result, String taskType, Long taskId) {
+        String dispatchStatus = text(result.get("dispatchStatus"));
+        if (!"SUBMITTED".equalsIgnoreCase(dispatchStatus)) {
+            throw new IllegalStateException("NiFi " + taskType + " 任务下发失败 taskId=" + taskId + ", status=" + dispatchStatus + ", message=" + text(result.get("errorMessage")));
+        }
     }
 
     private void persistGovernanceArtifacts(String ownerUsername, String taskType, Long taskId, String targetTable, List<String> sourceTables) {

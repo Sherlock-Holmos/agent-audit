@@ -291,6 +291,21 @@ CREATE TABLE IF NOT EXISTS nifi_flow_template_record (
   INDEX idx_nifi_template_owner_updated (owner_username, updated_at)
 );
 
+CREATE TABLE IF NOT EXISTS nifi_task_reconcile_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  tenant_id VARCHAR(128),
+  owner_username VARCHAR(128) NOT NULL,
+  trigger_type VARCHAR(32) NOT NULL,
+  trigger_user VARCHAR(128) NOT NULL,
+  reconcile_mode VARCHAR(32) NOT NULL,
+  task_type VARCHAR(32),
+  task_id BIGINT,
+  result_json LONGTEXT,
+  created_at DATETIME NOT NULL,
+  INDEX idx_nifi_reconcile_owner_created (owner_username, created_at),
+  INDEX idx_nifi_reconcile_owner_task (owner_username, task_type, task_id)
+);
+
 CREATE TABLE IF NOT EXISTS bronze_ingest_record (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   tenant_id VARCHAR(128),

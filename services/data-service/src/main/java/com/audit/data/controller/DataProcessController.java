@@ -386,6 +386,39 @@ public class DataProcessController {
         return ApiResponse.success("已保存", dataProcessApplicationService.saveNifiFlowTemplate(username, payload));
     }
 
+    @PostMapping("/control-plane/nifi/templates/bootstrap")
+    public ApiResponse<Object> bootstrapNifiEtlTemplates(
+        @RequestHeader(value = "X-User-Name", required = false) String username
+    ) {
+        return ApiResponse.success("初始化完成", dataProcessApplicationService.bootstrapNifiEtlTemplates(username));
+    }
+
+    @PostMapping("/control-plane/nifi/tasks/reconcile")
+    public ApiResponse<Object> reconcileNifiRunningTasks(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @RequestParam(required = false) Integer limit
+    ) {
+        return ApiResponse.success("对账完成", dataProcessApplicationService.reconcileNifiRunningTasks(username, limit));
+    }
+
+    @PostMapping("/control-plane/nifi/tasks/reconcile/one")
+    public ApiResponse<Object> reconcileNifiTask(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
+    ) {
+        String taskType = String.valueOf(payload.getOrDefault("taskType", "")).trim();
+        Long taskId = payload.get("taskId") instanceof Number n ? n.longValue() : null;
+        return ApiResponse.success("对账完成", dataProcessApplicationService.reconcileNifiTask(username, taskType, taskId));
+    }
+
+    @GetMapping("/control-plane/nifi/tasks/reconcile/history")
+    public ApiResponse<Object> listNifiReconcileRecords(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @RequestParam(required = false) Integer limit
+    ) {
+        return ApiResponse.success("ok", dataProcessApplicationService.listNifiReconcileRecords(username, limit));
+    }
+
     @GetMapping("/control-plane/layers/stats")
     public ApiResponse<Object> getLayerStats(
         @RequestHeader(value = "X-User-Name", required = false) String username,

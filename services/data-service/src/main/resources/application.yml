@@ -57,3 +57,12 @@ app:
     base-url: ${APP_NIFI_BASE_URL:http://localhost:8090}
     timeout-seconds: ${APP_NIFI_TIMEOUT_SECONDS:5}
     default-process-group-id: ${APP_NIFI_DEFAULT_PROCESS_GROUP_ID:}
+    running-timeout-seconds: ${APP_NIFI_RUNNING_TIMEOUT_SECONDS:1800}
+    auto-reconcile:
+      enabled: ${APP_NIFI_AUTO_RECONCILE_ENABLED:true}
+      initial-delay-ms: ${APP_NIFI_AUTO_RECONCILE_INITIAL_DELAY_MS:30000}
+      fixed-delay-ms: ${APP_NIFI_AUTO_RECONCILE_FIXED_DELAY_MS:60000}
+      owner-limit: ${APP_NIFI_AUTO_RECONCILE_OWNER_LIMIT:200}
+      task-limit: ${APP_NIFI_AUTO_RECONCILE_TASK_LIMIT:100}
+  etl:
+    engine: ${APP_ETL_ENGINE:NIFI}

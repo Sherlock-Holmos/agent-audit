@@ -18,6 +18,8 @@ services:
     container_name: audit-gateway
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
     depends_on:
       - auth-service
       - data-service
@@ -25,7 +27,7 @@ services:
       - config-service
       - redis
     ports:
-      - "8081:8081"
+      - "18081:8081"
     restart: unless-stopped
 
   auth-service:
@@ -39,7 +41,7 @@ services:
     depends_on:
       - mysql
     ports:
-      - "8085:8085"
+      - "18085:8085"
     restart: unless-stopped
 
   data-service:
@@ -54,15 +56,16 @@ services:
       APP_DATASOURCE_UPLOAD_DIR: /app/uploads
       APP_DATASOURCE_STAGING_SCHEMA: agent_audit_staging
       APP_FUSION_KEY_SYNONYMS_JSON: ${APP_FUSION_KEY_SYNONYMS_JSON:-}
-      APP_NIFI_ENABLED: ${APP_NIFI_ENABLED:-false}
+      APP_NIFI_ENABLED: ${APP_NIFI_ENABLED:-true}
       APP_NIFI_BASE_URL: ${APP_NIFI_BASE_URL:-http://nifi:8080}
       APP_NIFI_DEFAULT_PROCESS_GROUP_ID: ${APP_NIFI_DEFAULT_PROCESS_GROUP_ID:-}
+      APP_ETL_ENGINE: ${APP_ETL_ENGINE:-NIFI}
     depends_on:
       - mysql
       - redis
       - nifi
     ports:
-      - "8082:8082"
+      - "18082:8082"
     volumes:
       - ./data/uploads:/app/uploads
     restart: unless-stopped
@@ -92,7 +95,7 @@ services:
       - data-service
       - redis
     ports:
-      - "8083:8083"
+      - "18083:8083"
     restart: unless-stopped
 
   config-service:
@@ -101,7 +104,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: docker
     ports:
-      - "8084:8084"
+      - "18084:8084"
     restart: unless-stopped
 
   mysql:
@@ -158,8 +161,10 @@ services:
       SINGLE_USER_CREDENTIALS_USERNAME: ${NIFI_USERNAME:-admin}
       SINGLE_USER_CREDENTIALS_PASSWORD: ${NIFI_PASSWORD:-Admin123456!}
     ports:
-      - "8090:8080"
+      - "18090:8080"
     volumes:
+      - ./nifi/lib/mysql-connector-j-8.4.0.jar:/opt/nifi/nifi-current/lib/mysql-connector-j-8.4.0.jar:ro
+      - ./data/uploads:/data/uploads:ro
       - nifi-data:/opt/nifi/nifi-current/database_repository
       - nifi-flowfile:/opt/nifi/nifi-current/flowfile_repository
       - nifi-content:/opt/nifi/nifi-current/content_repository

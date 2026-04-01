@@ -198,10 +198,38 @@ public class StagingTableService {
         String strategy,
         Map<String, Object> fusionConfig
     ) {
-        if ("KEY_ALIGN".equalsIgnoreCase(text(strategy))) {
-            return mergeStandardTablesByKey(ownerUsername, fusionTaskId, targetTableName, standardTables, fusionConfig);
+        String normalizedStrategy = text(strategy).trim().toUpperCase();
+        Map<String, Object> effectiveFusionConfig = buildEffectiveFusionConfig(normalizedStrategy, fusionConfig);
+        if ("KEY_ALIGN".equals(normalizedStrategy)
+            || "TIME_WINDOW".equals(normalizedStrategy)
+            || "RULE_MATCH".equals(normalizedStrategy)) {
+            return mergeStandardTablesByKey(ownerUsername, fusionTaskId, targetTableName, standardTables, effectiveFusionConfig);
         }
         return mergeStandardTablesByAppend(ownerUsername, fusionTaskId, targetTableName, standardTables);
+    }
+
+    private Map<String, Object> buildEffectiveFusionConfig(String strategy, Map<String, Object> fusionConfig) {
+        Map<String, Object> effective = fusionConfig == null ? new LinkedHashMap<>() : new LinkedHashMap<>(fusionConfig);
+        String configuredKey = text(effective.get("keyField"));
+        if (!isBlank(configuredKey)) {
+            return effective;
+        }
+
+        if ("RULE_MATCH".equals(strategy)) {
+            List<String> matchFields = castStringList(effective.get("matchFields"));
+            if (!matchFields.isEmpty()) {
+                effective.put("keyField", String.join("+", matchFields));
+            }
+            return effective;
+        }
+
+        if ("TIME_WINDOW".equals(strategy)) {
+            String timeField = text(effective.get("timeField"));
+            if (!isBlank(timeField)) {
+                effective.put("keyField", timeField);
+            }
+        }
+        return effective;
     }
 
     private int mergeStandardTablesByAppend(String ownerUsername, Long fusionTaskId, String targetTableName, List<String> standardTables) {
@@ -865,6 +893,20 @@ public class StagingTableService {
         } catch (NumberFormatException ex) {
             return null;
         }
+    }
+
+    private List<String> castStringList(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (Object item : list) {
+            String text = text(item);
+            if (!text.isBlank()) {
+                out.add(text);
+            }
+        }
+        return out;
     }
 
     private static String text(Object value) {

@@ -13,7 +13,9 @@
       <el-form-item>
         <el-select v-model="localFilters.status" placeholder="状态" clearable style="width: 140px">
           <el-option label="待执行" value="READY" />
+          <el-option label="运行中" value="RUNNING" />
           <el-option label="已完成" value="COMPLETED" />
+          <el-option label="失败" value="FAILED" />
         </el-select>
       </el-form-item>
       <el-form-item>

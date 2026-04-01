@@ -46,6 +46,14 @@
           :title="`任务：${previewTask.taskName} / 标准表：${previewTask.standardTable}`"
           class="preview-alert"
         />
+        <el-alert
+          v-if="previewHint"
+          type="warning"
+          :closable="false"
+          show-icon
+          :title="previewHint"
+          class="preview-alert"
+        />
 
         <el-row v-if="previewTask" :gutter="12" class="preview-stats">
           <el-col :span="8">
@@ -119,6 +127,7 @@ const previewVisible = ref(false)
 const previewLoading = ref(false)
 const previewTask = ref(null)
 const previewRows = ref([])
+const previewHint = ref('')
 const previewStats = reactive({
   totalRows: 0,
   previewLimit: 0
@@ -269,10 +278,14 @@ async function handleDelete(id) {
 async function handlePreview(row) {
   previewVisible.value = true
   previewLoading.value = true
+  previewHint.value = ''
   try {
     const { data } = await getCleanTaskPreview(row.id, { limit: 50 })
     const payload = data.data || {}
     previewTask.value = payload.task || row
+    previewHint.value = payload.dataReady === false
+      ? (payload.message || 'NiFi 清洗流程已下发，目标标准表尚未落地，请稍后重试预览')
+      : ''
     previewStats.totalRows = Number(payload.totalRows) || 0
     previewStats.previewLimit = Number(payload.previewLimit) || 0
     const sourceRows = Array.isArray(payload.rows) ? payload.rows : []

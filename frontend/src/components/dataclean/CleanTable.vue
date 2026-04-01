@@ -76,8 +76,8 @@
         align="center"
       >
         <template #default="scope">
-          <el-tag :type="scope.row.status === 'COMPLETED' ? 'success' : (scope.row.status === 'FAILED' ? 'danger' : 'info')">
-            {{ scope.row.status === 'COMPLETED' ? '已完成' : (scope.row.status === 'FAILED' ? '失败' : '待执行') }}
+          <el-tag :type="scope.row.status === 'COMPLETED' ? 'success' : (scope.row.status === 'FAILED' ? 'danger' : (scope.row.status === 'RUNNING' ? 'warning' : 'info'))">
+            {{ scope.row.status === 'COMPLETED' ? '已完成' : (scope.row.status === 'FAILED' ? '失败' : (scope.row.status === 'RUNNING' ? '运行中' : '待执行')) }}
           </el-tag>
         </template>
       </el-table-column>
@@ -96,7 +96,7 @@
           <el-button type="primary" link :disabled="scope.row.status === 'COMPLETED' || scope.row.status === 'RUNNING'" @click="$emit('edit', scope.row)">
             编辑
           </el-button>
-          <el-button type="primary" link :disabled="scope.row.status === 'COMPLETED'" @click="$emit('run', scope.row.id)">
+          <el-button type="primary" link :disabled="scope.row.status === 'COMPLETED' || scope.row.status === 'RUNNING'" @click="$emit('run', scope.row.id)">
             执行
           </el-button>
           <el-popconfirm title="确认删除该清洗任务？" @confirm="$emit('delete', scope.row.id)">

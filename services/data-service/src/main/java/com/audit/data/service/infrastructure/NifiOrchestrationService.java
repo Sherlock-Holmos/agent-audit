@@ -13,7 +13,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -170,6 +173,146 @@ public class NifiOrchestrationService {
         }
     }
 
+    public String autoDiscoverProcessGroupId(String flowType) {
+        if (!enabled) {
+            return "";
+        }
+
+        String normalizedFlowType = normalizeFlowType(flowType);
+        String url = baseUrl + "/nifi-api/flow/process-groups/root";
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+            .timeout(Duration.ofSeconds(timeoutSeconds))
+            .GET()
+            .build();
+
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                return "";
+            }
+
+            Map<String, Object> root = parseJsonMap(response.body());
+            Map<String, Object> processGroupFlow = asMap(root.get("processGroupFlow"));
+            Map<String, Object> flow = asMap(processGroupFlow.get("flow"));
+            List<Map<String, Object>> processGroups = asMapList(flow.get("processGroups"));
+
+            for (Map<String, Object> processGroup : processGroups) {
+                Map<String, Object> component = asMap(processGroup.get("component"));
+                String name = text(component.get("name")).toUpperCase();
+                String id = text(component.get("id"));
+                if (!name.isBlank() && !id.isBlank() && name.contains(normalizedFlowType)) {
+                    return id;
+                }
+            }
+            return "";
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return "";
+        } catch (IOException ex) {
+            return "";
+        }
+    }
+
+    public String ensureProcessGroupForFlowType(String flowType) {
+        if (!enabled) {
+            throw new IllegalArgumentException("NiFi integration is disabled");
+        }
+
+        String normalizedFlowType = normalizeFlowType(flowType);
+        String existing = autoDiscoverProcessGroupId(normalizedFlowType);
+        if (!existing.isBlank()) {
+            return existing;
+        }
+
+        String rootId = loadRootProcessGroupId();
+        String groupName = "AUDIT_" + normalizedFlowType;
+        return createProcessGroup(rootId, groupName);
+    }
+
+    public int getProcessGroupProcessorCount(String processGroupId) {
+        String safeId = text(processGroupId);
+        if (safeId.isBlank()) {
+            return 0;
+        }
+        String encodedId = URLEncoder.encode(safeId, StandardCharsets.UTF_8);
+        String url = baseUrl + "/nifi-api/flow/process-groups/" + encodedId;
+        Map<String, Object> payload = httpGetJson(url);
+        Map<String, Object> processGroupFlow = asMap(payload.get("processGroupFlow"));
+        Map<String, Object> flow = asMap(processGroupFlow.get("flow"));
+        List<Map<String, Object>> processors = asMapList(flow.get("processors"));
+        return processors.size();
+    }
+
+    private String loadRootProcessGroupId() {
+        String url = baseUrl + "/nifi-api/flow/process-groups/root";
+        Map<String, Object> root = httpGetJson(url);
+        Map<String, Object> processGroupFlow = asMap(root.get("processGroupFlow"));
+        String rootId = text(processGroupFlow.get("id"));
+        if (rootId.isBlank()) {
+            throw new IllegalStateException("Unable to resolve NiFi root process group id");
+        }
+        return rootId;
+    }
+
+    private String createProcessGroup(String parentProcessGroupId, String groupName) {
+        String encodedId = URLEncoder.encode(parentProcessGroupId, StandardCharsets.UTF_8);
+        String url = baseUrl + "/nifi-api/process-groups/" + encodedId + "/process-groups";
+
+        Map<String, Object> requestBody = new LinkedHashMap<>();
+        requestBody.put("revision", Map.of("version", 0));
+        requestBody.put("component", Map.of(
+            "name", groupName,
+            "position", Map.of("x", 0.0, "y", 0.0)
+        ));
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+            .timeout(Duration.ofSeconds(timeoutSeconds))
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(toJson(requestBody)))
+            .build();
+
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new IllegalStateException("NiFi process group creation failed, httpStatus=" + response.statusCode() + ", body=" + response.body());
+            }
+            Map<String, Object> created = parseJsonMap(response.body());
+            Map<String, Object> component = asMap(created.get("component"));
+            String id = text(component.get("id"));
+            if (id.isBlank()) {
+                id = text(created.get("id"));
+            }
+            if (id.isBlank()) {
+                throw new IllegalStateException("NiFi process group created but id is missing");
+            }
+            return id;
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("NiFi process group creation interrupted");
+        } catch (IOException ex) {
+            throw new IllegalStateException("NiFi process group creation failed: " + ex.getMessage());
+        }
+    }
+
+    private Map<String, Object> httpGetJson(String url) {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+            .timeout(Duration.ofSeconds(timeoutSeconds))
+            .GET()
+            .build();
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new IllegalStateException("NiFi API request failed, httpStatus=" + response.statusCode() + ", url=" + url);
+            }
+            return parseJsonMap(response.body());
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("NiFi API request interrupted");
+        } catch (IOException ex) {
+            throw new IllegalStateException("NiFi API request failed: " + ex.getMessage());
+        }
+    }
+
     private String normalizeFlowType(String flowType) {
         String normalized = text(flowType).toUpperCase();
         return normalized.isBlank() ? "INGEST" : normalized;
@@ -207,6 +350,29 @@ public class NifiOrchestrationService {
             }
         }
         return fallback;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> asMap(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
+        }
+        return Map.of();
+    }
+
+    private List<Map<String, Object>> asMapList(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> typed = (Map<String, Object>) map;
+                out.add(typed);
+            }
+        }
+        return out;
     }
 
     private String toJson(Object value) {

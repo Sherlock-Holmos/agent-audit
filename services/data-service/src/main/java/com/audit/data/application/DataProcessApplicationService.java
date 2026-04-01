@@ -277,6 +277,30 @@ public class DataProcessApplicationService implements IDataProcessApplicationSer
     }
 
     @Override
+    @Transactional
+    public Map<String, Object> bootstrapNifiEtlTemplates(String username) {
+        return dataProcessService.bootstrapNifiEtlTemplates(normalizeUser(username));
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> reconcileNifiRunningTasks(String username, Integer limit) {
+        return dataProcessService.reconcileNifiRunningTasks(normalizeUser(username), limit);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> reconcileNifiTask(String username, String taskType, Long taskId) {
+        return dataProcessService.reconcileNifiTask(normalizeUser(username), taskType, taskId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> listNifiReconcileRecords(String username, Integer limit) {
+        return dataProcessService.listNifiReconcileRecords(normalizeUser(username), limit);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public Map<String, Object> getLayerStats(String username, String taskType, Long taskId) {
         return dataProcessService.getLayerStats(normalizeUser(username), taskType, taskId);

@@ -42,6 +42,15 @@ public class DataProcessTaskRepository {
         );
     }
 
+    public List<Map<String, Object>> listRunningCleanTasks(String ownerUsername, int limit) {
+        return jdbcTemplate.query(
+            "SELECT * FROM clean_task_record WHERE owner_username=? AND status='RUNNING' ORDER BY updated_at ASC, id ASC LIMIT ?",
+            (rs, i) -> cleanTaskRow(rs),
+            ownerUsername,
+            limit
+        );
+    }
+
     public Map<String, Object> getCleanTaskById(String ownerUsername, Long id) {
         List<Map<String, Object>> rows = jdbcTemplate.query(
             "SELECT * FROM clean_task_record WHERE owner_username=? AND id=?",
@@ -163,6 +172,31 @@ public class DataProcessTaskRepository {
             "SELECT * FROM fusion_task_record WHERE owner_username=? ORDER BY id DESC",
             (rs, i) -> fusionTaskRow(rs),
             ownerUsername
+        );
+    }
+
+    public List<Map<String, Object>> listRunningFusionTasks(String ownerUsername, int limit) {
+        return jdbcTemplate.query(
+            "SELECT * FROM fusion_task_record WHERE owner_username=? AND status='RUNNING' ORDER BY updated_at ASC, id ASC LIMIT ?",
+            (rs, i) -> fusionTaskRow(rs),
+            ownerUsername,
+            limit
+        );
+    }
+
+    public List<String> listOwnersWithRunningCleanTasks(int limit) {
+        return jdbcTemplate.query(
+            "SELECT DISTINCT owner_username FROM clean_task_record WHERE status='RUNNING' AND owner_username IS NOT NULL AND owner_username<>'' ORDER BY owner_username ASC LIMIT ?",
+            (rs, i) -> text(rs.getString("owner_username")),
+            limit
+        );
+    }
+
+    public List<String> listOwnersWithRunningFusionTasks(int limit) {
+        return jdbcTemplate.query(
+            "SELECT DISTINCT owner_username FROM fusion_task_record WHERE status='RUNNING' AND owner_username IS NOT NULL AND owner_username<>'' ORDER BY owner_username ASC LIMIT ?",
+            (rs, i) -> text(rs.getString("owner_username")),
+            limit
         );
     }
 
