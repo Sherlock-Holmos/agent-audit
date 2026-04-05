@@ -393,6 +393,14 @@ public class DataProcessController {
         return ApiResponse.success("初始化完成", dataProcessApplicationService.bootstrapNifiEtlTemplates(username));
     }
 
+    @PostMapping("/control-plane/nifi/flows/provision")
+    public ApiResponse<Object> provisionNifiFlowBlueprint(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @NotNull(message = "请求体不能为空") @RequestBody Map<String, Object> payload
+    ) {
+        return ApiResponse.success("已创建", dataProcessApplicationService.provisionNifiFlowBlueprint(username, payload));
+    }
+
     @PostMapping("/control-plane/nifi/tasks/reconcile")
     public ApiResponse<Object> reconcileNifiRunningTasks(
         @RequestHeader(value = "X-User-Name", required = false) String username,

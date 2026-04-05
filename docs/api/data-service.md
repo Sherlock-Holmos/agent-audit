@@ -83,7 +83,12 @@
 3. `GET /api/data/control-plane/nifi/flows`
 4. `GET /api/data/control-plane/nifi/templates`
 5. `POST /api/data/control-plane/nifi/templates`
-6. `GET /api/data/control-plane/layers/stats`
+6. `POST /api/data/control-plane/nifi/templates/bootstrap`
+7. `POST /api/data/control-plane/nifi/flows/provision`
+8. `POST /api/data/control-plane/nifi/tasks/reconcile`
+9. `POST /api/data/control-plane/nifi/tasks/reconcile/one`
+10. `GET /api/data/control-plane/nifi/tasks/reconcile/history`
+11. `GET /api/data/control-plane/layers/stats`
 
 说明：
 - `POST /api/data/control-plane/nifi/flows/run` 请求体示例：
@@ -101,4 +106,6 @@
 
 - 每次触发都会写入 `nifi_flow_run_record`，可用于审计追溯。
 - 可通过模板接口配置 `flowType -> processGroupId` 与 `parameterSchema.requiredKeys`，触发时将自动执行必填参数校验并返回 `templateVersion`。
+- `POST /api/data/control-plane/nifi/templates/bootstrap` 会自动创建 CLEAN/FUSION 默认蓝图，内部通过 `APP_NIFI_DATA_SERVICE_BASE_URL` 调用 data-service 的清洗/融合执行接口。
+- `POST /api/data/control-plane/nifi/flows/provision` 支持 `preset` 字段，值可为 `CLEAN` / `FUSION`，用于直接生成默认蓝图。
 - `GET /api/data/control-plane/layers/stats` 支持按 `taskType`、`taskId` 过滤并返回 Bronze/Silver/Gold 行数汇总与任务明细。

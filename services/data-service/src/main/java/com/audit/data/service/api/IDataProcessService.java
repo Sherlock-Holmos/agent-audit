@@ -63,6 +63,7 @@ public interface IDataProcessService {
     List<Map<String, Object>> listNifiFlowTemplates(String ownerUsername);
     Map<String, Object> saveNifiFlowTemplate(String ownerUsername, Map<String, Object> payload);
     Map<String, Object> bootstrapNifiEtlTemplates(String ownerUsername);
+    Map<String, Object> provisionNifiFlowBlueprint(String ownerUsername, Map<String, Object> payload);
     Map<String, Object> reconcileNifiRunningTasks(String ownerUsername, Integer limit);
     Map<String, Object> reconcileNifiTask(String ownerUsername, String taskType, Long taskId);
     List<Map<String, Object>> listNifiReconcileRecords(String ownerUsername, Integer limit);

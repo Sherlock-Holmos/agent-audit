@@ -7,6 +7,9 @@
           <el-button @click="loadNifiTemplates">刷新</el-button>
           <el-button :loading="reconcilingTasks" @click="reconcileTasks">任务对账</el-button>
           <el-button type="warning" :loading="bootstrappingTemplates" @click="bootstrapTemplates">一键初始化清洗/融合模板</el-button>
+          <el-button type="info" @click="openBlueprintDialog('CLEAN')">创建清洗蓝图</el-button>
+          <el-button type="info" @click="openBlueprintDialog('FUSION')">创建融合蓝图</el-button>
+          <el-button type="primary" @click="openBlueprintDialog('CUSTOM')">创建蓝图</el-button>
           <el-button type="primary" @click="openTemplateCreate">新增模板</el-button>
         </el-space>
       </template>
@@ -164,6 +167,39 @@
         <el-button type="primary" :loading="runningTemplate" @click="runTemplateFlow">执行触发</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="blueprintVisible" width="860px" title="NiFi 流程蓝图创建" destroy-on-close>
+      <el-form label-width="140px">
+        <el-form-item label="蓝图预设">
+          <el-select v-model="blueprintForm.preset" style="width: 240px" @change="applyBlueprintPreset">
+            <el-option label="清洗蓝图" value="CLEAN" />
+            <el-option label="融合蓝图" value="FUSION" />
+            <el-option label="自定义蓝图" value="CUSTOM" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="流程组名称">
+          <el-input v-model="blueprintForm.groupName" placeholder="例如：AUDIT_CLEAN" />
+        </el-form-item>
+        <el-form-item label="父流程组ID">
+          <el-input v-model="blueprintForm.parentProcessGroupId" placeholder="留空则使用默认流程组或 root" />
+        </el-form-item>
+        <el-form-item label="启动后自动运行">
+          <el-switch v-model="blueprintForm.startAfterCreate" />
+        </el-form-item>
+        <el-form-item label="蓝图 JSON">
+          <el-input
+            v-model="blueprintForm.blueprintJson"
+            type="textarea"
+            :rows="16"
+            :placeholder="blueprintJsonPlaceholder"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="blueprintVisible = false">取消</el-button>
+        <el-button type="primary" :loading="creatingBlueprint" @click="createBlueprint">创建</el-button>
+      </template>
+    </el-dialog>
   </GovernancePageShell>
 </template>
 
@@ -173,13 +209,14 @@ import { ElMessage } from 'element-plus'
 import GovernancePageShell from '../components/dataclean/GovernancePageShell.vue'
 import GovernanceCardSection from '../components/dataclean/GovernanceCardSection.vue'
 import GovernanceTable from '../components/dataclean/GovernanceTable.vue'
-import { bootstrapNifiEtlTemplates, listNifiFlowTemplates, listNifiReconcileHistory, reconcileNifiRunningTasks, reconcileNifiTask, saveNifiFlowTemplate, triggerNifiFlow } from '../api/nifi-control-plane'
+import { bootstrapNifiEtlTemplates, listNifiFlowTemplates, listNifiReconcileHistory, provisionNifiFlowBlueprint, reconcileNifiRunningTasks, reconcileNifiTask, saveNifiFlowTemplate, triggerNifiFlow } from '../api/nifi-control-plane'
 import { useAsyncTask } from '../composables/useAsyncTask'
 
 const nifiTemplates = ref([])
 const templateEditorVisible = ref(false)
 const templateEditorTitle = ref('新增模板')
 const templateRunVisible = ref(false)
+const blueprintVisible = ref(false)
 const reconcileHistory = ref([])
 
 const { loading: loadingNifiTemplates, run: runLoadNifiTemplates } = useAsyncTask()
@@ -189,6 +226,7 @@ const { loading: bootstrappingTemplates, run: runTemplateBootstrap } = useAsyncT
 const { loading: reconcilingTasks, run: runTaskReconcile } = useAsyncTask()
 const { loading: loadingReconcileHistory, run: runLoadReconcileHistory } = useAsyncTask()
 const { loading: reconcilingSingleTask, run: runSingleTaskReconcile } = useAsyncTask()
+const { loading: creatingBlueprint, run: runCreateBlueprint } = useAsyncTask()
 
 const templateEditorForm = reactive({
   flowType: 'INGEST',
@@ -208,6 +246,40 @@ const singleReconcile = reactive({
   taskType: 'CLEAN',
   taskId: 1
 })
+
+const blueprintForm = reactive({
+  preset: 'CLEAN',
+  groupName: 'AUDIT_CLEAN',
+  parentProcessGroupId: '',
+  startAfterCreate: false,
+  blueprintJson: ''
+})
+
+const blueprintJsonPlaceholder = '预设模式下可直接生成默认蓝图；自定义模式下在这里输入完整 JSON'
+
+function buildPresetBlueprintJson(preset) {
+  if (preset === 'CUSTOM') {
+    return JSON.stringify({
+      groupName: 'AUDIT_FLOW',
+      parameterContext: {
+        name: 'AUDIT_FLOW_PARAMS',
+        parameters: {
+          ownerUsername: 'anonymous',
+          taskId: '1',
+          dataServiceBaseUrl: 'http://localhost:8082'
+        }
+      },
+      controllerServices: [],
+      processors: [],
+      connections: []
+    }, null, 2)
+  }
+
+  return JSON.stringify({
+    preset,
+    groupName: preset === 'FUSION' ? 'AUDIT_FUSION' : 'AUDIT_CLEAN'
+  }, null, 2)
+}
 
 async function loadNifiTemplates() {
   const result = await runLoadNifiTemplates(() => listNifiFlowTemplates(), {
@@ -241,6 +313,45 @@ async function bootstrapTemplates() {
   if (result) {
     await loadNifiTemplates()
   }
+}
+
+function applyBlueprintPreset(preset) {
+  const normalizedPreset = preset || blueprintForm.preset || 'CLEAN'
+  blueprintForm.groupName = normalizedPreset === 'FUSION' ? 'AUDIT_FUSION' : (normalizedPreset === 'CUSTOM' ? 'AUDIT_FLOW' : 'AUDIT_CLEAN')
+  blueprintForm.blueprintJson = buildPresetBlueprintJson(normalizedPreset)
+}
+
+function openBlueprintDialog(preset = 'CLEAN') {
+  blueprintForm.preset = preset
+  applyBlueprintPreset(preset)
+  blueprintVisible.value = true
+}
+
+async function createBlueprint() {
+  let blueprint = {}
+  try {
+    blueprint = blueprintForm.blueprintJson.trim() ? JSON.parse(blueprintForm.blueprintJson) : {}
+  } catch {
+    ElMessage.warning('蓝图 JSON 格式不合法')
+    return
+  }
+
+  const result = await runCreateBlueprint(() => provisionNifiFlowBlueprint({
+    preset: blueprintForm.preset === 'CUSTOM' ? '' : blueprintForm.preset,
+    groupName: blueprintForm.groupName.trim(),
+    parentProcessGroupId: blueprintForm.parentProcessGroupId.trim(),
+    startAfterCreate: blueprintForm.startAfterCreate,
+    ...blueprint
+  }), {
+    errorMessage: '创建蓝图失败',
+    successMessage: '蓝图已创建'
+  })
+  if (!result) {
+    return
+  }
+  const payload = result.data?.data || {}
+  ElMessage.success(`已创建流程组：${payload.processGroupId || 'UNKNOWN'}`)
+  blueprintVisible.value = false
 }
 
 async function reconcileTasks() {

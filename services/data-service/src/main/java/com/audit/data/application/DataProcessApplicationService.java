@@ -284,6 +284,12 @@ public class DataProcessApplicationService implements IDataProcessApplicationSer
 
     @Override
     @Transactional
+    public Map<String, Object> provisionNifiFlowBlueprint(String username, Map<String, Object> payload) {
+        return dataProcessService.provisionNifiFlowBlueprint(normalizeUser(username), payload);
+    }
+
+    @Override
+    @Transactional
     public Map<String, Object> reconcileNifiRunningTasks(String username, Integer limit) {
         return dataProcessService.reconcileNifiRunningTasks(normalizeUser(username), limit);
     }

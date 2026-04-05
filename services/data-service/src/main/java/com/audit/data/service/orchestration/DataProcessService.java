@@ -74,6 +74,7 @@ public class DataProcessService implements IDataProcessService {
     private final boolean nifiAutoReconcileEnabled;
     private final int nifiAutoReconcileOwnerLimit;
     private final int nifiAutoReconcileTaskLimit;
+    private final String nifiDataServiceBaseUrl;
     private final Counter cleanRunSuccessCounter;
     private final Counter cleanRunFailedCounter;
     private final Counter fusionRunSuccessCounter;
@@ -99,6 +100,7 @@ public class DataProcessService implements IDataProcessService {
         @Value("${app.nifi.auto-reconcile.enabled:true}") boolean nifiAutoReconcileEnabled,
         @Value("${app.nifi.auto-reconcile.owner-limit:200}") int nifiAutoReconcileOwnerLimit,
         @Value("${app.nifi.auto-reconcile.task-limit:100}") int nifiAutoReconcileTaskLimit,
+        @Value("${app.nifi.data-service-base-url:http://localhost:8082}") String nifiDataServiceBaseUrl,
         @Value("${app.datasource.staging-schema:agent_audit_staging}") String stagingSchema
     ) {
         this.jdbcTemplate = jdbcTemplate;
@@ -120,6 +122,7 @@ public class DataProcessService implements IDataProcessService {
         this.nifiAutoReconcileEnabled = nifiAutoReconcileEnabled;
         this.nifiAutoReconcileOwnerLimit = Math.max(20, nifiAutoReconcileOwnerLimit);
         this.nifiAutoReconcileTaskLimit = Math.max(10, nifiAutoReconcileTaskLimit);
+        this.nifiDataServiceBaseUrl = normalizeBaseUrl(nifiDataServiceBaseUrl);
         this.stagingSchema = sanitizeSchemaName(stagingSchema);
         this.cleanRunSuccessCounter = Counter.builder("audit.process.clean.run.success").register(meterRegistry);
         this.cleanRunFailedCounter = Counter.builder("audit.process.clean.run.failed").register(meterRegistry);
@@ -1098,13 +1101,19 @@ public class DataProcessService implements IDataProcessService {
             throw new IllegalStateException("NiFi integration is disabled, cannot bootstrap templates");
         }
 
-        String cleanPgId = nifiOrchestrationService.ensureProcessGroupForFlowType("CLEAN");
-        String fusionPgId = nifiOrchestrationService.ensureProcessGroupForFlowType("FUSION");
+        Map<String, Object> cleanBlueprint = buildDefaultNifiBlueprint("CLEAN", ownerUsername);
+        Map<String, Object> fusionBlueprint = buildDefaultNifiBlueprint("FUSION", ownerUsername);
+
+        Map<String, Object> cleanProvision = nifiOrchestrationService.provisionFlowBlueprint(cleanBlueprint);
+        Map<String, Object> fusionProvision = nifiOrchestrationService.provisionFlowBlueprint(fusionBlueprint);
+
+        String cleanPgId = text(cleanProvision.get("processGroupId"));
+        String fusionPgId = text(fusionProvision.get("processGroupId"));
 
         Map<String, Object> cleanTemplate = saveNifiFlowTemplate(ownerUsername, Map.of(
             "flowType", "CLEAN",
             "processGroupId", cleanPgId,
-            "parameterSchema", Map.of("requiredKeys", List.of("ownerUsername", "taskId", "standardTable")),
+            "parameterSchema", Map.of("requiredKeys", List.of("ownerUsername", "taskId", "dataServiceBaseUrl")),
             "enabled", true,
             "remark", "Auto bootstrap by system"
         ));
@@ -1112,7 +1121,7 @@ public class DataProcessService implements IDataProcessService {
         Map<String, Object> fusionTemplate = saveNifiFlowTemplate(ownerUsername, Map.of(
             "flowType", "FUSION",
             "processGroupId", fusionPgId,
-            "parameterSchema", Map.of("requiredKeys", List.of("ownerUsername", "taskId", "targetTable")),
+            "parameterSchema", Map.of("requiredKeys", List.of("ownerUsername", "taskId", "dataServiceBaseUrl")),
             "enabled", true,
             "remark", "Auto bootstrap by system"
         ));
@@ -1120,8 +1129,148 @@ public class DataProcessService implements IDataProcessService {
         return Map.of(
             "status", "BOOTSTRAPPED",
             "clean", cleanTemplate,
-            "fusion", fusionTemplate
+            "fusion", fusionTemplate,
+            "provision", Map.of(
+                "clean", cleanProvision,
+                "fusion", fusionProvision
+            )
         );
+    }
+
+    @Transactional
+    public Map<String, Object> provisionNifiFlowBlueprint(String ownerUsername, Map<String, Object> payload) {
+        requireAuthenticated(ownerUsername);
+        Map<String, Object> safePayload = payload == null ? Map.of() : payload;
+        String preset = text(safePayload.get("preset")).toUpperCase();
+        String groupName = text(safePayload.get("groupName"));
+        String flowType = text(safePayload.get("flowType")).toUpperCase();
+
+        Map<String, Object> blueprint = new LinkedHashMap<>(safePayload);
+        if (("CLEAN".equals(preset) || "FUSION".equals(preset)) && isEmptyBlueprint(blueprint)) {
+            mergeBlueprintDefaults(blueprint, buildDefaultNifiBlueprint(preset, ownerUsername));
+        } else if (("CLEAN".equals(flowType) || "FUSION".equals(flowType)) && isEmptyBlueprint(blueprint)) {
+            mergeBlueprintDefaults(blueprint, buildDefaultNifiBlueprint(flowType, ownerUsername));
+        }
+
+        if (groupName.isBlank()) {
+            if ("CLEAN".equals(flowType) || "FUSION".equals(flowType)) {
+                groupName = "AUDIT_" + flowType;
+            } else if ("CLEAN".equals(preset) || "FUSION".equals(preset)) {
+                groupName = "AUDIT_" + preset;
+            } else {
+                groupName = "AUDIT_FLOW_" + System.currentTimeMillis();
+            }
+        }
+
+        blueprint.put("groupName", groupName);
+        Map<String, Object> result = nifiOrchestrationService.provisionFlowBlueprint(blueprint);
+        recordAudit(ownerUsername, "CREATE", "NIFI_FLOW_BLUEPRINT", groupName, "SUCCESS", result);
+        return result;
+    }
+
+    private Map<String, Object> buildDefaultNifiBlueprint(String flowType, String ownerUsername) {
+        String normalizedFlowType = text(flowType).toUpperCase();
+        String safeOwner = isBlank(ownerUsername) ? "anonymous" : ownerUsername;
+        String groupName = "AUDIT_" + normalizedFlowType;
+        String taskRunPath = "CLEAN".equals(normalizedFlowType)
+            ? "/api/data/clean/tasks/${taskId}/run"
+            : "/api/data/fusion/tasks/${taskId}/run";
+
+        Map<String, Object> parameterContext = new LinkedHashMap<>();
+        parameterContext.put("name", groupName + "_PARAMS");
+        parameterContext.put("description", "Auto-generated " + normalizedFlowType + " blueprint parameters");
+        parameterContext.put("parameters", Map.of(
+            "ownerUsername", safeOwner,
+            "taskId", "1",
+            "dataServiceBaseUrl", nifiDataServiceBaseUrl
+        ));
+
+        List<Map<String, Object>> processors = new ArrayList<>();
+        processors.add(new LinkedHashMap<>(Map.of(
+            "name", normalizedFlowType + " Trigger",
+            "type", "org.apache.nifi.processors.standard.GenerateFlowFile",
+            "x", 0.0,
+            "y", 0.0,
+            "properties", Map.of(
+                "Data Format", "Text",
+                "Batch Size", "1",
+                "Custom Text", normalizedFlowType + " task ${taskId} requested by ${ownerUsername}",
+                "Unique FlowFiles", "true"
+            ),
+            "schedulingStrategy", "TIMER_DRIVEN",
+            "schedulingPeriod", "1 min"
+        )));
+        processors.add(new LinkedHashMap<>(Map.of(
+            "name", normalizedFlowType + " Invoke Data Service",
+            "type", "org.apache.nifi.processors.standard.InvokeHTTP",
+            "x", 340.0,
+            "y", 0.0,
+            "properties", Map.of(
+                "HTTP URL", "${dataServiceBaseUrl}" + taskRunPath,
+                "HTTP Method", "POST",
+                "Request Body Enabled", "false",
+                "Request Content-Type", "application/json",
+                "X-User-Name", "${ownerUsername}"
+            ),
+            "autoTerminatedRelationships", List.of("original", "failure", "retry", "no retry")
+        )));
+        processors.add(new LinkedHashMap<>(Map.of(
+            "name", normalizedFlowType + " Log Result",
+            "type", "org.apache.nifi.processors.standard.LogMessage",
+            "x", 680.0,
+            "y", 0.0,
+            "properties", Map.of(
+                "Log Level", "info",
+                "Log Message", normalizedFlowType + " response received from data-service"
+            ),
+            "autoTerminatedRelationships", List.of("success")
+        )));
+
+        List<Map<String, Object>> connections = List.of(
+            new LinkedHashMap<>(Map.of(
+                "name", normalizedFlowType + " Trigger -> Invoke",
+                "source", normalizedFlowType + " Trigger",
+                "destination", normalizedFlowType + " Invoke Data Service",
+                "selectedRelationships", List.of("success")
+            )),
+            new LinkedHashMap<>(Map.of(
+                "name", normalizedFlowType + " Invoke -> Log",
+                "source", normalizedFlowType + " Invoke Data Service",
+                "destination", normalizedFlowType + " Log Result",
+                "selectedRelationships", List.of("response")
+            ))
+        );
+
+        Map<String, Object> blueprint = new LinkedHashMap<>();
+        blueprint.put("flowType", normalizedFlowType);
+        blueprint.put("groupName", groupName);
+        blueprint.put("parameterContext", parameterContext);
+        blueprint.put("controllerServices", List.of());
+        blueprint.put("processors", processors);
+        blueprint.put("connections", connections);
+        blueprint.put("startAfterCreate", false);
+        return blueprint;
+    }
+
+    private void mergeBlueprintDefaults(Map<String, Object> target, Map<String, Object> defaults) {
+        target.putIfAbsent("flowType", defaults.get("flowType"));
+        target.putIfAbsent("groupName", defaults.get("groupName"));
+        target.putIfAbsent("parameterContext", defaults.get("parameterContext"));
+        target.putIfAbsent("controllerServices", defaults.get("controllerServices"));
+        target.putIfAbsent("startAfterCreate", defaults.get("startAfterCreate"));
+
+        if (castMapList(target.get("processors")).isEmpty()) {
+            target.put("processors", defaults.get("processors"));
+        }
+        if (castMapList(target.get("connections")).isEmpty()) {
+            target.put("connections", defaults.get("connections"));
+        }
+    }
+
+    private boolean isEmptyBlueprint(Map<String, Object> blueprint) {
+        return castMapList(blueprint.get("processors")).isEmpty()
+            && castMapList(blueprint.get("connections")).isEmpty()
+            && castMapList(blueprint.get("controllerServices")).isEmpty();
     }
 
     @Scheduled(

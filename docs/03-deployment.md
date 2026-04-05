@@ -41,6 +41,7 @@ docker compose up -d
   - `APP_FUSION_KEY_SYNONYMS_JSON`（融合主键同义词 JSON，支持扩展映射）
   - `APP_NIFI_ENABLED`（是否启用 NiFi 编排）
   - `APP_NIFI_BASE_URL`（NiFi 控制平面地址，如 `http://nifi:8080`）
+  - `APP_NIFI_DATA_SERVICE_BASE_URL`（NiFi 调用 data-service 的地址，如 `http://data-service:8082`）
   - `APP_NIFI_DEFAULT_PROCESS_GROUP_ID`（默认流程组 ID）
   - `TASK_CORE_POOL_SIZE`
   - `TASK_MAX_POOL_SIZE`
@@ -85,8 +86,8 @@ APP_FUSION_KEY_SYNONYMS_JSON={"整改单位ID":["单位ID","org_id","organizatio
 
 ### 6.2 NiFi 控制平面接入说明
 1. 在环境变量中启用 `APP_NIFI_ENABLED=true`。
-2. 配置 `APP_NIFI_BASE_URL` 与 `APP_NIFI_DEFAULT_PROCESS_GROUP_ID`。
-3. 建议先通过 `POST /api/data/control-plane/nifi/templates` 配置流程模板与参数必填规则。
+2. 配置 `APP_NIFI_BASE_URL`、`APP_NIFI_DATA_SERVICE_BASE_URL` 与 `APP_NIFI_DEFAULT_PROCESS_GROUP_ID`。
+3. 建议先通过 `POST /api/data/control-plane/nifi/templates/bootstrap` 一键生成 CLEAN/FUSION 默认蓝图和模板。
 4. 使用接口 `POST /api/data/control-plane/nifi/flows/run` 触发流程。
 5. 使用接口 `GET /api/data/control-plane/nifi/flows` 查看触发历史。
 
