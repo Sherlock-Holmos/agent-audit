@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
 @Validated
@@ -417,6 +418,15 @@ public class DataProcessController {
         String taskType = String.valueOf(payload.getOrDefault("taskType", "")).trim();
         Long taskId = payload.get("taskId") instanceof Number n ? n.longValue() : null;
         return ApiResponse.success("对账完成", dataProcessApplicationService.reconcileNifiTask(username, taskType, taskId));
+    }
+
+    @PostMapping("/control-plane/nifi/tasks/repair-artifacts")
+    public ApiResponse<Object> repairCompletedTaskArtifacts(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @RequestParam(required = false) String taskType,
+        @RequestParam(required = false) Integer limit
+    ) {
+        return ApiResponse.success("补偿完成", dataProcessApplicationService.repairCompletedTaskArtifacts(username, taskType, limit));
     }
 
     @GetMapping("/control-plane/nifi/tasks/reconcile/history")

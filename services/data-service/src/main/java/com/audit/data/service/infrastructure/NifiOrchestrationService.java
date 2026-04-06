@@ -18,6 +18,8 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -250,6 +252,7 @@ public class NifiOrchestrationService {
 
         String processGroupId = createProcessGroup(parentProcessGroupId, groupName);
         Map<String, String> createdIds = new LinkedHashMap<>();
+        Map<String, String> createdComponentTypes = new LinkedHashMap<>();
 
         String parameterContextId = "";
         Object parameterContextSpec = safeBlueprint.get("parameterContext");
@@ -260,39 +263,59 @@ public class NifiOrchestrationService {
             }
         }
 
-        List<Map<String, Object>> controllerServices = castMapList(safeBlueprint.get("controllerServices"));
+        List<Map<String, Object>> controllerServices = asMapList(safeBlueprint.get("controllerServices"));
         for (Map<String, Object> spec : controllerServices) {
             String id = createControllerService(processGroupId, spec);
             String name = text(spec.get("name"));
             if (!name.isBlank()) {
                 createdIds.put(name, id);
+                createdComponentTypes.put(name, "CONTROLLER_SERVICE");
             }
             if (!id.isBlank()) {
                 createdIds.put(id, id);
+                createdComponentTypes.put(id, "CONTROLLER_SERVICE");
             }
         }
 
-        List<Map<String, Object>> processors = castMapList(safeBlueprint.get("processors"));
+        List<Map<String, Object>> processors = asMapList(safeBlueprint.get("processors"));
         for (Map<String, Object> spec : processors) {
             String id = createProcessor(processGroupId, spec);
             String name = text(spec.get("name"));
             if (!name.isBlank()) {
                 createdIds.put(name, id);
+                createdComponentTypes.put(name, "PROCESSOR");
             }
             if (!id.isBlank()) {
                 createdIds.put(id, id);
+                createdComponentTypes.put(id, "PROCESSOR");
             }
         }
 
-        List<Map<String, Object>> connections = castMapList(safeBlueprint.get("connections"));
-        for (Map<String, Object> spec : connections) {
-            String id = createConnection(processGroupId, spec, createdIds);
+        List<Map<String, Object>> outputPorts = asMapList(safeBlueprint.get("outputPorts"));
+        for (Map<String, Object> spec : outputPorts) {
+            String id = createOutputPort(processGroupId, spec);
             String name = text(spec.get("name"));
             if (!name.isBlank()) {
                 createdIds.put(name, id);
+                createdComponentTypes.put(name, "OUTPUT_PORT");
             }
             if (!id.isBlank()) {
                 createdIds.put(id, id);
+                createdComponentTypes.put(id, "OUTPUT_PORT");
+            }
+        }
+
+        List<Map<String, Object>> connections = asMapList(safeBlueprint.get("connections"));
+        for (Map<String, Object> spec : connections) {
+            String id = createConnection(processGroupId, spec, createdIds, createdComponentTypes);
+            String name = text(spec.get("name"));
+            if (!name.isBlank()) {
+                createdIds.put(name, id);
+                createdComponentTypes.put(name, "CONNECTION");
+            }
+            if (!id.isBlank()) {
+                createdIds.put(id, id);
+                createdComponentTypes.put(id, "CONNECTION");
             }
         }
 
@@ -322,6 +345,142 @@ public class NifiOrchestrationService {
         Map<String, Object> flow = asMap(processGroupFlow.get("flow"));
         List<Map<String, Object>> processors = asMapList(flow.get("processors"));
         return processors.size();
+    }
+
+    public boolean isFusionNativeProcessGroup(String processGroupId) {
+        String safeId = text(processGroupId);
+        if (safeId.isBlank()) {
+            return false;
+        }
+        String encodedId = URLEncoder.encode(safeId, StandardCharsets.UTF_8);
+        String url = baseUrl + "/nifi-api/flow/process-groups/" + encodedId;
+        Map<String, Object> payload = httpGetJson(url);
+        Map<String, Object> processGroupFlow = asMap(payload.get("processGroupFlow"));
+        Map<String, Object> flow = asMap(processGroupFlow.get("flow"));
+        List<Map<String, Object>> processors = asMapList(flow.get("processors"));
+        for (Map<String, Object> processorEntity : processors) {
+            Map<String, Object> component = asMap(processorEntity.get("component"));
+            String type = text(component.get("type"));
+            String name = text(component.get("name")).toUpperCase();
+            if ("org.apache.nifi.processors.script.ExecuteScript".equals(type)
+                && name.contains("FUSION")
+                && name.contains("NATIVE")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean isCleanNativeProcessGroup(String processGroupId) {
+        String safeId = text(processGroupId);
+        if (safeId.isBlank()) {
+            return false;
+        }
+        String encodedId = URLEncoder.encode(safeId, StandardCharsets.UTF_8);
+        String url = baseUrl + "/nifi-api/flow/process-groups/" + encodedId;
+        Map<String, Object> payload = httpGetJson(url);
+        Map<String, Object> processGroupFlow = asMap(payload.get("processGroupFlow"));
+        Map<String, Object> flow = asMap(processGroupFlow.get("flow"));
+        List<Map<String, Object>> processors = asMapList(flow.get("processors"));
+        for (Map<String, Object> processorEntity : processors) {
+            Map<String, Object> component = asMap(processorEntity.get("component"));
+            String type = text(component.get("type"));
+            String name = text(component.get("name")).toUpperCase();
+            if ("org.apache.nifi.processors.script.ExecuteScript".equals(type)
+                && name.contains("CLEAN")
+                && name.contains("NATIVE")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public Map<String, Object> ensureCallbackProcessorsReady(String processGroupId) {
+        String safeId = text(processGroupId);
+        if (safeId.isBlank()) {
+            return Map.of(
+                "processGroupId", "",
+                "callbackProcessors", 0,
+                "repairedCallbacks", 0,
+                "invalidCallbacksBefore", 0,
+                "invalidCallbacksAfter", 0
+            );
+        }
+
+        String encodedId = URLEncoder.encode(safeId, StandardCharsets.UTF_8);
+        String url = baseUrl + "/nifi-api/flow/process-groups/" + encodedId;
+        Map<String, Object> payload = httpGetJson(url);
+        Map<String, Object> processGroupFlow = asMap(payload.get("processGroupFlow"));
+        Map<String, Object> flow = asMap(processGroupFlow.get("flow"));
+        List<Map<String, Object>> processors = asMapList(flow.get("processors"));
+
+        int callbackProcessors = 0;
+        int repairedCallbacks = 0;
+        int invalidCallbacksBefore = 0;
+        for (Map<String, Object> processorEntity : processors) {
+            Map<String, Object> component = asMap(processorEntity.get("component"));
+            String type = text(component.get("type"));
+            String name = text(component.get("name"));
+            if (!"org.apache.nifi.processors.standard.InvokeHTTP".equals(type)) {
+                continue;
+            }
+            if (!(name.toUpperCase().contains("CALLBACK") || name.toUpperCase().contains("POLL"))) {
+                continue;
+            }
+
+            callbackProcessors++;
+            Map<String, Object> status = asMap(processorEntity.get("status"));
+            String runStatus = text(status.get("runStatus")).toUpperCase();
+            String state = text(component.get("state")).toUpperCase();
+            if ("INVALID".equals(runStatus) || "STOPPED".equals(state)) {
+                invalidCallbacksBefore++;
+            }
+
+            String processorId = text(component.get("id"));
+            List<String> allRelationships = asMapList(component.get("relationships")).stream()
+                .map(item -> text(item.get("name")))
+                .filter(item -> !item.isBlank())
+                .toList();
+            if (!processorId.isBlank() && !allRelationships.isEmpty()) {
+                updateProcessorAutoTerminatedRelationships(processorId, allRelationships);
+                repairedCallbacks++;
+            }
+        }
+
+        if (callbackProcessors > 0) {
+            startProcessGroup(safeId);
+        }
+
+        Map<String, Object> refreshed = httpGetJson(url);
+        Map<String, Object> refreshedPgf = asMap(refreshed.get("processGroupFlow"));
+        Map<String, Object> refreshedFlow = asMap(refreshedPgf.get("flow"));
+        List<Map<String, Object>> refreshedProcessors = asMapList(refreshedFlow.get("processors"));
+        int invalidCallbacksAfter = 0;
+        for (Map<String, Object> processorEntity : refreshedProcessors) {
+            Map<String, Object> component = asMap(processorEntity.get("component"));
+            String type = text(component.get("type"));
+            String name = text(component.get("name"));
+            if (!"org.apache.nifi.processors.standard.InvokeHTTP".equals(type)) {
+                continue;
+            }
+            if (!(name.toUpperCase().contains("CALLBACK") || name.toUpperCase().contains("POLL"))) {
+                continue;
+            }
+            Map<String, Object> status = asMap(processorEntity.get("status"));
+            String runStatus = text(status.get("runStatus")).toUpperCase();
+            String state = text(component.get("state")).toUpperCase();
+            if ("INVALID".equals(runStatus) || "STOPPED".equals(state)) {
+                invalidCallbacksAfter++;
+            }
+        }
+
+        return Map.of(
+            "processGroupId", safeId,
+            "callbackProcessors", callbackProcessors,
+            "repairedCallbacks", repairedCallbacks,
+            "invalidCallbacksBefore", invalidCallbacksBefore,
+            "invalidCallbacksAfter", invalidCallbacksAfter
+        );
     }
 
     private String createParameterContext(Map<String, Object> spec) {
@@ -359,6 +518,71 @@ public class NifiOrchestrationService {
             id = text(response.get("id"));
         }
         return id;
+    }
+
+    private void updateProcessorAutoTerminatedRelationships(String processorId, List<String> relationships) {
+        if (processorId == null || processorId.isBlank() || relationships == null || relationships.isEmpty()) {
+            return;
+        }
+
+        String encodedId = URLEncoder.encode(processorId, StandardCharsets.UTF_8);
+        String url = baseUrl + "/nifi-api/processors/" + encodedId;
+        Map<String, Object> entity = invokeJson("GET", url, null);
+        Map<String, Object> revision = asMap(entity.get("revision"));
+        Map<String, Object> component = asMap(entity.get("component"));
+        boolean wasRunning = "RUNNING".equalsIgnoreCase(text(component.get("state")));
+        if (wasRunning) {
+            updateProcessorRunStatus(processorId, "STOPPED", revision);
+            entity = invokeJson("GET", url, null);
+            revision = asMap(entity.get("revision"));
+            component = asMap(entity.get("component"));
+        }
+
+        Set<String> target = relationships.stream()
+            .filter(item -> item != null && !item.isBlank())
+            .map(String::trim)
+            .collect(Collectors.toSet());
+        List<String> autoTerminatedRelationships = new ArrayList<>(target);
+
+        Map<String, Object> properties = new LinkedHashMap<>();
+        Map<String, Object> config = asMap(component.get("config"));
+        asMap(config.get("properties")).forEach((k, v) -> properties.put(String.valueOf(k), v));
+
+        Map<String, Object> configBody = new LinkedHashMap<>();
+        configBody.put("properties", properties);
+        configBody.put("autoTerminatedRelationships", autoTerminatedRelationships);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        Map<String, Object> revisionBody = new LinkedHashMap<>();
+        revisionBody.put("version", revision.getOrDefault("version", 0));
+        if (revision.containsKey("clientId")) {
+            revisionBody.put("clientId", text(revision.get("clientId")));
+        }
+        body.put("revision", revisionBody);
+        body.put("component", Map.of(
+            "id", processorId,
+            "config", configBody
+        ));
+        Map<String, Object> updated = invokeJson("PUT", url, body);
+        if (wasRunning) {
+            updateProcessorRunStatus(processorId, "RUNNING", asMap(updated.get("revision")));
+        }
+    }
+
+    private void updateProcessorRunStatus(String processorId, String state, Map<String, Object> revision) {
+        String encodedId = URLEncoder.encode(processorId, StandardCharsets.UTF_8);
+        String url = baseUrl + "/nifi-api/processors/" + encodedId + "/run-status";
+        Map<String, Object> revisionBody = new LinkedHashMap<>();
+        revisionBody.put("version", revision.getOrDefault("version", 0));
+        if (revision.containsKey("clientId")) {
+            revisionBody.put("clientId", text(revision.get("clientId")));
+        }
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("revision", revisionBody);
+        body.put("state", text(state).toUpperCase());
+        body.put("disconnectedNodeAcknowledged", Boolean.FALSE);
+        invokeJson("PUT", url, body);
     }
 
     private void attachParameterContext(String processGroupId, String parameterContextId) {
@@ -415,19 +639,21 @@ public class NifiOrchestrationService {
             "x", spec.getOrDefault("x", 0.0),
             "y", spec.getOrDefault("y", 0.0)
         ));
-        component.put("properties", castMap(spec.get("properties")));
+        Map<String, Object> config = new LinkedHashMap<>();
+        config.put("properties", castMap(spec.get("properties")));
         if (spec.containsKey("schedulingStrategy")) {
-            component.put("schedulingStrategy", text(spec.get("schedulingStrategy")));
+            config.put("schedulingStrategy", text(spec.get("schedulingStrategy")));
         }
         if (spec.containsKey("schedulingPeriod")) {
-            component.put("schedulingPeriod", text(spec.get("schedulingPeriod")));
+            config.put("schedulingPeriod", text(spec.get("schedulingPeriod")));
         }
         if (spec.containsKey("runDurationMillis")) {
-            component.put("runDurationMillis", spec.get("runDurationMillis"));
+            config.put("runDurationMillis", spec.get("runDurationMillis"));
         }
         if (spec.containsKey("autoTerminatedRelationships")) {
-            component.put("autoTerminatedRelationships", castStringList(spec.get("autoTerminatedRelationships")));
+            config.put("autoTerminatedRelationships", castStringList(spec.get("autoTerminatedRelationships")));
         }
+        component.put("config", config);
         body.put("component", component);
 
         String encodedId = URLEncoder.encode(processGroupId, StandardCharsets.UTF_8);
@@ -441,7 +667,7 @@ public class NifiOrchestrationService {
         return id;
     }
 
-    private String createConnection(String processGroupId, Map<String, Object> spec, Map<String, String> createdIds) {
+    private String createConnection(String processGroupId, Map<String, Object> spec, Map<String, String> createdIds, Map<String, String> createdComponentTypes) {
         Object sourceRef = spec.get("source");
         Object destinationRef = spec.get("destination");
         String sourceId = resolveCreatedComponentId(createdIds, sourceRef);
@@ -449,6 +675,8 @@ public class NifiOrchestrationService {
         if (sourceId.isBlank() || destinationId.isBlank()) {
             throw new IllegalArgumentException("connection.source 或 destination 无法解析");
         }
+        String sourceType = resolveComponentType(createdComponentTypes, sourceRef, sourceId, "PROCESSOR");
+        String destinationType = resolveComponentType(createdComponentTypes, destinationRef, destinationId, "PROCESSOR");
 
         List<String> selectedRelationships = castStringList(spec.get("selectedRelationships"));
         if (selectedRelationships.isEmpty()) {
@@ -459,8 +687,8 @@ public class NifiOrchestrationService {
         body.put("revision", Map.of("version", 0));
         Map<String, Object> component = new LinkedHashMap<>();
         component.put("name", text(spec.get("name")));
-        component.put("source", Map.of("id", sourceId, "type", "PROCESSOR", "groupId", processGroupId));
-        component.put("destination", Map.of("id", destinationId, "type", "PROCESSOR", "groupId", processGroupId));
+        component.put("source", Map.of("id", sourceId, "type", sourceType, "groupId", processGroupId));
+        component.put("destination", Map.of("id", destinationId, "type", destinationType, "groupId", processGroupId));
         component.put("selectedRelationships", selectedRelationships);
         component.put("backPressureObjectThreshold", text(spec.getOrDefault("backPressureObjectThreshold", "1000")));
         component.put("backPressureDataSizeThreshold", text(spec.getOrDefault("backPressureDataSizeThreshold", "1 GB")));
@@ -476,6 +704,45 @@ public class NifiOrchestrationService {
             id = text(response.get("id"));
         }
         return id;
+    }
+
+    private String createOutputPort(String processGroupId, Map<String, Object> spec) {
+        String name = text(spec.get("name"));
+        if (name.isBlank()) {
+            throw new IllegalArgumentException("outputPorts 需要 name");
+        }
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("revision", Map.of("version", 0));
+        Map<String, Object> component = new LinkedHashMap<>();
+        component.put("name", name);
+        component.put("position", Map.of(
+            "x", spec.getOrDefault("x", 0.0),
+            "y", spec.getOrDefault("y", 0.0)
+        ));
+        body.put("component", component);
+
+        String encodedId = URLEncoder.encode(processGroupId, StandardCharsets.UTF_8);
+        String url = baseUrl + "/nifi-api/process-groups/" + encodedId + "/output-ports";
+        Map<String, Object> response = invokeJson("POST", url, body);
+        Map<String, Object> created = asMap(response.get("component"));
+        String id = text(created.get("id"));
+        if (id.isBlank()) {
+            id = text(response.get("id"));
+        }
+        return id;
+    }
+
+    private String resolveComponentType(Map<String, String> createdComponentTypes, Object ref, String resolvedId, String fallback) {
+        String byRef = text(createdComponentTypes.get(text(ref)));
+        if (!byRef.isBlank()) {
+            return byRef;
+        }
+        String byId = text(createdComponentTypes.get(resolvedId));
+        if (!byId.isBlank()) {
+            return byId;
+        }
+        return fallback;
     }
 
     private void startProcessGroup(String processGroupId) {
@@ -494,7 +761,9 @@ public class NifiOrchestrationService {
 
         String normalizedMethod = text(method).toUpperCase();
         HttpRequest request;
-        if ("POST".equals(normalizedMethod)) {
+        if ("GET".equals(normalizedMethod)) {
+            request = builder.GET().build();
+        } else if ("POST".equals(normalizedMethod)) {
             request = builder.POST(HttpRequest.BodyPublishers.ofString(toJson(body))).build();
         } else if ("PUT".equals(normalizedMethod)) {
             request = builder.PUT(HttpRequest.BodyPublishers.ofString(toJson(body))).build();

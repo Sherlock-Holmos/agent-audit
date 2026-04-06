@@ -289,7 +289,7 @@ public class DashboardService implements IDashboardService {
             .toList();
 
         List<String> departments = new ArrayList<>();
-        List<String> metrics = List.of("瀹屾垚鐜", "空值率", "閲嶅鐜", "闂幆鐜");
+        List<String> metrics = List.of("完成率", "空值率", "重复率", "闭环率");
         List<List<Integer>> values = new ArrayList<>();
 
         for (int i = 0; i < rows.size(); i++) {
@@ -366,7 +366,7 @@ public class DashboardService implements IDashboardService {
 
     private Map<String, Object> emptyTrend() {
         return Map.of(
-            "dates", List.of("鍛ㄤ竴", "鍛ㄤ簩", "鍛ㄤ笁", "鍛ㄥ洓", "鍛ㄤ簲", "鍛ㄥ叚", "鍛ㄦ棩"),
+            "dates", List.of("周一", "周二", "周三", "周四", "周五", "周六", "周日"),
             "rates", List.of(0, 0, 0, 0, 0, 0, 0),
             "predicted", List.of(0, 0, 0, 0, 0, 0, 0)
         );
@@ -419,7 +419,7 @@ public class DashboardService implements IDashboardService {
     private String sanitizeSchemaName(String schemaName) {
         String normalized = schemaName == null ? "" : schemaName.trim();
         if (!SAFE_SCHEMA_PATTERN.matcher(normalized).matches()) {
-            throw new IllegalArgumentException("staging schema 閰嶇疆涓嶅悎娉");
+            throw new IllegalArgumentException("staging schema 配置不合法");
         }
         return normalized;
     }

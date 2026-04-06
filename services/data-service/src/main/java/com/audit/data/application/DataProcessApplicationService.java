@@ -301,6 +301,12 @@ public class DataProcessApplicationService implements IDataProcessApplicationSer
     }
 
     @Override
+    @Transactional
+    public Map<String, Object> repairCompletedTaskArtifacts(String username, String taskType, Integer limit) {
+        return dataProcessService.repairCompletedTaskArtifacts(normalizeUser(username), taskType, limit);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<Map<String, Object>> listNifiReconcileRecords(String username, Integer limit) {
         return dataProcessService.listNifiReconcileRecords(normalizeUser(username), limit);

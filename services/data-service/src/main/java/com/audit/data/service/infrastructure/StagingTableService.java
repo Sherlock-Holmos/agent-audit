@@ -32,7 +32,6 @@ public class StagingTableService {
 
     private final JdbcTemplate jdbcTemplate;
     private final DataProcessTaskRepository dataProcessTaskRepository;
-    private final FileRowReader fileRowReader;
     private final ObjectMapper objectMapper;
     private final String stagingSchema;
     private final Map<String, List<String>> defaultKeySynonyms;
@@ -40,14 +39,12 @@ public class StagingTableService {
     public StagingTableService(
         JdbcTemplate jdbcTemplate,
         DataProcessTaskRepository dataProcessTaskRepository,
-        FileRowReader fileRowReader,
         ObjectMapper objectMapper,
         @Value("${app.datasource.staging-schema:agent_audit_staging}") String stagingSchema,
         @Value("${app.fusion.key-synonyms-json:}") String keySynonymsJson
     ) {
         this.jdbcTemplate = jdbcTemplate;
         this.dataProcessTaskRepository = dataProcessTaskRepository;
-        this.fileRowReader = fileRowReader;
         this.objectMapper = objectMapper;
         this.stagingSchema = sanitizeSchemaName(stagingSchema);
         this.defaultKeySynonyms = buildKeySynonyms(keySynonymsJson);
@@ -118,99 +115,15 @@ public class StagingTableService {
                 jdbcTemplate.execute(createSql);
     }
 
-    public void loadObjectsIntoStandardTable(String ownerUsername, Long taskId, List<Map<String, Object>> cleanObjects, String outputTableName) {
-        String outputTableRef = stagingTableRef(outputTableName);
-        for (Map<String, Object> object : cleanObjects) {
-            Long sourceId = toLong(object.get("sourceId"));
-            String objectName = text(object.get("objectName"));
-            if (sourceId == null || isBlank(objectName)) {
-                throw new IllegalArgumentException("清洗对象信息不完整");
-            }
-
-            Map<String, Object> source = getSourceById(ownerUsername, sourceId);
-            String sourceType = text(source.get("type")).toUpperCase();
-            List<String> rows = switch (sourceType) {
-                case "DATABASE" -> readDatabaseRows(objectName);
-                case "FILE" -> fileRowReader.readRows(text(source.get("filePath")), text(source.get("fileName")));
-                default -> throw new IllegalArgumentException("不支持的数据源类型: " + sourceType);
-            };
-
-            int rowNo = 1;
-            for (String row : rows) {
-                jdbcTemplate.update(
-                    "INSERT INTO " + outputTableRef + "(task_id,source_id,object_name,row_no,raw_json,normalized_json,created_at) VALUES(?,?,?,?,?,?,?)",
-                    taskId,
-                    sourceId,
-                    objectName,
-                    rowNo++,
-                    row,
-                    row,
-                    now()
-                );
-            }
-        }
-    }
-
-    public void loadObjectsIntoRawTable(String ownerUsername, Long taskId, List<Map<String, Object>> cleanObjects, String rawTableName) {
-        String rawTableRef = stagingTableRef(rawTableName);
-        for (Map<String, Object> object : cleanObjects) {
-            Long sourceId = toLong(object.get("sourceId"));
-            String objectName = text(object.get("objectName"));
-            if (sourceId == null || isBlank(objectName)) {
-                throw new IllegalArgumentException("清洗对象信息不完整");
-            }
-
-            List<String> rows = extractRows(ownerUsername, sourceId, objectName);
-            int rowNo = 1;
-            for (String row : rows) {
-                jdbcTemplate.update(
-                    "INSERT INTO " + rawTableRef + "(task_id,source_id,object_name,row_no,raw_json,created_at) VALUES(?,?,?,?,?,?)",
-                    taskId,
-                    sourceId,
-                    objectName,
-                    rowNo++,
-                    row,
-                    now()
-                );
-            }
-        }
-    }
-
-    public void loadStandardFromRawTable(Long taskId, String rawTableName, String standardTableName) {
-        String rawTableRef = stagingTableRef(rawTableName);
-        String standardTableRef = stagingTableRef(standardTableName);
-        String sql = Objects.requireNonNull(
-            """
-            INSERT INTO %s(task_id,source_id,object_name,row_no,raw_json,normalized_json,created_at)
-            SELECT task_id, source_id, object_name, row_no, raw_json, raw_json, created_at
-              FROM %s
-             WHERE task_id=?
-            """.formatted(standardTableRef, rawTableRef)
-        );
-        jdbcTemplate.update(sql, taskId);
-    }
-
-    public int mergeStandardTablesToTarget(
-        String ownerUsername,
-        Long fusionTaskId,
-        String targetTableName,
-        List<String> standardTables,
-        String strategy,
-        Map<String, Object> fusionConfig
-    ) {
-        String normalizedStrategy = text(strategy).trim().toUpperCase();
-        Map<String, Object> effectiveFusionConfig = buildEffectiveFusionConfig(normalizedStrategy, fusionConfig);
-        if ("KEY_ALIGN".equals(normalizedStrategy)
-            || "TIME_WINDOW".equals(normalizedStrategy)
-            || "RULE_MATCH".equals(normalizedStrategy)) {
-            return mergeStandardTablesByKey(ownerUsername, fusionTaskId, targetTableName, standardTables, effectiveFusionConfig);
-        }
-        return mergeStandardTablesByAppend(ownerUsername, fusionTaskId, targetTableName, standardTables);
-    }
-
     private Map<String, Object> buildEffectiveFusionConfig(String strategy, Map<String, Object> fusionConfig) {
         Map<String, Object> effective = fusionConfig == null ? new LinkedHashMap<>() : new LinkedHashMap<>(fusionConfig);
         String configuredKey = text(effective.get("keyField"));
+        if (isBlank(configuredKey)) {
+            configuredKey = text(effective.get("businessKey"));
+            if (!isBlank(configuredKey)) {
+                effective.put("keyField", configuredKey);
+            }
+        }
         if (!isBlank(configuredKey)) {
             return effective;
         }
@@ -277,10 +190,19 @@ public class StagingTableService {
         List<String> compositeKeyFields = parseKeyFields(configuredKey);
         if (isBlank(keyField)) {
             keyField = detectKeyField(standardTables, activeKeySynonyms);
+            compositeKeyFields = parseKeyFields(keyField);
         }
         if (isBlank(keyField)) {
             return mergeStandardTablesByAppend(ownerUsername, fusionTaskId, targetTableName, standardTables);
         }
+
+        Object looseFlag = fusionConfig.get("loosePrimaryFallback");
+        boolean loosePrimaryFallback = compositeKeyFields.size() > 1
+            && (Boolean.TRUE.equals(looseFlag) || "true".equalsIgnoreCase(text(looseFlag)));
+        Object fillMissingFlag = fusionConfig.get("fillMissingSourceRows");
+        boolean fillMissingSourceRows = Boolean.TRUE.equals(fillMissingFlag)
+            || "true".equalsIgnoreCase(text(fillMissingFlag));
+        String primaryKeyField = compositeKeyFields.isEmpty() ? keyField : compositeKeyFields.get(0);
 
         LinkedHashMap<String, Map<String, Object>> mergedByKey = new LinkedHashMap<>();
         AtomicInteger rowNo = new AtomicInteger(1);
@@ -299,85 +221,284 @@ public class StagingTableService {
                 Object keyValue = compositeKeyFields.size() > 1
                     ? buildCompositeKeyValue(normalized, compositeKeyFields, activeKeySynonyms)
                     : findFieldValue(normalized, keyField, activeKeySynonyms);
-                if (keyValue == null || isBlank(String.valueOf(keyValue))) {
-                    continue;
+                Long sourceIdValue = toLong(row.get("source_id"));
+                long safeSourceId = sourceIdValue == null ? 0L : sourceIdValue;
+                int safeRowNo = row.get("row_no") instanceof Number n ? n.intValue() : 0;
+
+                String key = keyValue == null ? "" : String.valueOf(keyValue).trim();
+                String matchKey = normalizeFusionMatchKey(key);
+                if (isBlank(matchKey)) {
+                    // Try fallback signature match for rows without primary key before downgrading to singleton.
+                    String fallbackMatchKey = buildFallbackMatchKey(normalized, fusionConfig, activeKeySynonyms);
+                    if (!isBlank(fallbackMatchKey)) {
+                        matchKey = "__fallback__" + fallbackMatchKey;
+                    } else {
+                        // Keep rows without key instead of dropping them to avoid data loss in fusion result.
+                        matchKey = "__row__" + tableTag + "#" + safeSourceId + "#" + safeRowNo;
+                    }
+                } else {
+                    matchKey = "__key__" + matchKey;
                 }
 
-                String key = String.valueOf(keyValue);
-                Map<String, Object> bucket = mergedByKey.computeIfAbsent(key, k -> {
+                Map<String, Object> bucket = mergedByKey.computeIfAbsent(matchKey, k -> {
                     Map<String, Object> data = new LinkedHashMap<>();
-                    data.put("rowNo", rowNo.getAndIncrement());
-                    data.put("merged", new LinkedHashMap<String, Object>());
-                    data.put("raw", new ArrayList<Map<String, Object>>());
-                    data.put("sources", new LinkedHashSet<String>());
+                    data.put("entriesByTable", new LinkedHashMap<String, List<Map<String, Object>>>());
+                    data.put("compositeKeyValue", "");
+                    data.put("singleKeyValue", "");
+                    data.put("compositeParts", new LinkedHashMap<String, Object>());
+                    data.put("primaryKeyNormalized", "");
+                    data.put("primaryKeyValue", "");
+                    data.put("fallbackBucket", Boolean.FALSE);
                     return data;
                 });
 
                 @SuppressWarnings("unchecked")
-                Map<String, Object> merged = (Map<String, Object>) bucket.get("merged");
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> rawList = (List<Map<String, Object>>) bucket.get("raw");
-                @SuppressWarnings("unchecked")
-                Set<String> sources = (Set<String>) bucket.get("sources");
+                Map<String, List<Map<String, Object>>> entriesByTable = (Map<String, List<Map<String, Object>>>) bucket.get("entriesByTable");
+                List<Map<String, Object>> tableEntries = entriesByTable.computeIfAbsent(tableTag, k -> new ArrayList<>());
 
-                if (compositeKeyFields.size() > 1) {
-                    merged.put("_compositeKey", keyValue);
-                    for (String fieldName : compositeKeyFields) {
-                        Object part = findFieldValue(normalized, fieldName, activeKeySynonyms);
-                        if (part != null) {
-                            merged.put(fieldName, part);
-                        }
+                Object primaryValue = findFieldValue(normalized, primaryKeyField, activeKeySynonyms);
+                String primaryNormalized = normalizeFusionMatchKey(primaryValue);
+                if (!isBlank(primaryNormalized)) {
+                    Object existingPrimaryNorm = bucket.get("primaryKeyNormalized");
+                    if (existingPrimaryNorm == null || isBlank(String.valueOf(existingPrimaryNorm))) {
+                        bucket.put("primaryKeyNormalized", primaryNormalized);
                     }
-                } else {
-                    merged.put(keyField, keyValue);
-                }
-                for (Map.Entry<String, Object> entry : normalized.entrySet()) {
-                    String field = entry.getKey();
-                    if (field == null || field.isBlank()) {
-                        continue;
+                    Object existingPrimaryValue = bucket.get("primaryKeyValue");
+                    if (existingPrimaryValue == null || isBlank(String.valueOf(existingPrimaryValue))) {
+                        bucket.put("primaryKeyValue", primaryValue);
                     }
-                    if (field.equalsIgnoreCase(keyField)) {
-                        continue;
-                    }
-                    merged.put(tableTag + "__" + field, entry.getValue());
                 }
 
                 Map<String, Object> rawItem = new LinkedHashMap<>();
                 rawItem.put("table", tableTag);
-                rawItem.put("sourceId", toLong(row.get("source_id")) == null ? 0L : toLong(row.get("source_id")));
+                rawItem.put("sourceId", safeSourceId);
                 rawItem.put("objectName", text(row.get("object_name")));
                 rawItem.put("rowNo", row.get("row_no"));
                 rawItem.put("raw", parseJsonObject(row.get("raw_json")));
-                rawList.add(rawItem);
-                sources.add(tableTag);
+                rawItem.put("normalized", normalized);
+                tableEntries.add(rawItem);
+
+                if (compositeKeyFields.size() > 1) {
+                    if (!isBlank(key)) {
+                        Object existingComposite = bucket.get("compositeKeyValue");
+                        if (existingComposite == null || isBlank(String.valueOf(existingComposite))) {
+                            bucket.put("compositeKeyValue", keyValue);
+                        }
+                    }
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> compositeParts = (Map<String, Object>) bucket.get("compositeParts");
+                    for (String fieldName : compositeKeyFields) {
+                        if (compositeParts.containsKey(fieldName)) {
+                            continue;
+                        }
+                        Object part = findFieldValue(normalized, fieldName, activeKeySynonyms);
+                        if (part != null && !isBlank(String.valueOf(part))) {
+                            compositeParts.put(fieldName, part);
+                        }
+                    }
+                } else {
+                    if (!isBlank(key)) {
+                        Object existingSingle = bucket.get("singleKeyValue");
+                        if (existingSingle == null || isBlank(String.valueOf(existingSingle))) {
+                            bucket.put("singleKeyValue", keyValue);
+                        }
+                    }
+                }
             }
         }
 
-        int inserted = 0;
-        for (Map<String, Object> bucket : mergedByKey.values()) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> merged = (Map<String, Object>) bucket.get("merged");
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> rawList = (List<Map<String, Object>>) bucket.get("raw");
-            @SuppressWarnings("unchecked")
-            Set<String> sources = (Set<String>) bucket.get("sources");
+        List<Map<String, Object>> effectiveBuckets = buildEffectiveBucketsForLooseFallback(mergedByKey, loosePrimaryFallback);
 
-            jdbcTemplate.update(
-                "INSERT INTO " + targetTableRef + "(fusion_task_id,clean_task_id,source_id,object_name,row_no,raw_json,normalized_json,source_standard_table,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
-                fusionTaskId,
-                0L,
-                0L,
-                "MERGED",
-                bucket.get("rowNo"),
-                toJson(rawList),
-                toJson(merged),
-                String.join(",", sources),
-                now()
-            );
-            inserted++;
+        int inserted = 0;
+        for (Map<String, Object> bucket : effectiveBuckets) {
+            @SuppressWarnings("unchecked")
+            Map<String, List<Map<String, Object>>> entriesByTable = (Map<String, List<Map<String, Object>>>) bucket.get("entriesByTable");
+            int maxRowsPerBucket = entriesByTable.values().stream().mapToInt(List::size).max().orElse(0);
+            if (maxRowsPerBucket <= 0) {
+                continue;
+            }
+
+            for (int i = 0; i < maxRowsPerBucket; i++) {
+                Map<String, Object> merged = new LinkedHashMap<>();
+                List<Map<String, Object>> rawList = new ArrayList<>();
+                Set<String> sources = new LinkedHashSet<>();
+                boolean fallbackBucket = Boolean.TRUE.equals(bucket.get("fallbackBucket"));
+
+                if (compositeKeyFields.size() > 1 && !fallbackBucket) {
+                    Object composite = bucket.get("compositeKeyValue");
+                    if (composite != null && !isBlank(String.valueOf(composite))) {
+                        merged.put("_compositeKey", composite);
+                    }
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> compositeParts = (Map<String, Object>) bucket.get("compositeParts");
+                    for (String fieldName : compositeKeyFields) {
+                        Object part = compositeParts.get(fieldName);
+                        if (part != null) {
+                            merged.put(fieldName, part);
+                        }
+                    }
+                } else if (compositeKeyFields.size() > 1) {
+                    Object primaryValue = bucket.get("primaryKeyValue");
+                    if (primaryValue != null && !isBlank(String.valueOf(primaryValue))) {
+                        merged.put(primaryKeyField, primaryValue);
+                    }
+                } else {
+                    Object single = bucket.get("singleKeyValue");
+                    if (single != null && !isBlank(String.valueOf(single))) {
+                        merged.put(keyField, single);
+                    }
+                }
+
+                for (Map.Entry<String, List<Map<String, Object>>> tableEntry : entriesByTable.entrySet()) {
+                    List<Map<String, Object>> records = tableEntry.getValue();
+                    if (i >= records.size()) {
+                        continue;
+                    }
+                    Map<String, Object> record = records.get(i);
+                    String tableTag = text(record.get("table"));
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> normalized = (Map<String, Object>) record.get("normalized");
+                    for (Map.Entry<String, Object> fieldEntry : normalized.entrySet()) {
+                        String field = fieldEntry.getKey();
+                        if (field == null || field.isBlank()) {
+                            continue;
+                        }
+                        if (field.equalsIgnoreCase(keyField)) {
+                            continue;
+                        }
+                        merged.put(tableTag + "__" + field, fieldEntry.getValue());
+                    }
+
+                    Map<String, Object> rawItem = new LinkedHashMap<>();
+                    rawItem.put("table", tableTag);
+                    rawItem.put("sourceId", record.get("sourceId"));
+                    rawItem.put("objectName", record.get("objectName"));
+                    rawItem.put("rowNo", record.get("rowNo"));
+                    rawItem.put("raw", record.get("raw"));
+                    rawList.add(rawItem);
+                    sources.add(tableTag);
+                }
+
+                if (fillMissingSourceRows) {
+                    for (String expectedTable : standardTables) {
+                        if (sources.contains(expectedTable)) {
+                            continue;
+                        }
+                        Map<String, Object> placeholderRaw = new LinkedHashMap<>();
+                        placeholderRaw.put("_missing", true);
+                        placeholderRaw.put("_reason", "NO_MATCHED_SOURCE_ROW");
+                        placeholderRaw.put("_sourceTable", expectedTable);
+
+                        Map<String, Object> rawItem = new LinkedHashMap<>();
+                        rawItem.put("table", expectedTable);
+                        rawItem.put("sourceId", 0L);
+                        rawItem.put("objectName", "MISSING_PLACEHOLDER");
+                        rawItem.put("rowNo", null);
+                        rawItem.put("raw", placeholderRaw);
+                        rawList.add(rawItem);
+                        sources.add(expectedTable);
+                    }
+                }
+
+                if (rawList.isEmpty()) {
+                    continue;
+                }
+
+                jdbcTemplate.update(
+                    "INSERT INTO " + targetTableRef + "(fusion_task_id,clean_task_id,source_id,object_name,row_no,raw_json,normalized_json,source_standard_table,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                    fusionTaskId,
+                    0L,
+                    0L,
+                    "MERGED",
+                    rowNo.getAndIncrement(),
+                    toJson(rawList),
+                    toJson(merged),
+                    String.join(",", sources),
+                    now()
+                );
+                inserted++;
+            }
         }
 
         return inserted;
+    }
+
+    private List<Map<String, Object>> buildEffectiveBucketsForLooseFallback(
+        LinkedHashMap<String, Map<String, Object>> strictBuckets,
+        boolean loosePrimaryFallback
+    ) {
+        if (!loosePrimaryFallback || strictBuckets.isEmpty()) {
+            return new ArrayList<>(strictBuckets.values());
+        }
+
+        List<Map<String, Object>> passthrough = new ArrayList<>();
+        Map<String, List<Map<String, Object>>> fallbackGroups = new LinkedHashMap<>();
+
+        for (Map<String, Object> bucket : strictBuckets.values()) {
+            String primary = text(bucket.get("primaryKeyNormalized"));
+            if (!isBlank(primary)) {
+                fallbackGroups.computeIfAbsent(primary, k -> new ArrayList<>()).add(bucket);
+            } else {
+                passthrough.add(bucket);
+            }
+        }
+
+        for (List<Map<String, Object>> group : fallbackGroups.values()) {
+            Set<String> tableSet = new LinkedHashSet<>();
+            for (Map<String, Object> bucket : group) {
+                @SuppressWarnings("unchecked")
+                Map<String, List<Map<String, Object>>> entriesByTable = (Map<String, List<Map<String, Object>>>) bucket.get("entriesByTable");
+                tableSet.addAll(entriesByTable.keySet());
+            }
+
+            if (tableSet.size() <= 1 || group.size() <= 1) {
+                passthrough.addAll(group);
+                continue;
+            }
+
+            Map<String, Object> combined = new LinkedHashMap<>();
+            Map<String, List<Map<String, Object>>> mergedEntries = new LinkedHashMap<>();
+            Map<String, Object> mergedParts = new LinkedHashMap<>();
+            Object primaryValue = "";
+            String primaryNormalized = "";
+            for (Map<String, Object> bucket : group) {
+                @SuppressWarnings("unchecked")
+                Map<String, List<Map<String, Object>>> entriesByTable = (Map<String, List<Map<String, Object>>>) bucket.get("entriesByTable");
+                for (Map.Entry<String, List<Map<String, Object>>> entry : entriesByTable.entrySet()) {
+                    mergedEntries.computeIfAbsent(entry.getKey(), k -> new ArrayList<>()).addAll(entry.getValue());
+                }
+
+                @SuppressWarnings("unchecked")
+                Map<String, Object> parts = (Map<String, Object>) bucket.get("compositeParts");
+                for (Map.Entry<String, Object> entry : parts.entrySet()) {
+                    mergedParts.putIfAbsent(entry.getKey(), entry.getValue());
+                }
+
+                if (isBlank(String.valueOf(primaryValue))) {
+                    Object candidate = bucket.get("primaryKeyValue");
+                    if (candidate != null && !isBlank(String.valueOf(candidate))) {
+                        primaryValue = candidate;
+                    }
+                }
+                if (isBlank(primaryNormalized)) {
+                    String candidate = text(bucket.get("primaryKeyNormalized"));
+                    if (!isBlank(candidate)) {
+                        primaryNormalized = candidate;
+                    }
+                }
+            }
+
+            combined.put("entriesByTable", mergedEntries);
+            combined.put("compositeKeyValue", "");
+            combined.put("singleKeyValue", primaryValue);
+            combined.put("compositeParts", mergedParts);
+            combined.put("primaryKeyNormalized", primaryNormalized);
+            combined.put("primaryKeyValue", primaryValue);
+            combined.put("fallbackBucket", Boolean.TRUE);
+            passthrough.add(combined);
+        }
+
+        return passthrough;
     }
 
     private String detectKeyField(List<String> standardTables, Map<String, List<String>> synonyms) {
@@ -399,7 +520,57 @@ public class StagingTableService {
         }
 
         List<String> firstKeys = keySets.get(0);
-        for (String candidate : firstKeys) {
+        List<String> sharedCandidates = firstKeys.stream()
+            .filter(candidate -> {
+                if (isBlank(candidate)) {
+                    return false;
+                }
+                for (int i = 1; i < keySets.size(); i++) {
+                    boolean matchedInTable = keySets.get(i).stream().anyMatch(field -> keyNameCompatible(field, candidate, synonyms));
+                    if (!matchedInTable) {
+                        return false;
+                    }
+                }
+                return true;
+            })
+            .toList();
+
+        String idLikeCandidate = sharedCandidates.stream()
+            .filter(this::isIdentifierLikeField)
+            .findFirst()
+            .orElse("");
+        String semanticCandidate = sharedCandidates.stream()
+            .filter(candidate -> !keyNameCompatible(candidate, idLikeCandidate, synonyms))
+            .filter(this::isSemanticPartitionField)
+            .findFirst()
+            .orElse("");
+        if (!isBlank(idLikeCandidate) && !isBlank(semanticCandidate)) {
+            return idLikeCandidate + "+" + semanticCandidate;
+        }
+
+        // Prefer stable identifier-like keys (e.g. customer_id, issue_id, xxxcode) to avoid matching on name/date fields.
+        List<String> preferred = sharedCandidates.stream()
+            .filter(this::isIdentifierLikeField)
+            .toList();
+
+        for (String candidate : preferred) {
+            if (isBlank(candidate)) {
+                continue;
+            }
+            boolean allMatched = true;
+            for (int i = 1; i < keySets.size(); i++) {
+                boolean matchedInTable = keySets.get(i).stream().anyMatch(field -> keyNameCompatible(field, candidate, synonyms));
+                if (!matchedInTable) {
+                    allMatched = false;
+                    break;
+                }
+            }
+            if (allMatched) {
+                return candidate;
+            }
+        }
+
+        for (String candidate : sharedCandidates) {
             if (isBlank(candidate)) {
                 continue;
             }
@@ -416,6 +587,26 @@ public class StagingTableService {
             }
         }
         return "";
+    }
+
+    private boolean isIdentifierLikeField(String fieldName) {
+        String normalized = canonicalKeyName(fieldName);
+        return normalized.contains("id")
+            || normalized.endsWith("code")
+            || normalized.contains("no")
+            || normalized.contains("number");
+    }
+
+    private boolean isSemanticPartitionField(String fieldName) {
+        String normalized = canonicalKeyName(fieldName);
+        return normalized.contains("category")
+            || normalized.contains("type")
+            || normalized.contains("status")
+            || normalized.contains("date")
+            || normalized.contains("类别")
+            || normalized.contains("类型")
+            || normalized.contains("状态")
+            || normalized.contains("日期");
     }
 
     private Object findFieldValue(Map<String, Object> row, String keyField, Map<String, List<String>> synonyms) {
@@ -603,6 +794,53 @@ public class StagingTableService {
             values.add(String.valueOf(value).trim());
         }
         return String.join("|", values);
+    }
+
+    private String normalizeFusionMatchKey(Object keyValue) {
+        if (keyValue == null) {
+            return "";
+        }
+        String raw = String.valueOf(keyValue).trim();
+        if (raw.isEmpty()) {
+            return "";
+        }
+        String compact = raw.replaceAll("\\s+", "");
+        return compact.toLowerCase();
+    }
+
+    private String buildFallbackMatchKey(Map<String, Object> row, Map<String, Object> fusionConfig, Map<String, List<String>> synonyms) {
+        if (row == null || row.isEmpty()) {
+            return "";
+        }
+
+        // Strong identifiers are preferred to avoid accidental over-merge.
+        List<String> strongFields = List.of("email", "mail", "phone", "mobile", "手机号", "邮箱");
+        for (String field : strongFields) {
+            Object value = findFieldValue(row, field, synonyms);
+            String normalized = normalizeFusionMatchKey(value);
+            if (!isBlank(normalized)) {
+                return field + ":" + normalized;
+            }
+        }
+
+        List<String> configuredFields = castStringList(fusionConfig.get("secondaryMatchFields"));
+        List<String> fallbackFields = configuredFields.isEmpty()
+            ? List.of("full_name", "name", "province", "city")
+            : configuredFields;
+
+        List<String> parts = new ArrayList<>();
+        for (String field : fallbackFields) {
+            Object value = findFieldValue(row, field, synonyms);
+            String normalized = normalizeFusionMatchKey(value);
+            if (!isBlank(normalized)) {
+                parts.add(field + ":" + normalized);
+            }
+        }
+
+        if (parts.size() >= 2) {
+            return String.join("|", parts);
+        }
+        return "";
     }
 
     private Map<String, Object> parseJsonObject(Object value) {
@@ -803,46 +1041,6 @@ public class StagingTableService {
             || normalized.startsWith("tmp_fusion_")
             || normalized.startsWith("std_")
             || normalized.startsWith("fuse_");
-    }
-
-    private List<String> readDatabaseRows(String objectName) {
-        String tableName = sanitizeTableName(objectName);
-        List<Map<String, Object>> records = jdbcTemplate.queryForList("SELECT * FROM " + tableName + " LIMIT 10000");
-        List<String> rows = new ArrayList<>();
-        for (Map<String, Object> record : records) {
-            rows.add(toJson(record));
-        }
-        return rows;
-    }
-
-    private List<String> extractRows(String ownerUsername, Long sourceId, String objectName) {
-        Map<String, Object> source = getSourceById(ownerUsername, sourceId);
-        String sourceType = text(source.get("type")).toUpperCase();
-        return switch (sourceType) {
-            case "DATABASE" -> readDatabaseRows(objectName);
-            case "FILE" -> fileRowReader.readRows(text(source.get("filePath")), text(source.get("fileName")));
-            default -> throw new IllegalArgumentException("不支持的数据源类型: " + sourceType);
-        };
-    }
-
-    private Map<String, Object> getSourceById(String ownerUsername, Long sourceId) {
-        List<Map<String, Object>> rows = jdbcTemplate.query(
-            "SELECT id,type,file_name,file_path FROM data_source_record WHERE owner_username=? AND id=?",
-            (rs, i) -> {
-                Map<String, Object> row = new HashMap<>();
-                row.put("id", rs.getLong("id"));
-                row.put("type", rs.getString("type"));
-                row.put("fileName", nvl(rs.getString("file_name")));
-                row.put("filePath", nvl(rs.getString("file_path")));
-                return row;
-            },
-            ownerUsername,
-            sourceId
-        );
-        if (rows.isEmpty()) {
-            throw new IllegalArgumentException("数据源不存在: " + sourceId);
-        }
-        return rows.get(0);
     }
 
     private String safeTableOrNull(String tableName) {
