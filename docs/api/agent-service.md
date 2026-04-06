@@ -33,7 +33,14 @@
 - `{"type":"chunk","content":"..."}`：增量文本分片
 - `{"type":"heartbeat","ts":...}`：连接保活心跳（客户端可忽略）
 - `{"type":"final", ...}`：最终结果，字段同普通接口
+- `{"type":"error","code":"...","message":"...","retryable":true|false}`：错误事件
 - `[DONE]`：结束标记
+
+`error.code` 约定：
+- `rate_limit`：触发频控限制
+- `stream_timeout`：流式生成超时
+- `upstream_error`：LLM 上游服务异常
+- `http_error` / `stream_error`：其他异常
 
 ## 4. 稳定性机制
 - 基于 Redis 的用户限流。

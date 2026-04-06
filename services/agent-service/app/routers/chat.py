@@ -59,6 +59,48 @@ async def _prepare_chat_context(x_user_name: str | None):
     return username, history, dashboard
 
 
+def _build_stream_error(exc: Exception) -> dict:
+    if isinstance(exc, HTTPException):
+        if exc.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+            return {
+                "type": "error",
+                "code": "rate_limit",
+                "message": str(exc.detail or "请求过于频繁，请稍后再试"),
+                "retryable": True,
+            }
+        return {
+            "type": "error",
+            "code": "http_error",
+            "message": str(exc.detail or "请求失败"),
+            "retryable": False,
+        }
+
+    if isinstance(exc, TimeoutError):
+        return {
+            "type": "error",
+            "code": "stream_timeout",
+            "message": str(exc) or "流式回答超时，请缩小问题范围后重试",
+            "retryable": True,
+        }
+
+    msg = str(exc) if exc else "流式响应异常"
+    lower_msg = msg.lower()
+    if "openai" in lower_msg or "azure" in lower_msg or "llm" in lower_msg:
+        return {
+            "type": "error",
+            "code": "upstream_error",
+            "message": msg,
+            "retryable": True,
+        }
+
+    return {
+        "type": "error",
+        "code": "stream_error",
+        "message": msg,
+        "retryable": False,
+    }
+
+
 @router.post("/api/agent/chat", summary="多轮对话问答")
 async def chat(
     payload: ChatRequest,
@@ -97,7 +139,17 @@ async def chat_stream(
 ):
     t_start = time.perf_counter()
     chat_requests_total.inc()
-    username, history, dashboard = await _prepare_chat_context(x_user_name)
+
+    try:
+        username, history, dashboard = await _prepare_chat_context(x_user_name)
+    except Exception as exc:
+        error_payload = _build_stream_error(exc)
+
+        async def precheck_failed_gen():
+            yield f"data: {json.dumps(error_payload, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(precheck_failed_gen(), media_type="text/event-stream")
 
     async def event_gen():
         chunks: list[str] = []
@@ -152,8 +204,9 @@ async def chat_stream(
             yield f"data: {json.dumps(final_payload, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as exc:
-            err_payload = {"type": "error", "message": str(exc)}
+            err_payload = _build_stream_error(exc)
             yield f"data: {json.dumps(err_payload, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
         finally:
             if not producer_task.done():
                 producer_task.cancel()

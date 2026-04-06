@@ -266,7 +266,10 @@ async function sendQuestion() {
           assistantMsg.historyTurns = historyTurns
         },
         onError: (message) => {
-          throw new Error(message || '流式分析失败')
+          const err = new Error(message?.message || message || '流式分析失败')
+          err.code = message?.code || 'stream_error'
+          err.retryable = Boolean(message?.retryable)
+          throw err
         }
       })
       return
@@ -291,7 +294,16 @@ async function sendQuestion() {
     if (isAbort) {
       ElMessage.info('已停止生成')
     } else {
-      ElMessage.error(error?.response?.data?.message || error?.message || 'AI 分析请求失败')
+      const errCode = error?.code || ''
+      if (errCode === 'rate_limit') {
+        ElMessage.warning('请求过于频繁，请稍后重试')
+      } else if (errCode === 'stream_timeout') {
+        ElMessage.warning('本次生成超时，建议缩小问题范围后重试')
+      } else if (errCode === 'upstream_error') {
+        ElMessage.warning('模型服务暂时不可用，请稍后重试')
+      } else {
+        ElMessage.error(error?.response?.data?.message || error?.message || 'AI 分析请求失败')
+      }
     }
     messages.value.push({
       id: Date.now() + 2,

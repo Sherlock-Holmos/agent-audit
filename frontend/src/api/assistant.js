@@ -54,7 +54,11 @@ export async function chatWithAssistantStream({ question, onChunk, onFinal, onEr
         } else if (payload.type === 'final') {
           onFinal?.(payload)
         } else if (payload.type === 'error') {
-          onError?.(payload.message || '流式响应异常')
+          onError?.({
+            code: payload.code || 'stream_error',
+            message: payload.message || '流式响应异常',
+            retryable: Boolean(payload.retryable)
+          })
         }
       } catch {
         // ignore malformed partial frames
