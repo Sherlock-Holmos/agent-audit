@@ -37,6 +37,14 @@
               show-word-limit
             />
           </el-form-item>
+
+          <el-form-item label="报告模式">
+            <el-radio-group v-model="reportMode" class="report-mode-group">
+              <el-radio-button label="weekly">标准周报</el-radio-button>
+              <el-radio-button label="executive">管理摘要</el-radio-button>
+              <el-radio-button label="deep">深度诊断</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
         </el-form>
 
         <div class="template-wrap">
@@ -99,8 +107,14 @@
 
     <el-drawer v-model="reportDrawerVisible" title="整改分析报告" size="50%" destroy-on-close>
       <div class="report-toolbar">
+        <el-tag :type="missingReportSections.length ? 'warning' : 'success'" effect="plain">
+          {{ missingReportSections.length ? `结构缺失 ${missingReportSections.length} 项` : '结构检查通过' }}
+        </el-tag>
         <el-button type="primary" plain @click="downloadReport('md')" :disabled="!reportMarkdown">下载 Markdown</el-button>
         <el-button plain @click="downloadReport('json')" :disabled="!reportJson">下载 JSON</el-button>
+      </div>
+      <div v-if="missingReportSections.length" class="report-alert">
+        缺失章节：{{ missingReportSections.join('、') }}
       </div>
       <pre class="report-preview">{{ reportMarkdown || '暂无报告内容。' }}</pre>
     </el-drawer>
@@ -113,6 +127,7 @@ import { ElMessage } from 'element-plus'
 import { chatWithAssistant } from '../api/assistant'
 
 const analysisTheme = ref('risk')
+const reportMode = ref('weekly')
 const focusScope = ref('')
 const question = ref('')
 const loading = ref(false)
@@ -147,6 +162,12 @@ const themeLabelMap = {
   weekly: '管理层周报摘要'
 }
 
+const requiredSections = {
+  weekly: ['执行摘要', '关键风险点', '根因分析', '整改行动计划', '预期收益与跟踪指标'],
+  executive: ['执行摘要', '关键结论', '管理建议', '下周重点'],
+  deep: ['问题定义', '证据与现状', '根因分解', '整改路线图', '风险与依赖']
+}
+
 const latestAnswer = computed(() => {
   for (let i = messages.value.length - 1; i >= 0; i -= 1) {
     if (messages.value[i].role === 'assistant') {
@@ -154,6 +175,12 @@ const latestAnswer = computed(() => {
     }
   }
   return ''
+})
+
+const missingReportSections = computed(() => {
+  const markdown = reportMarkdown.value || ''
+  const targets = requiredSections[reportMode.value] || []
+  return targets.filter((section) => !markdown.includes(section))
 })
 
 function buildQuestion() {
@@ -271,17 +298,22 @@ async function generateReport() {
   try {
     const scope = focusScope.value.trim() || '全局'
     const theme = themeLabelMap[analysisTheme.value]
+    const sectionRules = requiredSections[reportMode.value] || requiredSections.weekly
+    const modeLabel = reportMode.value === 'weekly'
+      ? '标准周报'
+      : reportMode.value === 'executive'
+        ? '管理摘要'
+        : '深度诊断'
     const prompt = [
       '请基于以下审计整改会话生成一份结构化报告，要求使用 Markdown 输出。',
+      `报告模式：${modeLabel}`,
       `分析主题：${theme}`,
       `关注范围：${scope}`,
       '',
       '报告必须包含以下章节：',
-      '1. 执行摘要',
-      '2. 关键风险点（按高/中/低分级）',
-      '3. 根因分析',
-      '4. 整改行动计划（含优先级、责任建议、时间窗口）',
-      '5. 预期收益与跟踪指标',
+      ...sectionRules.map((item, idx) => `${idx + 1}. ${item}`),
+      '',
+      '请包含至少一个 Markdown 表格，用于展示优先级或行动清单。',
       '',
       '以下为会话内容：',
       transcript
@@ -297,10 +329,12 @@ async function generateReport() {
     reportMarkdown.value = markdown
     reportJson.value = {
       generatedAt: new Date().toISOString(),
+      reportMode: modeLabel,
       theme,
       scope,
       historyTurns: payload.historyTurns ?? latestHistoryTurns.value,
       confidence: payload.confidence ?? null,
+      missingSections: missingReportSections.value,
       markdown
     }
     reportDrawerVisible.value = true
@@ -313,15 +347,19 @@ async function generateReport() {
 }
 
 function downloadReport(type) {
+  const scopeSlug = (focusScope.value.trim() || 'global').replace(/[\\/:*?"<>|\s]+/g, '-').slice(0, 24)
+  const modeSlug = reportMode.value
+  const baseName = `ai-analysis-${modeSlug}-${scopeSlug}-${Date.now()}`
+
   if (type === 'md' && reportMarkdown.value) {
-    const fileName = `ai-analysis-report-${Date.now()}.md`
+    const fileName = `${baseName}.md`
     const blob = new Blob([reportMarkdown.value], { type: 'text/markdown;charset=utf-8' })
     triggerDownload(blob, fileName)
     return
   }
 
   if (type === 'json' && reportJson.value) {
-    const fileName = `ai-analysis-report-${Date.now()}.json`
+    const fileName = `${baseName}.json`
     const blob = new Blob([JSON.stringify(reportJson.value, null, 2)], { type: 'application/json;charset=utf-8' })
     triggerDownload(blob, fileName)
   }
@@ -496,8 +534,24 @@ function scrollToBottom() {
 
 .report-toolbar {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
   margin-bottom: 12px;
+}
+
+.report-alert {
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: #9a6700;
+  background: #fff9e8;
+  border: 1px solid #f2dea3;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.report-mode-group {
+  width: 100%;
 }
 
 .report-preview {
