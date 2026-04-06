@@ -234,16 +234,16 @@ Add-Check -Name "03 NiFi status via control-plane" -Script {
 Add-Check -Name "04 NiFi templates ready" -Script {
     $r = Invoke-Json -Method GET -Url "$gateway/api/data/control-plane/nifi/templates" -Headers $headers
     $items = @($r.data)
-    $clean = $items | Where-Object { $_.flowType -eq "CLEAN" -and $_.enabled -eq $true }
-    $fusion = $items | Where-Object { $_.flowType -eq "FUSION" -and $_.enabled -eq $true }
+    $clean = @($items | Where-Object { $_.flowType -eq "CLEAN" -and $_.enabled -eq $true })
+    $fusion = @($items | Where-Object { $_.flowType -eq "FUSION" -and $_.enabled -eq $true })
 
     if ($clean.Count -lt 1 -or $fusion.Count -lt 1) {
         if ($BootstrapIfMissing.IsPresent -and -not $ReadOnly.IsPresent) {
             Invoke-Json -Method POST -Url "$gateway/api/data/control-plane/nifi/templates/bootstrap" -Headers $headers | Out-Null
             $r2 = Invoke-Json -Method GET -Url "$gateway/api/data/control-plane/nifi/templates" -Headers $headers
             $items2 = @($r2.data)
-            $clean2 = $items2 | Where-Object { $_.flowType -eq "CLEAN" -and $_.enabled -eq $true }
-            $fusion2 = $items2 | Where-Object { $_.flowType -eq "FUSION" -and $_.enabled -eq $true }
+            $clean2 = @($items2 | Where-Object { $_.flowType -eq "CLEAN" -and $_.enabled -eq $true })
+            $fusion2 = @($items2 | Where-Object { $_.flowType -eq "FUSION" -and $_.enabled -eq $true })
             if ($clean2.Count -lt 1 -or $fusion2.Count -lt 1) {
                 throw "templates still missing after bootstrap"
             }
