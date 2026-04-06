@@ -33,6 +33,24 @@
       <el-form-item v-if="form.strategy === 'KEY_ALIGN' || form.strategy === 'TIME_WINDOW'" label="主键字段">
         <el-input v-model="form.keyField" placeholder="例如：整改事项ID+整改单位ID（支持组合键与同义字段映射，留空自动识别）" />
       </el-form-item>
+      <el-form-item v-if="form.strategy === 'KEY_ALIGN'" label="宽松二段匹配">
+        <el-switch
+          v-model="form.loosePrimaryFallback"
+          inline-prompt
+          active-text="开"
+          inactive-text="关"
+        />
+        <span class="hint-text">先按组合键严格匹配，未命中再按主键第一段兜底匹配</span>
+      </el-form-item>
+      <el-form-item v-if="form.strategy === 'KEY_ALIGN'" label="缺失源补全">
+        <el-switch
+          v-model="form.fillMissingSourceRows"
+          inline-prompt
+          active-text="开"
+          inactive-text="关"
+        />
+        <span class="hint-text">未命中来源将补占位记录，保证联合结果完整可解释</span>
+      </el-form-item>
       <el-form-item v-if="form.strategy === 'TIME_WINDOW'" label="时间字段">
         <el-input v-model="form.timeField" placeholder="例如：event_time（留空自动识别）" />
       </el-form-item>
@@ -92,6 +110,8 @@ const form = reactive({
   cleanTaskIds: [],
   strategy: 'KEY_ALIGN',
   keyField: '',
+  loosePrimaryFallback: false,
+  fillMissingSourceRows: false,
   timeField: '',
   windowMinutes: 60,
   matchFieldsText: '',
@@ -112,6 +132,8 @@ function resetForm() {
     cleanTaskIds: [],
     strategy: 'KEY_ALIGN',
     keyField: '',
+    loosePrimaryFallback: false,
+    fillMissingSourceRows: false,
     timeField: '',
     windowMinutes: 60,
     matchFieldsText: '',
@@ -137,6 +159,8 @@ watch(
         cleanTaskIds: Array.isArray(row.cleanTaskIds) ? row.cleanTaskIds.map((id) => String(id)) : [],
         strategy: row.strategy || 'KEY_ALIGN',
         keyField: fusionConfig.keyField || '',
+        loosePrimaryFallback: Boolean(fusionConfig.loosePrimaryFallback),
+        fillMissingSourceRows: Boolean(fusionConfig.fillMissingSourceRows),
         timeField: fusionConfig.timeField || '',
         windowMinutes: fusionConfig.windowMinutes || 60,
         matchFieldsText: Array.isArray(fusionConfig.matchFields) ? fusionConfig.matchFields.join(',') : '',
@@ -158,6 +182,10 @@ async function submit() {
   const fusionConfig = {}
   if (form.keyField.trim()) {
     fusionConfig.keyField = form.keyField.trim()
+  }
+  if (form.strategy === 'KEY_ALIGN') {
+    fusionConfig.loosePrimaryFallback = Boolean(form.loosePrimaryFallback)
+    fusionConfig.fillMissingSourceRows = Boolean(form.fillMissingSourceRows)
   }
   if (form.strategy === 'TIME_WINDOW') {
     if (form.timeField.trim()) {
@@ -184,3 +212,11 @@ async function submit() {
   })
 }
 </script>
+
+<style scoped>
+.hint-text {
+  margin-left: 10px;
+  color: #8b949e;
+  font-size: 12px;
+}
+</style>

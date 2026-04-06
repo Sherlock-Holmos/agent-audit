@@ -132,6 +132,7 @@ const previewStats = reactive({
   totalRows: 0,
   previewLimit: 0
 })
+const statusPollingTimers = ref([])
 const tableLayout = reactive({
   size: 'default'
 })
@@ -256,13 +257,51 @@ async function handleSubmit(payload) {
 }
 
 async function handleRun(id) {
+  markTaskRunningLocal(id)
+  scheduleStatusRefresh()
   try {
-    await runCleanTask(id)
+    const { data } = await runCleanTask(id)
+    mergeTaskLocal(data?.data)
     ElMessage.success('清洗任务执行成功')
     await loadData()
   } catch (error) {
     ElMessage.error(getErrorMessage(error, '执行失败'))
+    await loadData()
   }
+}
+
+function markTaskRunningLocal(id) {
+  tasks.value = tasks.value.map((item) => (
+    item.id === id
+      ? { ...item, status: 'RUNNING' }
+      : item
+  ))
+}
+
+function mergeTaskLocal(task) {
+  if (!task || typeof task !== 'object') return
+  const taskId = Number(task.id)
+  if (!Number.isFinite(taskId)) return
+  tasks.value = tasks.value.map((item) => (
+    Number(item.id) === taskId
+      ? { ...item, ...task }
+      : item
+  ))
+}
+
+function scheduleStatusRefresh() {
+  clearStatusPollingTimers()
+  ;[800, 2500, 5000].forEach((delay) => {
+    const timer = window.setTimeout(() => {
+      loadData().catch(() => {})
+    }, delay)
+    statusPollingTimers.value.push(timer)
+  })
+}
+
+function clearStatusPollingTimers() {
+  statusPollingTimers.value.forEach((timer) => window.clearTimeout(timer))
+  statusPollingTimers.value = []
 }
 
 async function handleDelete(id) {
@@ -372,6 +411,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  clearStatusPollingTimers()
   window.removeEventListener('table-layout-config-changed', handleTableLayoutChanged)
 })
 </script>

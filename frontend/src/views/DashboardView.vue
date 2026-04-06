@@ -261,7 +261,7 @@ function updateClock() {
 
 async function loadFusionOptions(options = {}) {
   const { data } = await fetchFusionOptions(options)
-  fusionOptions.value = data.data || []
+  fusionOptions.value = (data && data.data) || []
   if (!selectedFusionTaskId.value && fusionOptions.value.length > 0) {
     selectedFusionTaskId.value = fusionOptions.value[0].id
   }
@@ -288,9 +288,13 @@ async function loadAllData(options = {}) {
       return
     }
 
-    Object.assign(dashboardData, dashboardRes.data || {})
-    Object.assign(trendData, trendRes.data || { dates: [], rates: [], predicted: [] })
-    Object.assign(heatData, heatmapRes.data || { departments: [], metrics: [], values: [] })
+    const dashboardPayload = dashboardRes?.data?.data || {}
+    const trendPayload = trendRes?.data?.data || { dates: [], rates: [], predicted: [] }
+    const heatmapPayload = heatmapRes?.data?.data || { departments: [], metrics: [], values: [] }
+
+    Object.assign(dashboardData, dashboardPayload)
+    Object.assign(trendData, trendPayload)
+    Object.assign(heatData, heatmapPayload)
 
     if (dashboardData.message && dashboardData.message !== lastWarningMessage.value) {
       lastWarningMessage.value = dashboardData.message
