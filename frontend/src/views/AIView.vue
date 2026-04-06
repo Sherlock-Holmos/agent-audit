@@ -53,6 +53,17 @@
               inactive-text="普通"
             />
           </el-form-item>
+
+          <el-form-item label="当前模型">
+            <el-select v-model="selectedModel" style="width: 100%" filterable>
+              <el-option
+                v-for="item in modelOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+          </el-form-item>
         </el-form>
 
         <div class="template-wrap">
@@ -138,13 +149,14 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { chatWithAssistant, chatWithAssistantStream } from '../api/assistant'
 
 const analysisTheme = ref('risk')
 const reportMode = ref('weekly')
 const enableStream = ref(true)
+const AI_MODEL_SETTINGS_KEY = 'app:ai:model-settings:v1'
 const focusScope = ref('')
 const question = ref('')
 const loading = ref(false)
@@ -155,6 +167,12 @@ const latestHistoryTurns = ref(0)
 const reportDrawerVisible = ref(false)
 const reportMarkdown = ref('')
 const reportJson = ref(null)
+const selectedModel = ref('gpt-4o-mini')
+const modelOptions = ref([
+  { label: 'GPT-4o-mini', value: 'gpt-4o-mini' },
+  { label: 'GPT-4o', value: 'gpt-4o' },
+  { label: 'DeepSeek-V3', value: 'deepseek-chat' }
+])
 
 const quickTemplates = [
   '请按风险等级给出本周整改优先级清单。',
@@ -212,7 +230,7 @@ function buildQuestion() {
     ? `分析主题：${themeLabel}；关注范围：${scope}。`
     : `分析主题：${themeLabel}。`
 
-  return `${prefix}\n${raw}`
+  return `${prefix}；建议模型：${selectedModel.value || '默认模型'}。\n${raw}`
 }
 
 function useTemplate(text) {
@@ -456,6 +474,64 @@ function scrollToBottom() {
   if (!el) return
   el.scrollTop = el.scrollHeight
 }
+
+function loadAiModelSettings() {
+  try {
+    const cached = localStorage.getItem(AI_MODEL_SETTINGS_KEY)
+    if (!cached) return
+    const parsed = JSON.parse(cached)
+
+    if (Array.isArray(parsed?.modelOptions)) {
+      const normalized = parsed.modelOptions
+        .filter((it) => typeof it?.label === 'string' && typeof it?.value === 'string')
+        .map((it) => ({ label: it.label, value: it.value }))
+      if (normalized.length > 0) {
+        modelOptions.value = normalized
+      }
+    }
+
+    if (typeof parsed?.defaultModel === 'string' && parsed.defaultModel) {
+      selectedModel.value = parsed.defaultModel
+    } else if (!modelOptions.value.some((it) => it.value === selectedModel.value)) {
+      selectedModel.value = modelOptions.value[0]?.value || ''
+    }
+  } catch {
+    // ignore invalid settings cache
+  }
+}
+
+function handleAiModelSettingsChanged(event) {
+  const detail = event?.detail
+  if (!detail || typeof detail !== 'object') {
+    loadAiModelSettings()
+    return
+  }
+
+  if (Array.isArray(detail.modelOptions)) {
+    const normalized = detail.modelOptions
+      .filter((it) => typeof it?.label === 'string' && typeof it?.value === 'string')
+      .map((it) => ({ label: it.label, value: it.value }))
+    if (normalized.length > 0) {
+      modelOptions.value = normalized
+    }
+  }
+
+  if (typeof detail.defaultModel === 'string' && detail.defaultModel) {
+    selectedModel.value = detail.defaultModel
+  }
+  if (!modelOptions.value.some((it) => it.value === selectedModel.value)) {
+    selectedModel.value = modelOptions.value[0]?.value || ''
+  }
+}
+
+onMounted(() => {
+  loadAiModelSettings()
+  window.addEventListener('ai-model-settings-changed', handleAiModelSettingsChanged)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('ai-model-settings-changed', handleAiModelSettingsChanged)
+})
 </script>
 
 <style scoped>

@@ -114,10 +114,64 @@
           </el-form-item>
         </el-form>
 
+        <el-form v-else-if="currentNodeId === 'ai-models'" label-width="140px">
+          <el-form-item label="模型提供商">
+            <el-select v-model="forms.ai.provider" style="width: 220px">
+              <el-option label="Mock" value="mock" />
+              <el-option label="OpenAI" value="openai" />
+              <el-option label="Azure OpenAI" value="azure" />
+              <el-option label="自定义代理" value="custom" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="默认模型">
+            <el-select v-model="forms.ai.defaultModel" style="width: 320px" filterable allow-create>
+              <el-option
+                v-for="item in forms.ai.modelOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="模型选项">
+            <div class="ai-model-options-wrap">
+              <div class="ai-model-options-header">
+                <span class="hint-text">可添加多个候选模型（用于 AI 分析页选择）</span>
+                <el-button type="primary" plain @click="openModelDialog">添加模型</el-button>
+              </div>
+
+              <el-table :data="forms.ai.modelOptions" border empty-text="暂无模型选项" class="ai-model-table">
+                <el-table-column prop="label" label="显示名称" min-width="160" />
+                <el-table-column prop="value" label="模型标识" min-width="180" />
+                <el-table-column label="操作" width="100" align="center">
+                  <template #default="scope">
+                    <el-button type="danger" text @click="removeModelOption(scope.$index)">删除</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </el-form-item>
+        </el-form>
+
         <el-empty v-else description="请选择左侧设置项" />
       </el-card>
     </el-col>
   </el-row>
+
+  <el-dialog v-model="modelDialogVisible" title="添加大模型" width="460px" destroy-on-close>
+    <el-form label-width="90px">
+      <el-form-item label="显示名称">
+        <el-input v-model="newModel.label" maxlength="40" placeholder="例如：GPT-4o-mini" />
+      </el-form-item>
+      <el-form-item label="模型标识">
+        <el-input v-model="newModel.value" maxlength="80" placeholder="例如：gpt-4o-mini" />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="modelDialogVisible = false">取消</el-button>
+      <el-button type="primary" @click="confirmAddModel">确定</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
@@ -131,6 +185,13 @@ const currentNodeId = ref('basic-audit')
 const appStore = useAppStore()
 const { themeMode } = storeToRefs(appStore)
 const GLOBAL_TABLE_LAYOUT_KEY = 'app:table-layout:global'
+const AI_MODEL_SETTINGS_KEY = 'app:ai:model-settings:v1'
+
+const modelDialogVisible = ref(false)
+const newModel = reactive({
+  label: '',
+  value: ''
+})
 
 const settingTree = [
   {
@@ -154,6 +215,13 @@ const settingTree = [
       { id: 'data-source', label: '数据源接入策略' },
       { id: 'data-clean', label: '数据清洗策略' }
     ]
+  },
+  {
+    id: 'ai',
+    label: 'AI设置',
+    children: [
+      { id: 'ai-models', label: '大模型选项管理' }
+    ]
   }
 ]
 
@@ -163,7 +231,8 @@ const titleMap = {
   'basic-table': '表格布局',
   'security-auth': '认证与会话策略',
   'data-source': '数据源接入策略',
-  'data-clean': '数据清洗策略'
+  'data-clean': '数据清洗策略',
+  'ai-models': '大模型选项管理'
 }
 
 const forms = reactive({
@@ -193,6 +262,15 @@ const forms = reactive({
     dedupStrategy: 'PRIMARY_KEY',
     errorRetentionDays: 30,
     maxConcurrentJob: 3
+  },
+  ai: {
+    provider: 'mock',
+    defaultModel: 'gpt-4o-mini',
+    modelOptions: [
+      { label: 'GPT-4o-mini', value: 'gpt-4o-mini' },
+      { label: 'GPT-4o', value: 'gpt-4o' },
+      { label: 'DeepSeek-V3', value: 'deepseek-chat' }
+    ]
   }
 })
 
@@ -217,10 +295,55 @@ async function saveCurrent() {
       localStorage.setItem(GLOBAL_TABLE_LAYOUT_KEY, JSON.stringify(payload))
       window.dispatchEvent(new CustomEvent('table-layout-config-changed', { detail: payload }))
     }
+    if (currentNodeId.value === 'ai-models') {
+      const payload = {
+        provider: forms.ai.provider,
+        defaultModel: forms.ai.defaultModel,
+        modelOptions: forms.ai.modelOptions
+      }
+      localStorage.setItem(AI_MODEL_SETTINGS_KEY, JSON.stringify(payload))
+      window.dispatchEvent(new CustomEvent('ai-model-settings-changed', { detail: payload }))
+    }
     await new Promise((resolve) => setTimeout(resolve, 400))
     ElMessage.success(`${currentTitle.value}保存成功`)
   } finally {
     saving.value = false
+  }
+}
+
+function openModelDialog() {
+  newModel.label = ''
+  newModel.value = ''
+  modelDialogVisible.value = true
+}
+
+function confirmAddModel() {
+  const label = (newModel.label || '').trim()
+  const value = (newModel.value || '').trim()
+  if (!label || !value) {
+    ElMessage.warning('请填写显示名称和模型标识')
+    return
+  }
+
+  const exists = forms.ai.modelOptions.some((item) => item.value === value)
+  if (exists) {
+    ElMessage.warning('模型标识已存在，请勿重复添加')
+    return
+  }
+
+  forms.ai.modelOptions.push({ label, value })
+  if (!forms.ai.defaultModel) {
+    forms.ai.defaultModel = value
+  }
+  modelDialogVisible.value = false
+}
+
+function removeModelOption(index) {
+  const removed = forms.ai.modelOptions.splice(index, 1)[0]
+  if (!removed) return
+
+  if (forms.ai.defaultModel === removed.value) {
+    forms.ai.defaultModel = forms.ai.modelOptions[0]?.value || ''
   }
 }
 
@@ -240,8 +363,34 @@ function loadGlobalTableLayout() {
   }
 }
 
+function loadAiModelSettings() {
+  try {
+    const cached = localStorage.getItem(AI_MODEL_SETTINGS_KEY)
+    if (!cached) return
+    const parsed = JSON.parse(cached)
+    if (typeof parsed?.provider === 'string') {
+      forms.ai.provider = parsed.provider
+    }
+    if (Array.isArray(parsed?.modelOptions)) {
+      forms.ai.modelOptions = parsed.modelOptions
+        .filter((it) => typeof it?.label === 'string' && typeof it?.value === 'string')
+        .map((it) => ({ label: it.label, value: it.value }))
+    }
+    if (typeof parsed?.defaultModel === 'string') {
+      forms.ai.defaultModel = parsed.defaultModel
+    }
+    const hasDefault = forms.ai.modelOptions.some((it) => it.value === forms.ai.defaultModel)
+    if (!hasDefault) {
+      forms.ai.defaultModel = forms.ai.modelOptions[0]?.value || ''
+    }
+  } catch {
+    // ignore invalid cache
+  }
+}
+
 onMounted(() => {
   loadGlobalTableLayout()
+  loadAiModelSettings()
 })
 </script>
 
@@ -273,5 +422,20 @@ onMounted(() => {
 .hint-text {
   color: #909399;
   font-size: 13px;
+}
+
+.ai-model-options-wrap {
+  width: 100%;
+}
+
+.ai-model-options-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.ai-model-table {
+  width: 100%;
 }
 </style>
