@@ -1,6 +1,7 @@
 import time
 import logging
 import json
+import asyncio
 
 from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, field_validator
@@ -15,6 +16,7 @@ from app.services.session import session_service
 from app.services.dashboard import fetch_dashboard
 from app.services.agent_impl import AgentServiceImpl
 from app.services.iagent import IAgentService
+from app.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -99,13 +101,39 @@ async def chat_stream(
 
     async def event_gen():
         chunks: list[str] = []
+        queue: asyncio.Queue[str] = asyncio.Queue()
+        producer_done = asyncio.Event()
+
+        async def produce_chunks():
+            try:
+                async for chunk in _agent_service.run_agent_stream(payload.question, history, dashboard):
+                    text = str(chunk)
+                    if text:
+                        await queue.put(text)
+            finally:
+                producer_done.set()
+
+        producer_task = asyncio.create_task(produce_chunks())
+        started_at = time.perf_counter()
+
         try:
-            async for chunk in _agent_service.run_agent_stream(payload.question, history, dashboard):
-                text = str(chunk)
-                if not text:
-                    continue
-                chunks.append(text)
-                yield f"data: {json.dumps({'type': 'chunk', 'content': text}, ensure_ascii=False)}\n\n"
+            while True:
+                elapsed = time.perf_counter() - started_at
+                remaining = float(settings.agent_stream_max_duration_seconds) - elapsed
+                if remaining <= 0:
+                    raise TimeoutError("流式回答超时，请缩小问题范围后重试")
+
+                wait_timeout = min(float(settings.agent_stream_heartbeat_seconds), remaining)
+
+                try:
+                    text = await asyncio.wait_for(queue.get(), timeout=wait_timeout)
+                    chunks.append(text)
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': text}, ensure_ascii=False)}\n\n"
+                except asyncio.TimeoutError:
+                    if producer_done.is_set() and queue.empty():
+                        break
+                    heartbeat_payload = {"type": "heartbeat", "ts": int(time.time())}
+                    yield f"data: {json.dumps(heartbeat_payload, ensure_ascii=False)}\n\n"
 
             full_answer = "".join(chunks).strip()
             await session_service.append_turn(username, payload.question, full_answer)
@@ -126,5 +154,12 @@ async def chat_stream(
         except Exception as exc:
             err_payload = {"type": "error", "message": str(exc)}
             yield f"data: {json.dumps(err_payload, ensure_ascii=False)}\n\n"
+        finally:
+            if not producer_task.done():
+                producer_task.cancel()
+            try:
+                await producer_task
+            except asyncio.CancelledError:
+                pass
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")

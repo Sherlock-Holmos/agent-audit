@@ -31,6 +31,7 @@
 
 流式接口事件格式（`text/event-stream`）：
 - `{"type":"chunk","content":"..."}`：增量文本分片
+- `{"type":"heartbeat","ts":...}`：连接保活心跳（客户端可忽略）
 - `{"type":"final", ...}`：最终结果，字段同普通接口
 - `[DONE]`：结束标记
 
@@ -38,6 +39,8 @@
 - 基于 Redis 的用户限流。
 - 下游 data-service 调用超时与重试。
 - 下游失败时返回兜底数据，避免接口整体失败。
+- 流式接口支持周期心跳，降低代理层空闲断连风险。
+- 流式接口带最大持续时长保护，超时后返回 `error` 事件。
 - 默认支持 `mock/openai/azure` 三类模型提供商切换。
 - 预留 `VECTOR_STORE_TYPE` 配置，可启用 Chroma 或 pgvector 检索增强。
 
@@ -53,6 +56,5 @@
 - `audit_agent_chat_duration_seconds`
 
 ## 6. 规划能力
-- `POST /api/agent/chat/stream`（SSE 流式响应）
 - `POST /api/agent/report/generate`
 - `GET /api/agent/report/{reportId}`
