@@ -115,7 +115,11 @@ function Resolve-AuthToken {
         return $token
     }
     catch {
-        throw "failed to acquire token from /api/auth/login: $($_.Exception.Message)"
+        $rawMsg = [string]$_.Exception.Message
+        if ($rawMsg -like "*401*" -or $rawMsg -like "*Unauthorized*" -or $rawMsg -like "*未经授权*") {
+            throw "failed to acquire token for user '$User' from /api/auth/login (401 unauthorized). Please provide the correct -AuthPassword or pass -BearerToken directly."
+        }
+        throw "failed to acquire token from /api/auth/login: $rawMsg"
     }
 }
 
