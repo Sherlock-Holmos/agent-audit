@@ -107,6 +107,14 @@
           />
           <div class="composer-actions">
             <el-button @click="copyLatestAnswer" :disabled="!latestAnswer">复制最新回答</el-button>
+            <el-button
+              v-if="loading && enableStream"
+              type="danger"
+              plain
+              @click="stopStreaming"
+            >
+              停止生成
+            </el-button>
             <el-button type="primary" :loading="loading" @click="sendQuestion">开始分析</el-button>
           </div>
         </div>
@@ -140,6 +148,7 @@ const enableStream = ref(true)
 const focusScope = ref('')
 const question = ref('')
 const loading = ref(false)
+const streamController = ref(null)
 const reportLoading = ref(false)
 const chatBodyRef = ref(null)
 const latestHistoryTurns = ref(0)
@@ -240,8 +249,10 @@ async function sendQuestion() {
       await nextTick()
       scrollToBottom()
 
+      streamController.value = new AbortController()
       await chatWithAssistantStream({
         question: finalQuestion,
+        signal: streamController.value?.signal,
         onChunk: async (chunk) => {
           assistantMsg.content += chunk
           await nextTick()
@@ -276,19 +287,29 @@ async function sendQuestion() {
       historyTurns
     })
   } catch (error) {
-    ElMessage.error(error?.response?.data?.message || error?.message || 'AI 分析请求失败')
+    const isAbort = error?.name === 'AbortError'
+    if (isAbort) {
+      ElMessage.info('已停止生成')
+    } else {
+      ElMessage.error(error?.response?.data?.message || error?.message || 'AI 分析请求失败')
+    }
     messages.value.push({
       id: Date.now() + 2,
       role: 'assistant',
-      content: 'AI 服务暂时不可用，请稍后再试。',
+      content: isAbort ? '本次分析已手动停止。' : 'AI 服务暂时不可用，请稍后再试。',
       confidence: '',
       historyTurns: -1
     })
   } finally {
+    streamController.value = null
     loading.value = false
     await nextTick()
     scrollToBottom()
   }
+}
+
+function stopStreaming() {
+  streamController.value?.abort()
 }
 
 async function copyLatestAnswer() {

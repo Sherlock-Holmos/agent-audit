@@ -3,13 +3,14 @@ import client from './client'
 export const chatWithAssistant = (question) =>
   client.post('/agent/chat', { question })
 
-export async function chatWithAssistantStream({ question, onChunk, onFinal, onError }) {
+export async function chatWithAssistantStream({ question, onChunk, onFinal, onError, signal }) {
   const token = localStorage.getItem('token')
   const user = JSON.parse(localStorage.getItem('user') || '{}')
   const username = user?.username || user?.userName || ''
 
   const resp = await fetch('/api/agent/chat/stream', {
     method: 'POST',
+    signal,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
