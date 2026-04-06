@@ -13,6 +13,7 @@
 
 ## 3. 已实现接口
 1. `POST /api/agent/chat`
+2. `POST /api/agent/chat/stream`（SSE 流式返回）
 
 请求体示例：
 ```json
@@ -27,6 +28,11 @@
 - `confidence`
 - `historyTurns`
 - `user`
+
+流式接口事件格式（`text/event-stream`）：
+- `{"type":"chunk","content":"..."}`：增量文本分片
+- `{"type":"final", ...}`：最终结果，字段同普通接口
+- `[DONE]`：结束标记
 
 ## 4. 稳定性机制
 - 基于 Redis 的用户限流。

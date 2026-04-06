@@ -1,7 +1,7 @@
 """Agent 服务的抽象基类定义 - 支持多 LLM 提供商和 RAG 扩展"""
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import AsyncIterator, Optional
 
 
 class ILLMProvider(ABC):
@@ -61,4 +61,14 @@ class IAgentService(ABC):
         Returns:
             LLM 生成的回答字符串
         """
+        pass
+
+    @abstractmethod
+    async def run_agent_stream(
+        self,
+        question: str,
+        history: list[dict],
+        dashboard: dict,
+    ) -> AsyncIterator[str]:
+        """以流式方式返回回答分片。"""
         pass

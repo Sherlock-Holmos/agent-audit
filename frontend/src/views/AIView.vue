@@ -45,6 +45,14 @@
               <el-radio-button label="deep">深度诊断</el-radio-button>
             </el-radio-group>
           </el-form-item>
+
+          <el-form-item label="回复方式">
+            <el-switch
+              v-model="enableStream"
+              active-text="流式"
+              inactive-text="普通"
+            />
+          </el-form-item>
         </el-form>
 
         <div class="template-wrap">
@@ -124,10 +132,11 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { chatWithAssistant } from '../api/assistant'
+import { chatWithAssistant, chatWithAssistantStream } from '../api/assistant'
 
 const analysisTheme = ref('risk')
 const reportMode = ref('weekly')
+const enableStream = ref(true)
 const focusScope = ref('')
 const question = ref('')
 const loading = ref(false)
@@ -219,6 +228,39 @@ async function sendQuestion() {
   scrollToBottom()
 
   try {
+    if (enableStream.value) {
+      const assistantMsg = {
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: '',
+        confidence: '',
+        historyTurns: -1
+      }
+      messages.value.push(assistantMsg)
+      await nextTick()
+      scrollToBottom()
+
+      await chatWithAssistantStream({
+        question: finalQuestion,
+        onChunk: async (chunk) => {
+          assistantMsg.content += chunk
+          await nextTick()
+          scrollToBottom()
+        },
+        onFinal: (payload) => {
+          const historyTurns = Number(payload.historyTurns || 0)
+          latestHistoryTurns.value = historyTurns
+          assistantMsg.content = String(payload.answer || assistantMsg.content || '未获取到分析结论，请稍后重试。')
+          assistantMsg.confidence = payload.confidence != null ? Number(payload.confidence).toFixed(2) : ''
+          assistantMsg.historyTurns = historyTurns
+        },
+        onError: (message) => {
+          throw new Error(message || '流式分析失败')
+        }
+      })
+      return
+    }
+
     const { data } = await chatWithAssistant(finalQuestion)
     const payload = data?.data || data || {}
     const answer = String(payload.answer || '未获取到分析结论，请稍后重试。')

@@ -1,7 +1,7 @@
 """Agent 服务实现"""
 
 import logging
-from typing import Optional
+from typing import AsyncIterator
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
@@ -102,6 +102,43 @@ def _build_retriever():
 class AgentServiceImpl(IAgentService):
     """Agent 服务实现"""
 
+    async def _build_context(self, question: str, history: list[dict], dashboard: dict):
+        llm = _build_llm()
+
+        rag_context = ""
+        retriever = _build_retriever()
+        if retriever is not None:
+            try:
+                docs = await retriever.ainvoke(question)
+                if docs:
+                    snippets = "\n---\n".join(d.page_content for d in docs)
+                    rag_context = f"【知识库参考】\n{snippets}\n\n"
+                    logger.info("RAG retrieved %d docs for question", len(docs))
+            except Exception as exc:
+                logger.warning("RAG retrieval failed, skipping: %s", exc)
+
+        lc_history: list = []
+        for turn in history:
+            lc_history.append(HumanMessage(content=turn.get("q", "")))
+            lc_history.append(AIMessage(content=turn.get("a", "")))
+
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", _SYSTEM_TEMPLATE),
+                MessagesPlaceholder(variable_name="history"),
+                ("human", "{question}"),
+            ]
+        )
+        chain: Runnable = prompt | llm | StrOutputParser() if llm is not None else None
+        inputs = {
+            "completed_rate": dashboard.get("completedRate", "N/A"),
+            "overdue_count": dashboard.get("overdueCount", "N/A"),
+            "rag_context": rag_context,
+            "history": lc_history,
+            "question": question,
+        }
+        return llm, chain, inputs
+
     async def run_agent(
         self,
         question: str,
@@ -119,7 +156,7 @@ class AgentServiceImpl(IAgentService):
         Returns:
             LLM 生成的回答字符串
         """
-        llm = _build_llm()
+        llm, chain, inputs = await self._build_context(question, history, dashboard)
 
         # Mock 模式：直接返回占位回答，不走 LangChain 链路
         if llm is None:
@@ -131,42 +168,27 @@ class AgentServiceImpl(IAgentService):
                 "请设置 OPENAI_API_KEY（或 Azure OpenAI 环境变量）切换至真实 LLM。"
             )
 
-        # ── RAG 上下文（可选）─────────────────────────────────────────────────
-        rag_context = ""
-        retriever = _build_retriever()
-        if retriever is not None:
-            try:
-                docs = await retriever.ainvoke(question)
-                if docs:
-                    snippets = "\n---\n".join(d.page_content for d in docs)
-                    rag_context = f"【知识库参考】\n{snippets}\n\n"
-                    logger.info("RAG retrieved %d docs for question", len(docs))
-            except Exception as exc:
-                logger.warning("RAG retrieval failed, skipping: %s", exc)
-
-        # ── 历史消息转为 LangChain Message 列表 ─────────────────────────────
-        lc_history: list = []
-        for turn in history:
-            lc_history.append(HumanMessage(content=turn.get("q", "")))
-            lc_history.append(AIMessage(content=turn.get("a", "")))
-
-        # ── 构建 LCEL 链 ──────────────────────────────────────────────────────
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", _SYSTEM_TEMPLATE),
-                MessagesPlaceholder(variable_name="history"),
-                ("human", "{question}"),
-            ]
-        )
-        chain: Runnable = prompt | llm | StrOutputParser()
-
-        result: str = await chain.ainvoke(
-            {
-                "completed_rate": dashboard.get("completedRate", "N/A"),
-                "overdue_count": dashboard.get("overdueCount", "N/A"),
-                "rag_context": rag_context,
-                "history": lc_history,
-                "question": question,
-            }
-        )
+        result: str = await chain.ainvoke(inputs)
         return result
+
+    async def run_agent_stream(
+        self,
+        question: str,
+        history: list[dict],
+        dashboard: dict,
+    ) -> AsyncIterator[str]:
+        llm, chain, inputs = await self._build_context(question, history, dashboard)
+
+        if llm is None:
+            yield (
+                f"【Mock 模式】当前未配置 LLM_PROVIDER，已返回占位回答。\n"
+                f"整改完成率：{dashboard.get('completedRate', 'N/A')}%，"
+                f"待处理疑似空值：{dashboard.get('overdueCount', 'N/A')}。\n"
+                f"问题：{question}\n"
+                "请设置 OPENAI_API_KEY（或 Azure OpenAI 环境变量）切换至真实 LLM。"
+            )
+            return
+
+        async for chunk in chain.astream(inputs):
+            if chunk:
+                yield str(chunk)
