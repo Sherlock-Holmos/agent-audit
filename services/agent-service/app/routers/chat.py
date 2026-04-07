@@ -156,13 +156,17 @@ async def chat_stream(
         chunks: list[str] = []
         queue: asyncio.Queue[str] = asyncio.Queue()
         producer_done = asyncio.Event()
+        producer_error: Exception | None = None
 
         async def produce_chunks():
+            nonlocal producer_error
             try:
                 async for chunk in _agent_service.run_agent_stream(payload.question, history, dashboard, payload.llmConfig):
                     text = str(chunk)
                     if text:
                         await queue.put(text)
+            except Exception as exc:
+                producer_error = exc
             finally:
                 producer_done.set()
 
@@ -184,11 +188,15 @@ async def chat_stream(
                     yield f"data: {json.dumps({'type': 'chunk', 'content': text}, ensure_ascii=False)}\n\n"
                 except asyncio.TimeoutError:
                     if producer_done.is_set() and queue.empty():
+                        if producer_error is not None:
+                            raise producer_error
                         break
                     heartbeat_payload = {"type": "heartbeat", "ts": int(time.time())}
                     yield f"data: {json.dumps(heartbeat_payload, ensure_ascii=False)}\n\n"
 
             full_answer = "".join(chunks).strip()
+            if not full_answer:
+                raise RuntimeError("模型未返回有效内容，请检查模型配置或稍后重试")
             await session_service.append_turn(username, payload.question, full_answer)
 
             elapsed = time.perf_counter() - t_start

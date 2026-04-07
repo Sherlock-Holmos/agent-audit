@@ -1,10 +1,17 @@
 import client from './client'
 
 export const chatWithAssistant = (question, llmConfig = null) =>
-  client.post('/agent/chat', {
-    question,
-    ...(llmConfig ? { llmConfig } : {})
-  })
+  client.post(
+    '/agent/chat',
+    {
+      question,
+      ...(llmConfig ? { llmConfig } : {})
+    },
+    {
+      // 生成报告等场景耗时较长，覆盖全局 10s 超时。
+      timeout: 120000
+    }
+  )
 
 export async function chatWithAssistantStream({ question, llmConfig, onChunk, onFinal, onError, signal }) {
   const token = localStorage.getItem('token')

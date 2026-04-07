@@ -1,6 +1,7 @@
 package com.audit.data.controller;
 
 import com.audit.data.application.IDataProcessApplicationService;
+import com.audit.data.service.orchestration.DataProcessService;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -27,9 +28,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class DataProcessController {
 
     private final IDataProcessApplicationService dataProcessApplicationService;
+    private final DataProcessService dataProcessService;
 
-    public DataProcessController(IDataProcessApplicationService dataProcessApplicationService) {
+    public DataProcessController(
+        IDataProcessApplicationService dataProcessApplicationService,
+        DataProcessService dataProcessService
+    ) {
         this.dataProcessApplicationService = dataProcessApplicationService;
+        this.dataProcessService = dataProcessService;
     }
 
     @GetMapping("/clean/tasks")
@@ -418,6 +424,20 @@ public class DataProcessController {
         String taskType = String.valueOf(payload.getOrDefault("taskType", "")).trim();
         Long taskId = payload.get("taskId") instanceof Number n ? n.longValue() : null;
         return ApiResponse.success("对账完成", dataProcessApplicationService.reconcileNifiTask(username, taskType, taskId));
+    }
+
+    @PostMapping(value = "/control-plane/nifi/callback/clean/poll", consumes = "*/*")
+    public ApiResponse<Object> callbackCleanPoll() {
+        // 兼容历史 NiFi callback URL，统一触发自动对账。
+        dataProcessService.autoReconcileNifiRunningTasks();
+        return ApiResponse.success("ok", Map.of("accepted", true, "taskType", "CLEAN"));
+    }
+
+    @PostMapping(value = "/control-plane/nifi/callback/fusion/poll", consumes = "*/*")
+    public ApiResponse<Object> callbackFusionPoll() {
+        // 兼容历史 NiFi callback URL，统一触发自动对账。
+        dataProcessService.autoReconcileNifiRunningTasks();
+        return ApiResponse.success("ok", Map.of("accepted", true, "taskType", "FUSION"));
     }
 
     @PostMapping("/control-plane/nifi/tasks/repair-artifacts")

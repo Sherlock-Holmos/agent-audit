@@ -65,6 +65,7 @@ public class DataProcessService implements IDataProcessService {
     private final MeterRegistry meterRegistry;
     private final String stagingSchema;
     private final long nifiRunningTimeoutSeconds;
+    private final long nifiZeroRowCompleteGraceSeconds;
     private final boolean nifiAutoReconcileEnabled;
     private final int nifiAutoReconcileOwnerLimit;
     private final int nifiAutoReconcileTaskLimit;
@@ -87,6 +88,7 @@ public class DataProcessService implements IDataProcessService {
         NifiOrchestrationService nifiOrchestrationService,
         MeterRegistry meterRegistry,
         @Value("${app.nifi.running-timeout-seconds:1800}") long nifiRunningTimeoutSeconds,
+        @Value("${app.nifi.zero-row-complete-grace-seconds:20}") long nifiZeroRowCompleteGraceSeconds,
         @Value("${app.nifi.auto-reconcile.enabled:true}") boolean nifiAutoReconcileEnabled,
         @Value("${app.nifi.auto-reconcile.owner-limit:200}") int nifiAutoReconcileOwnerLimit,
         @Value("${app.nifi.auto-reconcile.task-limit:100}") int nifiAutoReconcileTaskLimit,
@@ -107,6 +109,7 @@ public class DataProcessService implements IDataProcessService {
         this.nifiOrchestrationService = nifiOrchestrationService;
         this.meterRegistry = meterRegistry;
         this.nifiRunningTimeoutSeconds = Math.max(60L, nifiRunningTimeoutSeconds);
+        this.nifiZeroRowCompleteGraceSeconds = Math.max(5L, nifiZeroRowCompleteGraceSeconds);
         this.nifiAutoReconcileEnabled = nifiAutoReconcileEnabled;
         this.nifiAutoReconcileOwnerLimit = Math.max(20, nifiAutoReconcileOwnerLimit);
         this.nifiAutoReconcileTaskLimit = Math.max(10, nifiAutoReconcileTaskLimit);
@@ -1242,7 +1245,7 @@ if (ff == null) {
     return
 }
 
-def owner = context.getProperty('owner.username').evaluateAttributeExpressions(ff).value
+def ownerHint = context.getProperty('owner.username').evaluateAttributeExpressions(ff).value
 def jdbcUrl = context.getProperty('db.url').evaluateAttributeExpressions(ff).value
 def jdbcUser = context.getProperty('db.user').evaluateAttributeExpressions(ff).value
 def jdbcPassword = context.getProperty('db.password').evaluateAttributeExpressions(ff).value
@@ -1294,9 +1297,9 @@ try {
         return found == null ? null : found.value
     }
 
-    def taskSql = 'SELECT id,target_table,standard_tables_json,fusion_config_json,strategy FROM fusion_task_record WHERE owner_username=? AND status=\'RUNNING\' ORDER BY updated_at ASC,id ASC LIMIT 1 FOR UPDATE'
+    def taskSql = "SELECT id,target_table,standard_tables_json,fusion_config_json,strategy FROM fusion_task_record WHERE owner_username=? AND status='RUNNING' ORDER BY updated_at ASC,id ASC LIMIT 1 FOR UPDATE"
     def ps = conn.prepareStatement(taskSql)
-    ps.setString(1, owner)
+    ps.setString(1, ownerHint)
     def rs = ps.executeQuery()
     if (!rs.next()) {
         conn.commit()
@@ -1444,7 +1447,7 @@ try {
             def merged = [:]
             def raw = []
             def src = new LinkedHashSet<String>()
-            def parts = (bucket.key ?: '').split('\\|', -1)
+            def parts = (bucket.key ?: "").split(Pattern.quote("|"), -1)
             keyParts.eachWithIndex { kp, idx ->
                 def part = parts.size() > idx ? parts[idx] : ''
                 if (part) merged[kp] = part
@@ -1491,7 +1494,7 @@ try {
     }
     ins.executeBatch()
 
-    def up = conn.prepareStatement('UPDATE fusion_task_record SET status=\'COMPLETED\', fusion_rows=?, updated_at=NOW() WHERE id=?')
+    def up = conn.prepareStatement("UPDATE fusion_task_record SET status='COMPLETED', fusion_rows=?, updated_at=NOW() WHERE id=?")
     up.setInt(1, outRows)
     up.setLong(2, taskId)
     up.executeUpdate()
@@ -1502,7 +1505,7 @@ try {
         try { conn.rollback() } catch (ignored) {}
         if (taskId != null) {
             try {
-                def fail = conn.prepareStatement('UPDATE fusion_task_record SET status=\'FAILED\', updated_at=NOW() WHERE id=?')
+                def fail = conn.prepareStatement("UPDATE fusion_task_record SET status='FAILED', updated_at=NOW() WHERE id=?")
                 fail.setLong(1, taskId)
                 fail.executeUpdate()
                 conn.commit()
@@ -1526,7 +1529,6 @@ import groovy.json.JsonSlurper
 import java.io.FileInputStream
 import java.util.regex.Pattern
 import java.sql.DriverManager
-import org.apache.poi.ss.usermodel.WorkbookFactory
 
 def ff = session.get()
 if (ff == null) {
@@ -1597,8 +1599,8 @@ def parseRuleActions = { String content ->
 
     trimmed.split(/\r?\n/).each { rawLine ->
         def line = String.valueOf(rawLine).trim()
-        if (!line || line.startsWith('#')) return
-        def parts = line.split('\\|', -1)
+        if (!line || line.startsWith("#")) return
+        def parts = line.split(Pattern.quote("|"), -1)
         def type = parts.length > 0 ? parts[0].trim().toLowerCase() : ''
         if (!type) return
         def field = parts.length > 1 && !parts[1].trim().isEmpty() ? parts[1].trim() : '*'
@@ -1682,7 +1684,15 @@ def readFileRows = { String path, String objectName ->
     def rows = []
     if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')) {
         def fis = new FileInputStream(path)
-        def wb = WorkbookFactory.create(fis)
+        def wb = null
+        try {
+            def workbookFactoryClass = Class.forName('org.apache.poi.ss.usermodel.WorkbookFactory')
+            def createMethod = workbookFactoryClass.getMethod('create', java.io.InputStream)
+            wb = createMethod.invoke(null, fis)
+        } catch (ClassNotFoundException ignoredPoi) {
+            fis.close()
+            return rows
+        }
         try {
             def sheet = wb.getSheetAt(0)
             def headerRow = sheet.getRow(sheet.getFirstRowNum())
@@ -1777,8 +1787,7 @@ try {
     conn = DriverManager.getConnection(jdbcUrl, jdbcUser, jdbcPassword)
     conn.autoCommit = false
 
-    def ps = conn.prepareStatement('SELECT id,standard_table,clean_objects_json,strategy_code,clean_rule_names_json FROM clean_task_record WHERE owner_username=? AND status=\'RUNNING\' ORDER BY updated_at ASC,id ASC LIMIT 1 FOR UPDATE')
-    ps.setString(1, owner)
+    def ps = conn.prepareStatement("SELECT id,owner_username,standard_table,clean_objects_json,strategy_code,clean_rule_names_json FROM clean_task_record WHERE status='RUNNING' ORDER BY updated_at ASC,id ASC LIMIT 1 FOR UPDATE")
     def rs = ps.executeQuery()
     if (!rs.next()) {
         conn.commit()
@@ -1786,6 +1795,10 @@ try {
         return
     }
     taskId = rs.getLong('id')
+    def taskOwner = String.valueOf(rs.getString('owner_username') ?: ownerHint ?: '').trim()
+    if (!taskOwner) {
+        throw new RuntimeException('task owner is empty')
+    }
     def standardTable = String.valueOf(rs.getString('standard_table'))
     def rawTable = standardTable.replaceFirst('^clean_std_', 'clean_raw_')
     def cleanObjects = slurper.parseText(String.valueOf(rs.getString('clean_objects_json')))
@@ -1807,7 +1820,7 @@ try {
     if (!cleanRuleNames.isEmpty()) {
         cleanRuleNames.each { rn ->
             def rp = conn.prepareStatement('SELECT content FROM clean_rule_record WHERE owner_username=? AND enabled=1 AND name=? ORDER BY id ASC LIMIT 1')
-            rp.setString(1, owner)
+            rp.setString(1, taskOwner)
             rp.setString(2, String.valueOf(rn))
             def rr = rp.executeQuery()
             if (rr.next()) {
@@ -1862,7 +1875,7 @@ try {
         def objectName = String.valueOf(obj.objectName)
         def srcPs = conn.prepareStatement('SELECT file_path,file_name,type FROM data_source_record WHERE id=? AND owner_username=? LIMIT 1')
         srcPs.setLong(1, sourceId)
-        srcPs.setString(2, owner)
+        srcPs.setString(2, taskOwner)
         def srcRs = srcPs.executeQuery()
         if (!srcRs.next()) {
             return
@@ -1931,7 +1944,7 @@ try {
     insRaw.executeBatch()
     insStd.executeBatch()
 
-    def up = conn.prepareStatement('UPDATE clean_task_record SET status=\'COMPLETED\', cleaned_rows=?, updated_at=NOW() WHERE id=?')
+    def up = conn.prepareStatement("UPDATE clean_task_record SET status='COMPLETED', cleaned_rows=?, updated_at=NOW() WHERE id=?")
     up.setInt(1, total)
     up.setLong(2, taskId)
     up.executeUpdate()
@@ -1942,7 +1955,7 @@ try {
         try { conn.rollback() } catch (ignored) {}
         if (taskId != null) {
             try {
-                def fail = conn.prepareStatement('UPDATE clean_task_record SET status=\'FAILED\', updated_at=NOW() WHERE id=?')
+                def fail = conn.prepareStatement("UPDATE clean_task_record SET status='FAILED', updated_at=NOW() WHERE id=?")
                 fail.setLong(1, taskId)
                 fail.executeUpdate()
                 conn.commit()
@@ -2188,10 +2201,11 @@ try {
 
         String standardTable = sanitizeTableName(text(cleanTask.get("standardTable")));
         Integer landedRows = queryCleanRows(standardTable, taskId);
-        if (landedRows != null && landedRows > 0) {
-            dataProcessTaskRepository.markCleanTaskCompleted(ownerUsername, taskId, landedRows);
+        if (landedRows != null && (landedRows > 0 || isTaskRunningBeyondGrace(cleanTask, nifiZeroRowCompleteGraceSeconds))) {
+            int finalRows = Math.max(0, landedRows);
+            dataProcessTaskRepository.markCleanTaskCompleted(ownerUsername, taskId, finalRows);
             persistCleanLayersAndGovernance(ownerUsername, taskId, standardTable, castMapList(cleanTask.get("cleanObjects")));
-            return Map.of("taskType", "CLEAN", "taskId", taskId, "outcome", "COMPLETED", "landedRows", landedRows, "table", standardTable);
+            return Map.of("taskType", "CLEAN", "taskId", taskId, "outcome", "COMPLETED", "landedRows", finalRows, "table", standardTable);
         }
 
         if (isTaskRunningTimeout(cleanTask)) {
@@ -2219,13 +2233,14 @@ try {
 
         String targetTable = sanitizeTableName(text(fusionTask.get("targetTable")));
         Integer landedRows = queryFusionRows(targetTable, taskId);
-        if (landedRows != null && landedRows > 0) {
-            dataProcessTaskRepository.markFusionTaskCompleted(ownerUsername, taskId, landedRows);
+        if (landedRows != null && (landedRows > 0 || isTaskRunningBeyondGrace(fusionTask, nifiZeroRowCompleteGraceSeconds))) {
+            int finalRows = Math.max(0, landedRows);
+            dataProcessTaskRepository.markFusionTaskCompleted(ownerUsername, taskId, finalRows);
             String strategy = text(fusionTask.get("strategy"));
             List<String> sourceTables = castStringList(fusionTask.get("standardTables"));
             stagingTableService.persistFusionResultToGold(ownerUsername, taskId, targetTable, strategy);
             persistGovernanceArtifacts(ownerUsername, "FUSION", taskId, targetTable, sourceTables);
-            return Map.of("taskType", "FUSION", "taskId", taskId, "outcome", "COMPLETED", "landedRows", landedRows, "table", targetTable);
+            return Map.of("taskType", "FUSION", "taskId", taskId, "outcome", "COMPLETED", "landedRows", finalRows, "table", targetTable);
         }
 
         if (isTaskRunningTimeout(fusionTask)) {
@@ -2891,16 +2906,24 @@ try {
     }
 
     private boolean isTaskRunningTimeout(Map<String, Object> task) {
+        long runningSeconds = getTaskRunningSeconds(task);
+        return runningSeconds >= nifiRunningTimeoutSeconds;
+    }
+
+    private boolean isTaskRunningBeyondGrace(Map<String, Object> task, long graceSeconds) {
+        return getTaskRunningSeconds(task) >= Math.max(1L, graceSeconds);
+    }
+
+    private long getTaskRunningSeconds(Map<String, Object> task) {
         String updatedAt = text(task.get("updatedAt"));
         if (isBlank(updatedAt)) {
-            return false;
+            return 0L;
         }
         try {
             LocalDateTime updateTime = LocalDateTime.parse(updatedAt, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-            long runningSeconds = java.time.Duration.between(updateTime.atZone(ZoneId.systemDefault()).toInstant(), Instant.now()).getSeconds();
-            return runningSeconds >= nifiRunningTimeoutSeconds;
+            return java.time.Duration.between(updateTime.atZone(ZoneId.systemDefault()).toInstant(), Instant.now()).getSeconds();
         } catch (RuntimeException ex) {
-            return false;
+            return 0L;
         }
     }
 

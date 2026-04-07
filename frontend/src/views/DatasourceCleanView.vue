@@ -107,6 +107,7 @@ import { listCleanRules } from '../api/clean-rule'
 import { listCleanStrategies } from '../api/clean-strategy'
 import { listDataSourceObjects, listDataSources } from '../api/datasource'
 import { createCleanTask, deleteCleanTask, getCleanTaskPreview, listCleanTasks, runCleanTask, updateCleanTask } from '../api/dataclean'
+import { reconcileNifiTask } from '../api/nifi-control-plane'
 import { getErrorMessage } from '../utils/error'
 import CleanToolbar from '../components/dataclean/CleanToolbar.vue'
 import CleanTable from '../components/dataclean/CleanTable.vue'
@@ -258,7 +259,7 @@ async function handleSubmit(payload) {
 
 async function handleRun(id) {
   markTaskRunningLocal(id)
-  scheduleStatusRefresh()
+  scheduleStatusRefresh(id)
   try {
     const { data } = await runCleanTask(id)
     mergeTaskLocal(data?.data)
@@ -289,14 +290,41 @@ function mergeTaskLocal(task) {
   ))
 }
 
-function scheduleStatusRefresh() {
+function scheduleStatusRefresh(taskId) {
   clearStatusPollingTimers()
-  ;[800, 2500, 5000].forEach((delay) => {
+  const startedAt = Date.now()
+  const maxWaitMs = 120000
+
+  const poll = async () => {
+    try {
+      if (taskId) {
+        await reconcileNifiTask({ taskType: 'CLEAN', taskId })
+      }
+    } catch {
+      // ignore reconcile errors, list refresh still continues
+    }
+
+    await loadData().catch(() => {})
+
+    const current = tasks.value.find((item) => Number(item.id) === Number(taskId))
+    const currentStatus = String(current?.status || '').toUpperCase()
+    const isTerminal = ['COMPLETED', 'FAILED', 'READY'].includes(currentStatus)
+    const timeout = Date.now() - startedAt >= maxWaitMs
+
+    if (isTerminal || timeout) {
+      return
+    }
+
     const timer = window.setTimeout(() => {
-      loadData().catch(() => {})
-    }, delay)
+      poll().catch(() => {})
+    }, 3000)
     statusPollingTimers.value.push(timer)
-  })
+  }
+
+  const first = window.setTimeout(() => {
+    poll().catch(() => {})
+  }, 800)
+  statusPollingTimers.value.push(first)
 }
 
 function clearStatusPollingTimers() {
