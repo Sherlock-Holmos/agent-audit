@@ -18,9 +18,23 @@
 请求体示例：
 ```json
 {
-  "question": "本周整改薄弱环节是什么？"
+  "question": "本周整改薄弱环节是什么？",
+  "llmConfig": {
+    "provider": "custom",
+    "model": "Pro/zai-org/GLM-4.7",
+    "apiKey": "YOUR_API_KEY",
+    "baseUrl": "https://api.siliconflow.cn/v1",
+    "apiVersion": ""
+  }
 }
 ```
+
+`llmConfig` 为可选字段：
+- `provider`: `mock | openai | azure | custom`
+- `model`: 模型名称或部署名
+- `apiKey`: 模型平台 API Key
+- `baseUrl`: OpenAI 兼容网关地址（如 siliconflow）或 Azure endpoint
+- `apiVersion`: Azure OpenAI API 版本（可选）
 
 响应字段：
 - `question`

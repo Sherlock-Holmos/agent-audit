@@ -133,6 +133,29 @@
               />
             </el-select>
           </el-form-item>
+          <el-form-item label="API Base URL">
+            <el-input
+              v-model="forms.ai.baseUrl"
+              placeholder="例如：https://api.siliconflow.cn/v1"
+              clearable
+            />
+          </el-form-item>
+          <el-form-item label="API Key">
+            <el-input
+              v-model="forms.ai.apiKey"
+              type="password"
+              show-password
+              placeholder="输入模型平台 API Key"
+              clearable
+            />
+          </el-form-item>
+          <el-form-item label="API Version" v-if="forms.ai.provider === 'azure'">
+            <el-input
+              v-model="forms.ai.apiVersion"
+              placeholder="例如：2024-08-01-preview"
+              clearable
+            />
+          </el-form-item>
           <el-form-item label="模型选项">
             <div class="ai-model-options-wrap">
               <div class="ai-model-options-header">
@@ -266,6 +289,9 @@ const forms = reactive({
   ai: {
     provider: 'mock',
     defaultModel: 'gpt-4o-mini',
+    baseUrl: '',
+    apiKey: '',
+    apiVersion: '2024-08-01-preview',
     modelOptions: [
       { label: 'GPT-4o-mini', value: 'gpt-4o-mini' },
       { label: 'GPT-4o', value: 'gpt-4o' },
@@ -299,6 +325,9 @@ async function saveCurrent() {
       const payload = {
         provider: forms.ai.provider,
         defaultModel: forms.ai.defaultModel,
+        baseUrl: forms.ai.baseUrl,
+        apiKey: forms.ai.apiKey,
+        apiVersion: forms.ai.apiVersion,
         modelOptions: forms.ai.modelOptions
       }
       localStorage.setItem(AI_MODEL_SETTINGS_KEY, JSON.stringify(payload))
@@ -370,6 +399,15 @@ function loadAiModelSettings() {
     const parsed = JSON.parse(cached)
     if (typeof parsed?.provider === 'string') {
       forms.ai.provider = parsed.provider
+    }
+    if (typeof parsed?.baseUrl === 'string') {
+      forms.ai.baseUrl = parsed.baseUrl
+    }
+    if (typeof parsed?.apiKey === 'string') {
+      forms.ai.apiKey = parsed.apiKey
+    }
+    if (typeof parsed?.apiVersion === 'string') {
+      forms.ai.apiVersion = parsed.apiVersion
     }
     if (Array.isArray(parsed?.modelOptions)) {
       forms.ai.modelOptions = parsed.modelOptions

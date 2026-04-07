@@ -167,6 +167,10 @@ const latestHistoryTurns = ref(0)
 const reportDrawerVisible = ref(false)
 const reportMarkdown = ref('')
 const reportJson = ref(null)
+const llmProvider = ref('mock')
+const llmBaseUrl = ref('')
+const llmApiKey = ref('')
+const llmApiVersion = ref('')
 const selectedModel = ref('gpt-4o-mini')
 const modelOptions = ref([
   { label: 'GPT-4o-mini', value: 'gpt-4o-mini' },
@@ -237,6 +241,16 @@ function useTemplate(text) {
   question.value = text
 }
 
+function buildLlmConfigPayload() {
+  return {
+    provider: llmProvider.value || 'mock',
+    model: selectedModel.value || '',
+    apiKey: llmApiKey.value || '',
+    baseUrl: llmBaseUrl.value || '',
+    apiVersion: llmApiVersion.value || ''
+  }
+}
+
 async function sendQuestion() {
   const finalQuestion = buildQuestion()
   if (!finalQuestion || loading.value) return
@@ -270,6 +284,7 @@ async function sendQuestion() {
       streamController.value = new AbortController()
       await chatWithAssistantStream({
         question: finalQuestion,
+        llmConfig: buildLlmConfigPayload(),
         signal: streamController.value?.signal,
         onChunk: async (chunk) => {
           assistantMsg.content += chunk
@@ -293,7 +308,7 @@ async function sendQuestion() {
       return
     }
 
-    const { data } = await chatWithAssistant(finalQuestion)
+    const { data } = await chatWithAssistant(finalQuestion, buildLlmConfigPayload())
     const payload = data?.data || data || {}
     const answer = String(payload.answer || '未获取到分析结论，请稍后重试。')
     const confidence = payload.confidence != null ? Number(payload.confidence).toFixed(2) : ''
@@ -412,7 +427,7 @@ async function generateReport() {
       transcript
     ].join('\n')
 
-    const { data } = await chatWithAssistant(prompt)
+    const { data } = await chatWithAssistant(prompt, buildLlmConfigPayload())
     const payload = data?.data || data || {}
     const markdown = String(payload.answer || '').trim()
     if (!markdown) {
@@ -495,6 +510,18 @@ function loadAiModelSettings() {
     } else if (!modelOptions.value.some((it) => it.value === selectedModel.value)) {
       selectedModel.value = modelOptions.value[0]?.value || ''
     }
+    if (typeof parsed?.provider === 'string') {
+      llmProvider.value = parsed.provider
+    }
+    if (typeof parsed?.baseUrl === 'string') {
+      llmBaseUrl.value = parsed.baseUrl
+    }
+    if (typeof parsed?.apiKey === 'string') {
+      llmApiKey.value = parsed.apiKey
+    }
+    if (typeof parsed?.apiVersion === 'string') {
+      llmApiVersion.value = parsed.apiVersion
+    }
   } catch {
     // ignore invalid settings cache
   }
@@ -518,6 +545,18 @@ function handleAiModelSettingsChanged(event) {
 
   if (typeof detail.defaultModel === 'string' && detail.defaultModel) {
     selectedModel.value = detail.defaultModel
+  }
+  if (typeof detail.provider === 'string') {
+    llmProvider.value = detail.provider
+  }
+  if (typeof detail.baseUrl === 'string') {
+    llmBaseUrl.value = detail.baseUrl
+  }
+  if (typeof detail.apiKey === 'string') {
+    llmApiKey.value = detail.apiKey
+  }
+  if (typeof detail.apiVersion === 'string') {
+    llmApiVersion.value = detail.apiVersion
   }
   if (!modelOptions.value.some((it) => it.value === selectedModel.value)) {
     selectedModel.value = modelOptions.value[0]?.value || ''

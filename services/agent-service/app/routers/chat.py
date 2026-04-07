@@ -27,6 +27,7 @@ _agent_service: IAgentService = AgentServiceImpl()
 
 class ChatRequest(BaseModel):
     question: str
+    llmConfig: dict | None = None
 
     @field_validator("question")
     @classmethod
@@ -117,7 +118,7 @@ async def chat(
     chat_requests_total.inc()
     username, history, dashboard = await _prepare_chat_context(x_user_name)
 
-    answer = await _agent_service.run_agent(payload.question, history, dashboard)
+    answer = await _agent_service.run_agent(payload.question, history, dashboard, payload.llmConfig)
     await session_service.append_turn(username, payload.question, answer)
 
     elapsed = time.perf_counter() - t_start
@@ -158,7 +159,7 @@ async def chat_stream(
 
         async def produce_chunks():
             try:
-                async for chunk in _agent_service.run_agent_stream(payload.question, history, dashboard):
+                async for chunk in _agent_service.run_agent_stream(payload.question, history, dashboard, payload.llmConfig):
                     text = str(chunk)
                     if text:
                         await queue.put(text)

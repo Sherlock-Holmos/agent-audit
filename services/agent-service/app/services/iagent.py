@@ -1,7 +1,7 @@
 """Agent 服务的抽象基类定义 - 支持多 LLM 提供商和 RAG 扩展"""
 
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator
 
 
 class ILLMProvider(ABC):
@@ -49,6 +49,7 @@ class IAgentService(ABC):
         question: str,
         history: list[dict],
         dashboard: dict,
+        llm_config: dict | None = None,
     ) -> str:
         """
         执行一次对话推理
@@ -69,6 +70,7 @@ class IAgentService(ABC):
         question: str,
         history: list[dict],
         dashboard: dict,
+        llm_config: dict | None = None,
     ) -> AsyncIterator[str]:
         """以流式方式返回回答分片。"""
         pass

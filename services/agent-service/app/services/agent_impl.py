@@ -26,35 +26,53 @@ _SYSTEM_TEMPLATE = """\
 
 
 # ── LLM 工厂 ──────────────────────────────────────────────────────────────
-def _build_llm():
-    provider = settings.llm_provider.lower()
+def _pick(conf: dict | None, key: str, fallback: str = "") -> str:
+    if conf and isinstance(conf, dict):
+        val = conf.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    return fallback
+
+
+def _build_llm(llm_config: dict | None = None):
+    provider = _pick(llm_config, "provider", settings.llm_provider).lower()
+    model = _pick(llm_config, "model", settings.openai_model)
+    api_key = _pick(llm_config, "apiKey", settings.openai_api_key)
+    base_url = _pick(llm_config, "baseUrl", settings.openai_base_url)
+    api_version = _pick(llm_config, "apiVersion", settings.azure_openai_api_version)
 
     if provider == "azure":
         from langchain_openai import AzureChatOpenAI
 
-        logger.info("LLM provider: Azure OpenAI (deployment=%s)", settings.azure_openai_deployment)
+        endpoint = _pick(llm_config, "baseUrl", settings.azure_openai_endpoint)
+        deployment = _pick(llm_config, "model", settings.azure_openai_deployment)
+        azure_api_key = _pick(llm_config, "apiKey", settings.azure_openai_api_key)
+        logger.info("LLM provider: Azure OpenAI (deployment=%s)", deployment)
         return AzureChatOpenAI(
-            azure_deployment=settings.azure_openai_deployment,
-            azure_endpoint=settings.azure_openai_endpoint,
-            api_key=settings.azure_openai_api_key,
-            api_version=settings.azure_openai_api_version,
+            azure_deployment=deployment,
+            azure_endpoint=endpoint,
+            api_key=azure_api_key,
+            api_version=api_version,
             temperature=0.3,
         )
 
-    if provider == "openai":
+    if provider in {"openai", "custom"}:
         from langchain_openai import ChatOpenAI
 
-        logger.info("LLM provider: OpenAI (model=%s)", settings.openai_model)
-        return ChatOpenAI(
-            model=settings.openai_model,
-            api_key=settings.openai_api_key,
-            temperature=0.3,
-        )
+        logger.info("LLM provider: %s (model=%s)", provider, model)
+        kwargs = {
+            "model": model,
+            "api_key": api_key,
+            "temperature": 0.3,
+        }
+        if base_url:
+            kwargs["base_url"] = base_url
+        return ChatOpenAI(**kwargs)
 
     # mock 模式：不调用任何外部 API，适合本地开发
     logger.warning(
         "LLM_PROVIDER=%s — running in mock mode. Set OPENAI_API_KEY or Azure vars for real LLM.",
-        settings.llm_provider,
+        provider,
     )
     return None
 
@@ -102,8 +120,8 @@ def _build_retriever():
 class AgentServiceImpl(IAgentService):
     """Agent 服务实现"""
 
-    async def _build_context(self, question: str, history: list[dict], dashboard: dict):
-        llm = _build_llm()
+    async def _build_context(self, question: str, history: list[dict], dashboard: dict, llm_config: dict | None = None):
+        llm = _build_llm(llm_config)
 
         rag_context = ""
         retriever = _build_retriever()
@@ -144,6 +162,7 @@ class AgentServiceImpl(IAgentService):
         question: str,
         history: list[dict],
         dashboard: dict,
+        llm_config: dict | None = None,
     ) -> str:
         """
         执行一次对话推理。
@@ -156,7 +175,7 @@ class AgentServiceImpl(IAgentService):
         Returns:
             LLM 生成的回答字符串
         """
-        llm, chain, inputs = await self._build_context(question, history, dashboard)
+        llm, chain, inputs = await self._build_context(question, history, dashboard, llm_config)
 
         # Mock 模式：直接返回占位回答，不走 LangChain 链路
         if llm is None:
@@ -176,8 +195,9 @@ class AgentServiceImpl(IAgentService):
         question: str,
         history: list[dict],
         dashboard: dict,
+        llm_config: dict | None = None,
     ) -> AsyncIterator[str]:
-        llm, chain, inputs = await self._build_context(question, history, dashboard)
+        llm, chain, inputs = await self._build_context(question, history, dashboard, llm_config)
 
         if llm is None:
             yield (

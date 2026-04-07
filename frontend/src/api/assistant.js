@@ -1,9 +1,12 @@
 import client from './client'
 
-export const chatWithAssistant = (question) =>
-  client.post('/agent/chat', { question })
+export const chatWithAssistant = (question, llmConfig = null) =>
+  client.post('/agent/chat', {
+    question,
+    ...(llmConfig ? { llmConfig } : {})
+  })
 
-export async function chatWithAssistantStream({ question, onChunk, onFinal, onError, signal }) {
+export async function chatWithAssistantStream({ question, llmConfig, onChunk, onFinal, onError, signal }) {
   const token = localStorage.getItem('token')
   const user = JSON.parse(localStorage.getItem('user') || '{}')
   const username = user?.username || user?.userName || ''
@@ -16,7 +19,10 @@ export async function chatWithAssistantStream({ question, onChunk, onFinal, onEr
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(username ? { 'X-User-Name': username } : {})
     },
-    body: JSON.stringify({ question })
+    body: JSON.stringify({
+      question,
+      ...(llmConfig ? { llmConfig } : {})
+    })
   })
 
   if (!resp.ok || !resp.body) {
