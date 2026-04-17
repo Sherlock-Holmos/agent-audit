@@ -2,7 +2,7 @@
   <nav class="custom-menu" :class="{ collapsed: isCollapse }">
     <ul class="menu-list">
       <li
-        v-for="item in menuList"
+        v-for="item in filteredMenuList"
         :key="item.path"
         :class="['menu-item', { active: isTopActive(item), hasChildren: !!item.children }]"
       >
@@ -67,28 +67,44 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import { ArrowRight, DataBoard, Coin, Cpu, Operation, Setting } from '@element-plus/icons-vue'
+import { ArrowRight, Coin, Cpu, DataBoard, DocumentChecked, Operation, Setting } from '@element-plus/icons-vue'
 import { useAppStore } from '../store/app'
+import { ROLES, isRoleAllowed } from '../constants/rbac'
+import { getCurrentRole } from '../utils/currentUser'
 
 const appStore = useAppStore()
 const { isCollapse } = storeToRefs(appStore)
 const route = useRoute()
 const router = useRouter()
+const currentRole = computed(() => getCurrentRole())
 
 const menuList = ref([
-  { title: '仪表盘', path: '/', icon: DataBoard },
+  {
+    title: '角色工作台',
+    path: '/workbench',
+    icon: DocumentChecked,
+    open: true,
+    children: [
+      { title: '审计管理员工作台', path: '/workbench/audit-admin', roles: [ROLES.AUDIT_ADMIN] },
+      { title: '审计人员工作台', path: '/workbench/auditor', roles: [ROLES.AUDITOR] },
+      { title: '被审单位管理员工作台', path: '/workbench/org-admin', roles: [ROLES.ORG_ADMIN] },
+      { title: '被审单位经办人工作台', path: '/workbench/org-operator', roles: [ROLES.ORG_OPERATOR] }
+    ]
+  },
+  { title: '数据仪表盘', path: '/dashboard', icon: DataBoard, roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR] },
   {
     title: '数据源',
     path: '/datasource',
     icon: Coin,
     open: false,
+    roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR],
     children: [
-      { title: '数据源管理', path: '/datasource' },
-      { title: '数据清洗', path: '/datasource/clean' },
-      { title: '数据融合', path: '/datasource/fusion' }
+      { title: '数据源管理', path: '/datasource', roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR] },
+      { title: '数据清洗', path: '/datasource/clean', roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR] },
+      { title: '数据融合', path: '/datasource/fusion', roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR] }
     ]
   },
   {
@@ -96,25 +112,47 @@ const menuList = ref([
     path: '/datasource/clean-rules/rules',
     icon: Operation,
     open: false,
+    roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR],
     children: [
-      { title: '规则与策略', path: '/datasource/clean-rules/rules' },
-      { title: '主键同义词', path: '/datasource/clean-rules/synonyms' },
-      { title: 'NiFi 模板', path: '/datasource/clean-rules/nifi-templates' },
-      { title: '分层统计', path: '/datasource/clean-rules/layer-stats' }
+      { title: '规则与策略', path: '/datasource/clean-rules/rules', roles: [ROLES.AUDIT_ADMIN] },
+      { title: '主键同义词', path: '/datasource/clean-rules/synonyms', roles: [ROLES.AUDIT_ADMIN] },
+      { title: 'NiFi 模板', path: '/datasource/clean-rules/nifi-templates', roles: [ROLES.AUDIT_ADMIN] },
+      { title: '分层统计', path: '/datasource/clean-rules/layer-stats', roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR] }
     ]
   },
-  { title: 'AI分析', path: '/ai', icon: Cpu },
+  { title: 'AI分析', path: '/ai', icon: Cpu, roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR] },
   {
     title: '设置',
     path: '/settings',
     icon: Setting,
     open: false,
     children: [
-      { title: '系统设置', path: '/settings' },
-      { title: '帮助中心', path: '/help' }
-    ]
+      { title: '系统设置', path: '/settings', roles: [ROLES.AUDIT_ADMIN] },
+      { title: '帮助中心', path: '/help', roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR, ROLES.ORG_ADMIN, ROLES.ORG_OPERATOR] }
+    ],
+    roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR, ROLES.ORG_ADMIN, ROLES.ORG_OPERATOR]
   }
 ])
+
+const filteredMenuList = computed(() => {
+  return menuList.value
+    .map((item) => {
+      const next = { ...item }
+      if (item.children) {
+        next.children = item.children.filter((sub) => isRoleAllowed(currentRole.value, sub.roles || []))
+      }
+      return next
+    })
+    .filter((item) => {
+      if (!isRoleAllowed(currentRole.value, item.roles || [])) {
+        return false
+      }
+      if (item.children) {
+        return item.children.length > 0
+      }
+      return true
+    })
+})
 
 function isActive(path) {
   return route.path === path

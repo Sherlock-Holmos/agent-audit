@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -27,6 +28,12 @@ public class AuthUserServiceImpl implements IAuthUserService {
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
 
     private static final String DEFAULT_ROLE = "AUDITOR";
+    private static final Set<String> SUPPORTED_ROLES = Set.of(
+        "AUDIT_ADMIN",
+        "AUDITOR",
+        "ORG_ADMIN",
+        "ORG_OPERATOR"
+    );
 
     private final JdbcTemplate jdbcTemplate;
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
@@ -37,11 +44,13 @@ public class AuthUserServiceImpl implements IAuthUserService {
     }
 
     @Override
-    public Map<String, Object> register(String username, String password) {
+    public Map<String, Object> register(String username, String password, String role) {
         ensureDefaultAdmin();
         if (isBlank(username) || isBlank(password)) {
             throw new IllegalArgumentException("用户名和密码不能为空");
         }
+
+        String normalizedRole = normalizeRole(role);
 
         Integer exists = jdbcTemplate.queryForObject(
             "SELECT COUNT(1) FROM auth_user WHERE username=?",
@@ -58,7 +67,7 @@ public class AuthUserServiceImpl implements IAuthUserService {
             username,
             passwordEncoder.encode(password),
             username,
-            DEFAULT_ROLE,
+            normalizedRole,
             now,
             now
         );
@@ -237,6 +246,26 @@ public class AuthUserServiceImpl implements IAuthUserService {
 
     private static String nvl(String value) {
         return value == null ? "" : value;
+    }
+
+    private static String normalizeRole(String role) {
+        String input = role == null ? "" : role.trim().toUpperCase();
+        if (input.isBlank()) {
+            return DEFAULT_ROLE;
+        }
+        if ("ADMIN".equals(input)) {
+            return "AUDIT_ADMIN";
+        }
+        if ("AUDITEE_ADMIN".equals(input)) {
+            return "ORG_ADMIN";
+        }
+        if ("AUDITEE_OPERATOR".equals(input)) {
+            return "ORG_OPERATOR";
+        }
+        if (!SUPPORTED_ROLES.contains(input)) {
+            throw new IllegalArgumentException("不支持的用户角色");
+        }
+        return input;
     }
 
     private void ensureProfileColumns() {

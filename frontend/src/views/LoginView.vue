@@ -24,6 +24,7 @@ import { reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { loginApi } from '../api/auth'
+import { normalizeRole, ROLE_HOME_ROUTE } from '../constants/rbac'
 
 const router = useRouter()
 const formRef = ref()
@@ -47,9 +48,11 @@ const handleLogin = async () => {
   try {
     const { data } = await loginApi(form)
     localStorage.setItem('token', data.data.token)
-    localStorage.setItem('user', JSON.stringify(data.data.user))
+    const user = data.data.user || {}
+    user.role = normalizeRole(user.role)
+    localStorage.setItem('user', JSON.stringify(user))
     ElMessage.success('登录成功')
-    router.replace('/')
+    router.replace(ROLE_HOME_ROUTE[user.role] || '/workbench/auditor')
   } catch (error) {
     ElMessage.error(error?.response?.data?.message || '登录失败')
   } finally {

@@ -52,6 +52,7 @@ import { ArrowLeft } from '@element-plus/icons-vue'
 import { useAppStore } from './store/app'
 import { storeToRefs } from 'pinia'
 import { deactivateMyAccountApi, getMyProfileApi, updateMyProfileApi } from './api/auth'
+import { normalizeRole } from './constants/rbac'
 
 const appStore = useAppStore()
 const { isCollapse, themeMode } = storeToRefs(appStore)
@@ -85,6 +86,7 @@ const profileSubmitting = ref(false)
 
 try {
   user.value = JSON.parse(localStorage.getItem('user')) || {}
+  user.value.role = normalizeRole(user.value.role)
 } catch { user.value = {} }
 
 function logout() {
@@ -100,6 +102,7 @@ async function loadProfile() {
   try {
     const { data } = await getMyProfileApi()
     user.value = data.data || {}
+    user.value.role = normalizeRole(user.value.role)
     localStorage.setItem('user', JSON.stringify(user.value))
   } catch {
     logout()

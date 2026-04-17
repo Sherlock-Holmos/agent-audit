@@ -19,8 +19,8 @@ public class AuthApplicationService implements IAuthApplicationService {
 
     @Override
     @Transactional
-    public Map<String, Object> register(String username, String password) {
-        return authUserService.register(username, password);
+    public Map<String, Object> register(String username, String password, String role) {
+        return authUserService.register(username, password, role);
     }
 
     @Override

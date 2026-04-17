@@ -4,7 +4,7 @@ import java.util.Map;
 
 public interface IAuthApplicationService {
 
-    Map<String, Object> register(String username, String password);
+    Map<String, Object> register(String username, String password, String role);
 
     Map<String, Object> login(String username, String password);
 

@@ -27,6 +27,7 @@ public class AuthController {
     public ResponseEntity<Map<String, Object>> register(@RequestBody Map<String, String> request) {
         String username = request.getOrDefault("username", "").trim();
         String password = request.getOrDefault("password", "").trim();
+        String role = request.getOrDefault("role", "").trim();
 
         if (username.isBlank() || password.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -35,7 +36,7 @@ public class AuthController {
             ));
         }
         try {
-            Map<String, Object> user = authApplicationService.register(username, password);
+            Map<String, Object> user = authApplicationService.register(username, password, role);
             return ResponseEntity.ok(Map.of(
                 "code", 0,
                 "message", "注册成功",

@@ -14,7 +14,7 @@ public interface IAuthUserService {
      * @return 用户信息
      * @throws IllegalArgumentException 当用户名为空或已存在时
      */
-    Map<String, Object> register(String username, String password);
+    Map<String, Object> register(String username, String password, String role);
 
     /**
      * 用户认证

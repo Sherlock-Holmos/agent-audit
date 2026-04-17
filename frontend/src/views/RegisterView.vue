@@ -12,6 +12,11 @@
         <el-form-item label="确认密码" prop="confirmPassword">
           <el-input v-model="form.confirmPassword" type="password" show-password placeholder="请再次输入密码" />
         </el-form-item>
+        <el-form-item label="角色" prop="role">
+          <el-select v-model="form.role" placeholder="请选择角色" style="width: 100%">
+            <el-option v-for="item in roleOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
         <el-button type="primary" :loading="loading" class="auth-btn" @click="handleRegister">注册</el-button>
         <div class="auth-link-row">
           <span>已有账号？</span>
@@ -27,15 +32,18 @@ import { reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { registerApi } from '../api/auth'
+import { ROLE_OPTIONS, ROLES } from '../constants/rbac'
 
 const router = useRouter()
 const formRef = ref()
 const loading = ref(false)
+const roleOptions = ROLE_OPTIONS
 
 const form = reactive({
   username: '',
   password: '',
-  confirmPassword: ''
+  confirmPassword: '',
+  role: ROLES.AUDITOR
 })
 
 const rules = {
@@ -53,7 +61,8 @@ const rules = {
       },
       trigger: 'blur'
     }
-  ]
+  ],
+  role: [{ required: true, message: '请选择角色', trigger: 'change' }]
 }
 
 const handleRegister = async () => {
@@ -62,7 +71,7 @@ const handleRegister = async () => {
 
   loading.value = true
   try {
-    await registerApi({ username: form.username, password: form.password })
+    await registerApi({ username: form.username, password: form.password, role: form.role })
     ElMessage.success('注册成功，请登录')
     router.replace('/login')
   } catch (error) {
