@@ -6,8 +6,9 @@ from fastapi import FastAPI
 
 from app.routers import chat, health
 from app.services.session import session_service
+from app.services.agent_service import agent_service
 
-# ── 结构化 JSON 日志（与其他服务格式一致）────────────────────────────────
+# ── 结构化 JSON 日志 ───────────────────────────────────────────────────
 class _JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         log = {
@@ -34,6 +35,9 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("agent-service starting up")
+    # 初始化Agent服务
+    await agent_service._ensure_initialized()
+    logger.info(f"Agent service initialized with {len(agent_service._agent._reasoning_engine._step_hooks if hasattr(agent_service._agent._reasoning_engine, '_step_hooks') else 0)} hooks")
     yield
     await session_service.close()
     logger.info("agent-service shut down")
@@ -42,7 +46,7 @@ async def lifespan(app: FastAPI):
 # ── 应用实例 ──────────────────────────────────────────────────────────────
 app = FastAPI(
     title="Agent Service",
-    version="1.3.0",
+    version="2.0.0",
     lifespan=lifespan,
     docs_url="/api/agent/docs",
     openapi_url="/api/agent/openapi.json",

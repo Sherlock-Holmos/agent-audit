@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     agent_rate_limit_per_minute: int = 30
     agent_stream_heartbeat_seconds: int = 12
     agent_stream_max_duration_seconds: int = 180
+    agent_allow_private_base_url: bool = False
 
     # ── LLM 提供商 ───────────────────────────────────────────────
     # 可选值：mock | openai | azure
