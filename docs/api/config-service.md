@@ -5,8 +5,8 @@
 - 配置读取能力对外提供
 
 ## 2. 基础信息
-- 服务地址：`http://localhost:8084`
-- 网关访问：`http://localhost:8081/api/config/**`
+- 服务地址：`http://localhost:18084`
+- 网关访问：`http://localhost:18081/api/config/**`
 
 ## 3. 已实现接口
 1. `GET /api/config/threshold`

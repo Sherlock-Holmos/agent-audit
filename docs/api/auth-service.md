@@ -7,8 +7,8 @@
 - 当前账号注销（停用）
 
 ## 2. 基础信息
-- 服务地址：`http://localhost:8085`
-- 网关访问：`http://localhost:8081/api/auth/**`
+- 服务地址：`http://localhost:18085`
+- 网关访问：`http://localhost:18081/api/auth/**`
 
 ## 3. 已实现接口
 1. `POST /api/auth/register`

@@ -1,10 +1,11 @@
 # API 总览
 
 ## 1. 统一约定
-- 网关入口：`http://localhost:8081`
+- 网关入口：`http://localhost:18081`
 - 统一前缀：`/api/**`
 - 认证：`Authorization: Bearer <token>`
 - 幂等：异步执行接口支持 `Idempotency-Key`
+- 端口说明：`1808x` 为宿主机访问端口，`808x` 为容器内服务端口。
 
 ## 2. 服务文档索引
 - 网关服务：[api/gateway.md](api/gateway.md)

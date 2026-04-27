@@ -63,7 +63,7 @@
   - POST /api/data/fusion/tasks/{id}/run-async
   - GET /api/data/jobs/{jobId}
 - 新增异步任务落库表：process_job_record、task_idempotency_record
-- 新增 Prometheus + Grafana 基础监控
+- 新增基础监控
 
 ### 优化
 - Gateway 增加用户/IP 维度限流与 traceId 透传。

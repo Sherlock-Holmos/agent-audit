@@ -42,3 +42,18 @@
 2. 当跨页面出现重复逻辑时，抽离到 `composables` 或通用组件。
 3. 保持路由命名和路径语义一致，便于权限配置与埋点统计。
 4. 每次治理模块调整后执行 `frontend` 下 `npm run build` 做最小回归验证。
+
+## 6. 表格治理规范（新增）
+1. 业务页面和业务组件禁止直接使用 `el-table` 根标签；统一通过 `AppDataTable` 承载。
+2. 列定义继续使用 `el-table-column` 作为 `AppDataTable` 插槽内容，这是标准用法。
+3. `layout-storage-key` 统一采用 `app:table-layout:<domain>:<scene>` 命名，避免散乱字符串。
+4. 仅允许 `frontend/src/components/shared/AppDataTable.vue` 内部直接声明 `el-table`。
+
+### 6.1 自动检查命令
+在 `frontend` 目录执行：
+
+```bash
+npm run check:table-governance
+```
+
+该命令会扫描 `frontend/src/**/*.vue`，若在白名单文件外发现 `el-table` 根标签将直接失败。

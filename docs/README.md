@@ -1,35 +1,39 @@
-# Agent Audit 企业级文档中心
+# Agent Audit 文档中心
 
 ## 文档目标
 本目录用于统一沉淀系统架构、部署规范、运维手册、接口治理与发布流程，支持研发、测试、运维、安全和管理角色协同。
 
 ## 文档目录
 
-### 架构与设计
+### A. 项目与架构
 1. [项目总览](01-overview.md)
 2. [系统架构说明](02-architecture.md)
-3. [**代码架构与设计模式**](07-code-architecture.md) ⭐ **2026 新增** - 接口化编程、SOLID 原则、设计模式应用
-4. [Data-Service 分层与目录规范](08-data-service-layering.md) ⭐ - Data-Service 职责分层与落位规则
-5. [目标架构蓝图与实施方案](09-architecture-blueprint.md) ⭐ - 规划阶段重构蓝图、分层模型、90 天实施计划
-6. [前端治理模块说明](10-frontend-governance-modules.md) ⭐ - 治理中心页面拆分、子域 API 与维护规范
+3. [代码架构与设计模式](07-code-architecture.md)
+4. [Data-Service 分层与目录规范](08-data-service-layering.md)
+5. [目标架构蓝图与实施方案](09-architecture-blueprint.md)
 
-### 部署与运维
-4. [部署与环境手册](03-deployment.md)
-5. [运维与可观测性手册](04-operations.md)
+### B. 前端与治理
+6. [前端治理模块说明](10-frontend-governance-modules.md)
+7. [新成员 10 分钟上手](11-onboarding-quickstart.md)
 
-### 安全与治理
-6. [安全与合规基线](05-security-compliance.md)
-7. [接口文档总览](API.md)
+### C. 部署与运维
+8. [部署与环境手册](03-deployment.md)
+9. [运维与可观测性手册](04-operations.md)
 
-### 发布与变更
-8. [发布与变更记录](06-release-notes.md)
+### D. 安全与接口
+10. [安全与合规基线](05-security-compliance.md)
+11. [接口文档总览](API.md)
+
+### E. 发布记录
+12. [发布与变更记录](06-release-notes.md)
 
 ## 快速入口
 - 根 README: [../README.md](../README.md)
 - 系统架构图: [02-architecture.md](02-architecture.md)
+- 代码架构详解: [07-code-architecture.md](07-code-architecture.md)
 - 目标架构蓝图: [09-architecture-blueprint.md](09-architecture-blueprint.md)
 - 前端治理模块: [10-frontend-governance-modules.md](10-frontend-governance-modules.md)
-- **代码架构详解**: [07-code-architecture.md](07-code-architecture.md)
+- 角色化上手指南: [11-onboarding-quickstart.md](11-onboarding-quickstart.md)
 - API 细分文档: [api/](api/)
 
 ## 读者建议
@@ -76,6 +80,12 @@
 
 ## 文档更新日志
 
+### 2026-04-15
+- ♻️ **重整** 文档目录分组与编号，按“项目架构/前端治理/部署运维/安全接口/发布记录”组织。
+- ♻️ **统一** 本地 Docker 暴露端口文档：网关与服务示例改为 `18081~18085`。
+- ♻️ **补充** 文档阅读入口和排序，降低新成员检索成本。
+- ✨ **新增** [新成员 10 分钟上手](11-onboarding-quickstart.md)，覆盖开发/测试/运维三类角色的最短落地路径。
+
 ### 2026-03-17
 - ✨ **新增** [代码架构与设计模式](07-code-architecture.md)
   - 完整的接口清单（Java 10 个接口 + Python 5 个接口）
@@ -116,4 +126,4 @@
 ## 维护人员
 - 架构负责人：待指定
 - 文档维护：Team
-- 最后更新时间：2026-03-25
+- 最后更新时间：2026-04-15

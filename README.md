@@ -11,6 +11,7 @@
 - **⭐ 代码架构与设计模式**：[docs/07-code-architecture.md](docs/07-code-architecture.md) - 接口化编程+SOLID原则
 - **部署手册**：[docs/03-deployment.md](docs/03-deployment.md)
 - **运维手册**：[docs/04-operations.md](docs/04-operations.md)
+- **⚡ 10 分钟上手**：[docs/11-onboarding-quickstart.md](docs/11-onboarding-quickstart.md)
 - **安全基线**：[docs/05-security-compliance.md](docs/05-security-compliance.md)
 - **API 总览**：[docs/API.md](docs/API.md)
 - **发布记录**：[docs/06-release-notes.md](docs/06-release-notes.md)
@@ -42,9 +43,8 @@ docker compose up -d
 | 服务 | 地址 | 说明 |
 |-----|------|------|
 | 前端开发 | http://localhost:5173 | Vite 热更新服务 |
-| API 网关 | http://localhost:8081 | 所有 API 统一入口 |
-| Prometheus | http://localhost:9090 | 指标采集与查询 |
-| Grafana | http://localhost:3000 | 流量/性能监控大盘 |
+| API 网关 | http://localhost:18081 | 所有 API 统一入口 |
+| NiFi 控制台 | http://localhost:18090 | 数据流程编排与模板管理 |
 
 ## 📦 服务清单
 
@@ -52,11 +52,12 @@ docker compose up -d
 
 | 服务 | 端口 | 说明 |
 |-----|------|------|
-| **gateway** | 8081 | API 网关，负责鉴权、限流、路由 |
-| **auth-service** | 8085 | 用户认证、注册、资料管理 |
-| **data-service** | 8082 | 数据源、清洗、融合、驾驶舱 |
-| **agent-service** | 8083 | 智能问答、LangChain 编排 |
-| **config-service** | 8084 | 配置管理、阈值设置 |
+| **gateway** | 18081:8081 | API 网关，负责鉴权、限流、路由 |
+| **auth-service** | 18085:8085 | 用户认证、注册、资料管理 |
+| **data-service** | 18082:8082 | 数据源、清洗、融合、驾驶舱 |
+| **agent-service** | 18083:8083 | 智能问答、LangChain 编排 |
+| **config-service** | 18084:8084 | 配置管理、阈值设置 |
+| **nifi** | 18090:8080 | 数据编排控制平面 |
 
 ### 基础设施
 
@@ -199,6 +200,14 @@ python -m py_compile app/services/agent_impl.py
 - ✅ SQL 注入防护（Prepared Statement）
 - ✅ CORS 跨域配置
 
+## 📖 文档阅读建议
+
+1. 新成员入项：先看 `docs/01-overview.md`、`docs/02-architecture.md`、`docs/07-code-architecture.md`
+2. 角色化快速上手：参考 `docs/11-onboarding-quickstart.md`
+3. 联调与接口：优先看 `docs/API.md` 与 `docs/api/` 子目录
+4. 部署与上线：优先看 `docs/03-deployment.md`、`docs/04-operations.md`
+5. 架构演进：参考 `docs/09-architecture-blueprint.md` 与 `docs/10-frontend-governance-modules.md`
+
 ## 📈 性能优化
 
 - ✅ Redis 缓存（驾驶舱数据、会话、配额）
@@ -217,7 +226,7 @@ python -m py_compile app/services/agent_impl.py
 
 ## 📝 许可证
 
-本项目采用 MIT 许可证。详见 [LICENSE](LICENSE)
+本项目许可证信息以仓库后续补充为准（当前仓库未包含独立 LICENSE 文件）。
 
 ## 🙋 支持与帮助
 
@@ -227,6 +236,6 @@ python -m py_compile app/services/agent_impl.py
 
 ---
 
-**最后更新**：2026-03-17  
-**当前版本**：1.0.0  
+**最后更新**：2026-04-15  
+**当前版本**：1.5.0  
 **架构模式**：微服务 + 接口化编程 (DIP/SOLID)

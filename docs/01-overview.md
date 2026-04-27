@@ -23,13 +23,13 @@ Agent Audit 是面向审计整改场景的多源数据融合与智能分析平�
 - 清洗/融合支持同步执行与异步执行（带幂等键）。
 - agent-service 支持 Redis 会话历史缓存、接口限流与 LangChain 链式调用。
 - agent-service 预留向量数据库接入能力，可扩展 Chroma / pgvector。
-- Prometheus 指标暴露与 Grafana 可视化基础。
+- 指标埋点与基础监控能力。
 
 ## 5. 技术栈
 - 前端：Vue 3、Element Plus、ECharts、Vite。
 - 后端：Spring Boot 3、Spring Cloud Gateway、JdbcTemplate、FastAPI、LangChain。
 - 数据与缓存：MySQL 8、Redis 7。
-- 运维与监控：Docker Compose、Prometheus、Grafana。
+- 运维与监控：Docker Compose、监控埋点。
 
 ## 6. 非功能目标（建议基线）
 - 可用性：核心链路目标可用性 >= 99.9%。

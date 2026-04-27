@@ -7,8 +7,8 @@
 - 为 RAG / 向量数据库预留检索扩展位
 
 ## 2. 基础信息
-- 服务地址：`http://localhost:8083`
-- 网关访问：`http://localhost:8081/api/agent/**`
+- 服务地址：`http://localhost:18083`
+- 网关访问：`http://localhost:18081/api/agent/**`
 - 运行栈：Python 3.12、FastAPI、LangChain
 
 ## 3. 已实现接口
@@ -35,6 +35,7 @@
 - `apiKey`: 模型平台 API Key
 - `baseUrl`: OpenAI 兼容网关地址（如 siliconflow）或 Azure endpoint
 - `apiVersion`: Azure OpenAI API 版本（可选）
+- 安全校验：仅允许上述字段；`baseUrl` 必须为合法 `http/https`，默认拒绝本地/内网地址（可通过 `AGENT_ALLOW_PRIVATE_BASE_URL=true` 放开）
 
 响应字段：
 - `question`
@@ -46,7 +47,7 @@
 流式接口事件格式（`text/event-stream`）：
 - `{"type":"chunk","content":"..."}`：增量文本分片
 - `{"type":"heartbeat","ts":...}`：连接保活心跳（客户端可忽略）
-- `{"type":"final", ...}`：最终结果，字段同普通接口
+- `{"type":"final", ...}`：最终结果，字段同普通接口（服务端会对分片合并结果做一次空值/异常兜底后返回）
 - `{"type":"error","code":"...","message":"...","retryable":true|false}`：错误事件
 - `[DONE]`：结束标记
 
@@ -68,13 +69,6 @@
 ## 5. 观测端点
 1. `GET /actuator/health`
 2. `GET /actuator/info`
-3. `GET /actuator/prometheus`
-4. `GET /metrics`
-
-主要指标：
-- `audit_agent_chat_requests_total`
-- `audit_agent_chat_rate_limited_total`
-- `audit_agent_chat_duration_seconds`
 
 ## 6. 规划能力
 - `POST /api/agent/report/generate`

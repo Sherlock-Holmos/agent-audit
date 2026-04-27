@@ -7,8 +7,8 @@
 - 异步作业执行与状态查询
 
 ## 2. 基础信息
-- 服务地址：`http://localhost:8082`
-- 网关访问：`http://localhost:8081/api/data/**`
+- 服务地址：`http://localhost:18082`
+- 网关访问：`http://localhost:18081/api/data/**`
 
 ## 3. 驾驶舱接口
 1. `GET /api/data/dashboard`
@@ -75,7 +75,6 @@
 ## 9. 观测端点
 1. `GET /actuator/health`
 2. `GET /actuator/metrics`
-3. `GET /actuator/prometheus`
 
 ## 10. 控制平面（NiFi）接口
 1. `GET /api/data/control-plane/nifi/status`

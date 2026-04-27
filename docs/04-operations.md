@@ -5,12 +5,7 @@
 - Data Service: `/actuator/health`
 - Agent Service: `/actuator/health`
 
-## 2. 指标端点
-- Gateway: `/actuator/prometheus`
-- Data Service: `/actuator/prometheus`
-- Agent Service: `/actuator/prometheus`
-
-## 3. 重点观测指标
+## 2. 重点观测指标
 - 网关：
   - 429 次数（限流触发）
   - 401 次数（鉴权失败）
@@ -21,9 +16,9 @@
   - `audit.process.job.completed` / `audit.process.job.failed`
   - `audit.process.job.duration`
 - agent-service：
-  - `audit_agent_chat_requests_total`
-  - `audit_agent_chat_rate_limited_total`
-  - `audit_agent_chat_duration_seconds`
+  - 请求成功率
+  - 流式响应耗时
+  - 流式错误率
 
 ## 4. 日志规范
 - 各服务均输出 JSON 风格日志。

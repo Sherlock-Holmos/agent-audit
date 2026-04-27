@@ -7,7 +7,7 @@
 - Trace 头透传（`X-Trace-Id`）
 
 ## 2. 基础信息
-- 地址：`http://localhost:8081`
+- 地址：`http://localhost:18081`
 - 路由：
   - `/api/auth/**` -> auth-service
   - `/api/data/**` -> data-service
@@ -20,7 +20,6 @@
   - `POST /api/auth/register`
   - `GET /actuator/health`
   - `GET /actuator/info`
-  - `GET /actuator/prometheus`
 - 非白名单请求需携带：`Authorization: Bearer <token>`
 - 鉴权失败：`401`，并返回 `X-Auth-Error`
 
@@ -42,4 +41,3 @@
 - `GET /actuator/health`
 - `GET /actuator/info`
 - `GET /actuator/metrics`
-- `GET /actuator/prometheus`

@@ -12,12 +12,22 @@
 - Apache NiFi 1.28+
 - Nginx
 - Gateway + 4 个业务服务
-- Prometheus + Grafana（建议全环境启用）
+- 监控服务（按需启用）
 
 ## 3. 本地部署
 ```bash
 docker compose up -d mysql redis auth-service data-service config-service agent-service gateway
 ```
+
+常用访问地址（宿主机端口）：
+- Gateway：`http://localhost:18081`
+- Auth Service：`http://localhost:18085`
+- Data Service：`http://localhost:18082`
+- Agent Service：`http://localhost:18083`
+- Config Service：`http://localhost:18084`
+- NiFi：`http://localhost:18090`
+
+说明：`1808x/18090` 为宿主机映射端口，`808x` 为容器内端口。
 
 前端开发：
 ```bash
