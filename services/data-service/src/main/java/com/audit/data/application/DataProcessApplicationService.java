@@ -169,7 +169,7 @@ public class DataProcessApplicationService implements IDataProcessApplicationSer
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public Map<String, Object> previewCleanTask(String username, Long id, Integer limit) {
         return dataProcessService.previewCleanTask(normalizeUser(username), id, limit);
     }
@@ -211,7 +211,7 @@ public class DataProcessApplicationService implements IDataProcessApplicationSer
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public Map<String, Object> previewFusionTask(String username, Long id, Integer limit) {
         return dataProcessService.previewFusionTask(normalizeUser(username), id, limit);
     }
@@ -310,6 +310,12 @@ public class DataProcessApplicationService implements IDataProcessApplicationSer
     @Transactional(readOnly = true)
     public List<Map<String, Object>> listNifiReconcileRecords(String username, Integer limit) {
         return dataProcessService.listNifiReconcileRecords(normalizeUser(username), limit);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> deleteNifiReconcileRecord(String username, Long recordId, boolean stopRunningTask) {
+        return dataProcessService.deleteNifiReconcileRecord(normalizeUser(username), recordId, stopRunningTask);
     }
 
     @Override

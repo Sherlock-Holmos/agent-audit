@@ -115,6 +115,7 @@ public class StagingTableService {
                 jdbcTemplate.execute(createSql);
     }
 
+    @SuppressWarnings("unused")
     private Map<String, Object> buildEffectiveFusionConfig(String strategy, Map<String, Object> fusionConfig) {
         Map<String, Object> effective = fusionConfig == null ? new LinkedHashMap<>() : new LinkedHashMap<>(fusionConfig);
         String configuredKey = text(effective.get("keyField"));
@@ -176,6 +177,7 @@ public class StagingTableService {
         return total;
     }
 
+    @SuppressWarnings("unused")
     private int mergeStandardTablesByKey(
         String ownerUsername,
         Long fusionTaskId,
@@ -1115,6 +1117,7 @@ public class StagingTableService {
         return value == null || value.isBlank();
     }
 
+    @SuppressWarnings("unused")
     private static String nvl(String value) {
         return value == null ? "" : value;
     }

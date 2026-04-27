@@ -16,7 +16,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
 @Validated
@@ -455,6 +454,16 @@ public class DataProcessController {
         @RequestParam(required = false) Integer limit
     ) {
         return ApiResponse.success("ok", dataProcessApplicationService.listNifiReconcileRecords(username, limit));
+    }
+
+    @DeleteMapping("/control-plane/nifi/tasks/reconcile/history/{id}")
+    public ApiResponse<Object> deleteNifiReconcileRecord(
+        @RequestHeader(value = "X-User-Name", required = false) String username,
+        @NotNull(message = "历史记录ID不能为空") @Positive(message = "历史记录ID必须大于0") @PathVariable Long id,
+        @RequestParam(defaultValue = "false") boolean stopRunningTask
+    ) {
+        String message = stopRunningTask ? "任务已停止并删除历史" : "历史已删除";
+        return ApiResponse.success(message, dataProcessApplicationService.deleteNifiReconcileRecord(username, id, stopRunningTask));
     }
 
     @GetMapping("/control-plane/layers/stats")

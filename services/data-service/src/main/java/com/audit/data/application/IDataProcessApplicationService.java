@@ -62,6 +62,7 @@ public interface IDataProcessApplicationService {
     Map<String, Object> reconcileNifiTask(String username, String taskType, Long taskId);
     Map<String, Object> repairCompletedTaskArtifacts(String username, String taskType, Integer limit);
     List<Map<String, Object>> listNifiReconcileRecords(String username, Integer limit);
+    Map<String, Object> deleteNifiReconcileRecord(String username, Long recordId, boolean stopRunningTask);
     Map<String, Object> getLayerStats(String username, String taskType, Long taskId);
     List<Map<String, Object>> listLineageRecords(String username, String taskType, Long taskId);
     List<Map<String, Object>> listQualityReports(String username, String taskType, Long taskId);

@@ -353,3 +353,203 @@ CREATE TABLE IF NOT EXISTS gold_fusion_wide_record (
   INDEX idx_gold_owner_task (owner_username, fusion_task_id),
   INDEX idx_gold_owner_table (owner_username, gold_table)
 );
+
+CREATE TABLE IF NOT EXISTS rect_issue_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_key VARCHAR(128) NOT NULL,
+  code VARCHAR(64) NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  level VARCHAR(32) NOT NULL,
+  unit VARCHAR(255) NOT NULL,
+  description TEXT,
+  evidence_json LONGTEXT,
+  regulation_clause TEXT,
+  status VARCHAR(32) NOT NULL,
+  created_by VARCHAR(128) NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  INDEX idx_rect_issue_owner (owner_key),
+  INDEX idx_rect_issue_owner_unit (owner_key, unit)
+);
+
+CREATE TABLE IF NOT EXISTS rect_task_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_key VARCHAR(128) NOT NULL,
+  issue_id BIGINT NOT NULL,
+  parent_id BIGINT,
+  title VARCHAR(255) NOT NULL,
+  unit VARCHAR(255) NOT NULL,
+  assignee VARCHAR(128) NOT NULL,
+  claimed_by VARCHAR(128),
+  created_by VARCHAR(128) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  progress INT NOT NULL,
+  deadline VARCHAR(32),
+  review_status VARCHAR(32) NOT NULL,
+  review_comment VARCHAR(512),
+  measure TEXT,
+  attachments_json LONGTEXT,
+  feedback TEXT,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  INDEX idx_rect_task_owner_issue (owner_key, issue_id),
+  INDEX idx_rect_task_owner_assignee (owner_key, assignee)
+);
+
+CREATE TABLE IF NOT EXISTS rect_supervision_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_key VARCHAR(128) NOT NULL,
+  issue_id BIGINT NOT NULL,
+  note TEXT,
+  supervisor VARCHAR(128) NOT NULL,
+  created_at DATETIME NOT NULL,
+  INDEX idx_rect_supervision_owner_issue (owner_key, issue_id)
+);
+
+CREATE TABLE IF NOT EXISTS rect_issue_share_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_key VARCHAR(128) NOT NULL,
+  issue_id BIGINT NOT NULL,
+  from_department VARCHAR(255) NOT NULL,
+  to_department VARCHAR(255) NOT NULL,
+  purpose TEXT,
+  status VARCHAR(32) NOT NULL,
+  created_by VARCHAR(128) NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  INDEX idx_rect_issue_share_owner_issue (owner_key, issue_id),
+  INDEX idx_rect_issue_share_owner_to_dept (owner_key, to_department)
+);
+
+CREATE TABLE IF NOT EXISTS rect_issue_share_feedback_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_key VARCHAR(128) NOT NULL,
+  share_id BIGINT NOT NULL,
+  feedback_text TEXT,
+  attachments_json LONGTEXT,
+  created_by VARCHAR(128) NOT NULL,
+  created_at DATETIME NOT NULL,
+  INDEX idx_rect_share_feedback_owner_share (owner_key, share_id)
+);
+
+CREATE TABLE IF NOT EXISTS rect_rule_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_key VARCHAR(128) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  enabled TINYINT(1) NOT NULL,
+  updated_at DATETIME NOT NULL,
+  INDEX idx_rect_rule_owner (owner_key)
+);
+
+CREATE TABLE IF NOT EXISTS rect_reminder_rule_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_key VARCHAR(128) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  trigger_type VARCHAR(64) NOT NULL,
+  trigger_value INT NOT NULL,
+  enabled TINYINT(1) NOT NULL,
+  updated_at DATETIME NOT NULL,
+  INDEX idx_rect_reminder_rule_owner (owner_key)
+);
+
+CREATE TABLE IF NOT EXISTS rect_reminder_dispatch_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_key VARCHAR(128) NOT NULL,
+  rule_id BIGINT NOT NULL,
+  task_id BIGINT NOT NULL,
+  reminder_date VARCHAR(16) NOT NULL,
+  created_at DATETIME NOT NULL,
+  UNIQUE KEY uk_rect_reminder_dispatch_once (owner_key, rule_id, task_id, reminder_date),
+  INDEX idx_rect_reminder_dispatch_owner (owner_key)
+);
+
+CREATE TABLE IF NOT EXISTS rect_user_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_key VARCHAR(128) NOT NULL,
+  username VARCHAR(128) NOT NULL,
+  nickname VARCHAR(255) NOT NULL,
+  role VARCHAR(64) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  unit VARCHAR(255),
+  department VARCHAR(255),
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE KEY uk_rect_user_owner_username (owner_key, username),
+  INDEX idx_rect_user_owner_role (owner_key, role)
+);
+
+CREATE TABLE IF NOT EXISTS rect_department_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_key VARCHAR(128) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE KEY uk_rect_department_owner_name (owner_key, name),
+  INDEX idx_rect_department_owner (owner_key)
+);
+
+CREATE TABLE IF NOT EXISTS rect_report_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_key VARCHAR(128) NOT NULL,
+  unit VARCHAR(255) NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  summary TEXT,
+  submitter VARCHAR(128) NOT NULL,
+  created_at DATETIME NOT NULL,
+  INDEX idx_rect_report_owner_unit (owner_key, unit)
+);
+
+ALTER TABLE rect_user_record ADD COLUMN IF NOT EXISTS unit VARCHAR(255);
+
+CREATE TABLE IF NOT EXISTS rect_notification_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_key VARCHAR(128) NOT NULL,
+  type VARCHAR(64) NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  content TEXT,
+  from_user VARCHAR(128) NOT NULL,
+  related_task_id BIGINT,
+  related_issue_id BIGINT,
+  created_at DATETIME NOT NULL,
+  INDEX idx_rect_notification_owner_created (owner_key, created_at)
+);
+
+CREATE TABLE IF NOT EXISTS rect_notification_receiver_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_key VARCHAR(128) NOT NULL,
+  notification_id BIGINT NOT NULL,
+  receiver_username VARCHAR(128) NOT NULL,
+  UNIQUE KEY uk_rect_notification_receiver (owner_key, notification_id, receiver_username),
+  INDEX idx_rect_notification_receiver_user (owner_key, receiver_username)
+);
+
+CREATE TABLE IF NOT EXISTS rect_notification_read_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_key VARCHAR(128) NOT NULL,
+  notification_id BIGINT NOT NULL,
+  username VARCHAR(128) NOT NULL,
+  read_at DATETIME NOT NULL,
+  UNIQUE KEY uk_rect_notification_read (owner_key, notification_id, username)
+);
+
+CREATE TABLE IF NOT EXISTS rect_notification_interaction_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_key VARCHAR(128) NOT NULL,
+  notification_id BIGINT NOT NULL,
+  action VARCHAR(32) NOT NULL,
+  actor VARCHAR(128) NOT NULL,
+  message TEXT,
+  created_at DATETIME NOT NULL,
+  INDEX idx_rect_notification_interaction (owner_key, notification_id)
+);
+
+CREATE TABLE IF NOT EXISTS rect_org_department_record (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_key VARCHAR(128) NOT NULL,
+  unit VARCHAR(255) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  parent_id BIGINT,
+  leader_username VARCHAR(128),
+  updated_at DATETIME NOT NULL,
+  UNIQUE KEY uk_rect_org_dept_owner_unit_name (owner_key, unit, name),
+  INDEX idx_rect_org_dept_owner_unit (owner_key, unit)
+);

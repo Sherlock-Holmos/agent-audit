@@ -231,6 +231,40 @@ public class NifiOrchestrationService {
         return createProcessGroup(rootId, groupName);
     }
 
+    public int retireProcessGroupsByName(String groupName) {
+        if (!enabled) {
+            throw new IllegalArgumentException("NiFi integration is disabled");
+        }
+
+        String targetName = text(groupName).toUpperCase();
+        if (targetName.isBlank()) {
+            return 0;
+        }
+
+        String url = baseUrl + "/nifi-api/flow/process-groups/root";
+        Map<String, Object> root = httpGetJson(url);
+        Map<String, Object> processGroupFlow = asMap(root.get("processGroupFlow"));
+        Map<String, Object> flow = asMap(processGroupFlow.get("flow"));
+        List<Map<String, Object>> processGroups = asMapList(flow.get("processGroups"));
+
+        int retired = 0;
+        for (Map<String, Object> processGroup : processGroups) {
+            Map<String, Object> component = asMap(processGroup.get("component"));
+            String name = text(component.get("name")).toUpperCase();
+            String id = text(component.get("id"));
+            if (name.isBlank() || id.isBlank() || !name.equals(targetName)) {
+                continue;
+            }
+            try {
+                stopProcessGroup(id);
+                retired++;
+            } catch (RuntimeException ex) {
+                // Ignore stale or already stopped groups.
+            }
+        }
+        return retired;
+    }
+
     public Map<String, Object> provisionFlowBlueprint(Map<String, Object> blueprint) {
         if (!enabled) {
             throw new IllegalArgumentException("NiFi integration is disabled");
@@ -751,6 +785,15 @@ public class NifiOrchestrationService {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("id", processGroupId);
         body.put("state", "RUNNING");
+        invokeJson("PUT", url, body);
+    }
+
+    private void stopProcessGroup(String processGroupId) {
+        String encodedId = URLEncoder.encode(processGroupId, StandardCharsets.UTF_8);
+        String url = baseUrl + "/nifi-api/flow/process-groups/" + encodedId;
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("id", processGroupId);
+        body.put("state", "STOPPED");
         invokeJson("PUT", url, body);
     }
 

@@ -62,7 +62,6 @@ public class DataProcessService implements IDataProcessService {
     private final GovernanceAuditService governanceAuditService;
     private final WorkflowDefinitionService workflowDefinitionService;
     private final NifiOrchestrationService nifiOrchestrationService;
-    private final MeterRegistry meterRegistry;
     private final String stagingSchema;
     private final long nifiRunningTimeoutSeconds;
     private final long nifiZeroRowCompleteGraceSeconds;
@@ -107,7 +106,6 @@ public class DataProcessService implements IDataProcessService {
         this.governanceAuditService = governanceAuditService;
         this.workflowDefinitionService = workflowDefinitionService;
         this.nifiOrchestrationService = nifiOrchestrationService;
-        this.meterRegistry = meterRegistry;
         this.nifiRunningTimeoutSeconds = Math.max(60L, nifiRunningTimeoutSeconds);
         this.nifiZeroRowCompleteGraceSeconds = Math.max(5L, nifiZeroRowCompleteGraceSeconds);
         this.nifiAutoReconcileEnabled = nifiAutoReconcileEnabled;
@@ -1016,6 +1014,9 @@ public class DataProcessService implements IDataProcessService {
             throw new IllegalStateException("NiFi integration is disabled, cannot bootstrap templates");
         }
 
+        nifiOrchestrationService.retireProcessGroupsByName("AUDIT_CLEAN");
+        nifiOrchestrationService.retireProcessGroupsByName("AUDIT_FUSION");
+
         Map<String, Object> cleanBlueprint = buildDefaultNifiBlueprint("CLEAN", ownerUsername);
         Map<String, Object> fusionBlueprint = buildDefaultNifiBlueprint("FUSION", ownerUsername);
 
@@ -1239,6 +1240,7 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.regex.Pattern
 
 def ff = session.get()
 if (ff == null) {
@@ -1683,22 +1685,44 @@ def readFileRows = { String path, String objectName ->
     def lowerName = (objectName ?: path).toLowerCase()
     def rows = []
     if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')) {
-        def fis = new FileInputStream(path)
+        def file = new File(path)
+        if (!file.exists()) {
+            throw new RuntimeException('Excel file not found: ' + path)
+        }
+        def fis = null
         def wb = null
         try {
+            fis = new FileInputStream(path)
             def workbookFactoryClass = Class.forName('org.apache.poi.ss.usermodel.WorkbookFactory')
             def createMethod = workbookFactoryClass.getMethod('create', java.io.InputStream)
             wb = createMethod.invoke(null, fis)
-        } catch (ClassNotFoundException ignoredPoi) {
-            fis.close()
-            return rows
-        }
-        try {
+            if (wb == null) {
+                throw new RuntimeException('WorkbookFactory returned null for file: ' + path)
+            }
             def sheet = wb.getSheetAt(0)
-            def headerRow = sheet.getRow(sheet.getFirstRowNum())
+            int firstRowNum = sheet.getFirstRowNum()
+            int lastRowNum = sheet.getLastRowNum()
+            def headerRow = sheet.getRow(firstRowNum)
+            if (headerRow == null) {
+                throw new RuntimeException('Excel header row is missing: ' + path)
+            }
+            int headerCellCount = Math.max(0, (int) headerRow.getLastCellNum())
+            int probeEnd = Math.min(lastRowNum, firstRowNum + 20)
+            for (int probeRowNum = firstRowNum + 1; probeRowNum <= probeEnd; probeRowNum++) {
+                def probeRow = sheet.getRow(probeRowNum)
+                if (probeRow == null) continue
+                headerCellCount = Math.max(headerCellCount, Math.max(0, (int) probeRow.getLastCellNum()))
+            }
+            if (headerCellCount <= 0) {
+                throw new RuntimeException('Excel has no readable columns: ' + path)
+            }
             def headers = []
-            headerRow.cellIterator().each { c -> headers << String.valueOf(c.toString()).trim() }
-            for (int i = sheet.getFirstRowNum() + 1; i <= sheet.getLastRowNum(); i++) {
+            for (int j = 0; j < headerCellCount; j++) {
+                def headerCell = headerRow.getCell(j)
+                def headerText = headerCell == null ? '' : String.valueOf(headerCell.toString()).trim()
+                headers << (headerText ? headerText : ('col_' + (j + 1)))
+            }
+            for (int i = firstRowNum + 1; i <= lastRowNum; i++) {
                 def row = sheet.getRow(i)
                 if (row == null) continue
                 def map = [:]
@@ -1711,8 +1735,17 @@ def readFileRows = { String path, String objectName ->
                 }
                 if (any) rows << map
             }
+        } catch (ClassNotFoundException ex) {
+            throw new RuntimeException('Apache POI is missing in NiFi runtime, cannot parse Excel file: ' + path, ex)
+        } catch (Exception ex) {
+            throw new RuntimeException('Failed to parse Excel file: ' + path + ', reason=' + String.valueOf(ex.getMessage()), ex)
         } finally {
-            wb.close(); fis.close()
+            if (wb != null) {
+                try { wb.close() } catch (ignoredCloseWb) {}
+            }
+            if (fis != null) {
+                try { fis.close() } catch (ignoredCloseFis) {}
+            }
         }
         return rows
     }
@@ -1787,7 +1820,8 @@ try {
     conn = DriverManager.getConnection(jdbcUrl, jdbcUser, jdbcPassword)
     conn.autoCommit = false
 
-    def ps = conn.prepareStatement("SELECT id,owner_username,standard_table,clean_objects_json,strategy_code,clean_rule_names_json FROM clean_task_record WHERE status='RUNNING' ORDER BY updated_at ASC,id ASC LIMIT 1 FOR UPDATE")
+    def ps = conn.prepareStatement("SELECT id,owner_username,standard_table,clean_objects_json,strategy_code,clean_rule_names_json FROM clean_task_record WHERE owner_username=? AND status='RUNNING' ORDER BY updated_at ASC,id ASC LIMIT 1 FOR UPDATE")
+    ps.setString(1, owner)
     def rs = ps.executeQuery()
     if (!rs.next()) {
         conn.commit()
@@ -1873,7 +1907,7 @@ try {
     cleanObjects.each { obj ->
         def sourceId = Long.valueOf(String.valueOf(obj.sourceId))
         def objectName = String.valueOf(obj.objectName)
-        def srcPs = conn.prepareStatement('SELECT file_path,file_name,type FROM data_source_record WHERE id=? AND owner_username=? LIMIT 1')
+        def srcPs = conn.prepareStatement('SELECT file_path,file_name,type,preview_rows FROM data_source_record WHERE id=? AND owner_username=? LIMIT 1')
         srcPs.setLong(1, sourceId)
         srcPs.setString(2, taskOwner)
         def srcRs = srcPs.executeQuery()
@@ -1886,8 +1920,12 @@ try {
         }
         def filePath = String.valueOf(srcRs.getString('file_path')).replace('/app/uploads', '/data/uploads')
         def fileName = String.valueOf(srcRs.getString('file_name'))
+        int previewRows = srcRs.getObject('preview_rows') == null ? 0 : srcRs.getInt('preview_rows')
         def effectiveName = objectName ?: fileName
         def rows = readFileRows(filePath, effectiveName)
+        if (rows.isEmpty() && previewRows > 0) {
+            throw new RuntimeException('Source file has preview rows=' + previewRows + ' but parsed rows is 0, file=' + filePath + ', object=' + effectiveName)
+        }
         int rn = 1
         rows.each { r ->
             def raw = JsonOutput.toJson(r)
@@ -2134,6 +2172,103 @@ try {
             ownerUsername,
             safeLimit
         );
+    }
+
+    @Transactional
+    public Map<String, Object> deleteNifiReconcileRecord(String ownerUsername, Long recordId, boolean stopRunningTask) {
+        requireAuthenticated(ownerUsername);
+        if (recordId == null || recordId <= 0) {
+            throw new IllegalArgumentException("对账历史ID必须大于0");
+        }
+
+        Map<String, Object> record = getNifiReconcileRecordById(ownerUsername, recordId);
+        String taskType = text(record.get("taskType")).toUpperCase();
+        Long taskId = toLong(record.get("taskId"));
+
+        boolean taskStopped = false;
+        String taskStatusBefore = "";
+        String taskStatusAfter = "";
+
+        if (stopRunningTask) {
+            if ((!"CLEAN".equals(taskType) && !"FUSION".equals(taskType)) || taskId == null || taskId <= 0) {
+                throw new IllegalArgumentException("该历史记录不支持停止任务");
+            }
+
+            if ("CLEAN".equals(taskType)) {
+                Map<String, Object> task = getCleanTaskById(ownerUsername, taskId);
+                taskStatusBefore = text(task.get("status")).toUpperCase();
+                if ("RUNNING".equals(taskStatusBefore)) {
+                    dataProcessTaskRepository.markCleanTaskFailed(ownerUsername, taskId);
+                    taskStopped = true;
+                }
+                Map<String, Object> refreshed = getCleanTaskById(ownerUsername, taskId);
+                taskStatusAfter = text(refreshed.get("status")).toUpperCase();
+            } else {
+                Map<String, Object> task = getFusionTaskById(ownerUsername, taskId);
+                taskStatusBefore = text(task.get("status")).toUpperCase();
+                if ("RUNNING".equals(taskStatusBefore)) {
+                    dataProcessTaskRepository.markFusionTaskFailed(ownerUsername, taskId);
+                    taskStopped = true;
+                }
+                Map<String, Object> refreshed = getFusionTaskById(ownerUsername, taskId);
+                taskStatusAfter = text(refreshed.get("status")).toUpperCase();
+            }
+        }
+
+        int affected = jdbcTemplate.update(
+            "DELETE FROM nifi_task_reconcile_record WHERE owner_username=? AND id=?",
+            ownerUsername,
+            recordId
+        );
+        if (affected == 0) {
+            throw new IllegalArgumentException("对账历史不存在");
+        }
+
+        Map<String, Object> auditDetail = new LinkedHashMap<>();
+        auditDetail.put("recordId", recordId);
+        auditDetail.put("stopRunningTask", stopRunningTask);
+        auditDetail.put("taskType", taskType);
+        auditDetail.put("taskId", taskId == null ? 0L : taskId);
+        auditDetail.put("taskStopped", taskStopped);
+        auditDetail.put("taskStatusBefore", taskStatusBefore);
+        auditDetail.put("taskStatusAfter", taskStatusAfter);
+        recordAudit(ownerUsername, "DELETE", "NIFI_RECONCILE_RECORD", String.valueOf(recordId), "SUCCESS", auditDetail);
+        invalidateDashboardCache(ownerUsername);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("recordId", recordId);
+        result.put("deleted", true);
+        result.put("stopRunningTask", stopRunningTask);
+        result.put("taskType", taskType);
+        result.put("taskId", taskId == null ? 0L : taskId);
+        result.put("taskStopped", taskStopped);
+        result.put("taskStatusBefore", taskStatusBefore);
+        result.put("taskStatusAfter", taskStatusAfter);
+        return result;
+    }
+
+    private Map<String, Object> getNifiReconcileRecordById(String ownerUsername, Long recordId) {
+        List<Map<String, Object>> rows = jdbcTemplate.query(
+            """
+            SELECT id, task_type, task_id, result_json
+              FROM nifi_task_reconcile_record
+             WHERE owner_username=? AND id=?
+            """,
+            (rs, i) -> {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("id", rs.getLong("id"));
+                row.put("taskType", nvl(rs.getString("task_type")));
+                row.put("taskId", rs.getObject("task_id") == null ? 0L : rs.getLong("task_id"));
+                row.put("result", castMap(parseJson(rs.getString("result_json"))));
+                return row;
+            },
+            ownerUsername,
+            recordId
+        );
+        if (rows.isEmpty()) {
+            throw new IllegalArgumentException("对账历史不存在");
+        }
+        return rows.get(0);
     }
 
     private Map<String, Object> reconcileNifiRunningTasksInternal(String ownerUsername, Integer limit, String triggerType, String triggerUser) {
@@ -2900,7 +3035,7 @@ try {
     private void persistCleanLayersAndGovernance(String ownerUsername, Long taskId, String standardTable, List<Map<String, Object>> cleanObjects) {
         stagingTableService.persistCleanResultToLayers(ownerUsername, taskId, standardTable);
         persistGovernanceArtifacts(ownerUsername, "CLEAN", taskId, standardTable, cleanObjects.stream()
-            .map(it -> text(it.get("objectName")))
+            .map((Map<String, Object> item) -> text(item.get("objectName")))
             .filter(it -> !isBlank(it))
             .toList());
     }
