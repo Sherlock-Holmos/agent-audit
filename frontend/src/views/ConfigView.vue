@@ -69,7 +69,7 @@
           </el-form-item>
         </el-form>
 
-        <el-form v-else-if="currentNodeId === 'security-auth'" label-width="140px">
+        <el-form v-else-if="isAuditAdmin && currentNodeId === 'security-auth'" label-width="140px">
           <el-form-item label="登录失败阈值">
             <el-input-number v-model="forms.security.loginFailLimit" :min="3" :max="20" />
           </el-form-item>
@@ -81,7 +81,7 @@
           </el-form-item>
         </el-form>
 
-        <el-form v-else-if="currentNodeId === 'data-source'" label-width="140px">
+        <el-form v-else-if="isAuditAdmin && currentNodeId === 'data-source'" label-width="140px">
           <el-form-item label="最大导入文件(MB)">
             <el-input-number v-model="forms.datasource.maxUploadMb" :min="1" :max="500" />
           </el-form-item>
@@ -99,7 +99,7 @@
           </el-form-item>
         </el-form>
 
-        <el-form v-else-if="currentNodeId === 'data-clean'" label-width="140px">
+        <el-form v-else-if="isAuditAdmin && currentNodeId === 'data-clean'" label-width="140px">
           <el-form-item label="默认去重策略">
             <el-select v-model="forms.clean.dedupStrategy" style="width: 220px">
               <el-option label="主键优先" value="PRIMARY_KEY" />
@@ -114,7 +114,7 @@
           </el-form-item>
         </el-form>
 
-        <el-form v-else-if="currentNodeId === 'ai-models'" label-width="140px">
+        <el-form v-else-if="isAuditAdmin && currentNodeId === 'ai-models'" label-width="140px">
           <el-form-item label="模型提供商">
             <el-select v-model="forms.ai.provider" style="width: 220px">
               <el-option label="Mock" value="mock" />
@@ -163,7 +163,15 @@
                 <el-button type="primary" plain @click="openModelDialog">添加模型</el-button>
               </div>
 
-              <el-table :data="forms.ai.modelOptions" border empty-text="暂无模型选项" class="ai-model-table">
+              <AppDataTable
+                :data="forms.ai.modelOptions"
+                layout-storage-key="app:table-layout:config:ai-model-options"
+                :show-pagination="false"
+                :with-card="false"
+                empty-text="暂无模型选项"
+                table-class="ai-model-table"
+              >
+                <template #default>
                 <el-table-column prop="label" label="显示名称" min-width="160" />
                 <el-table-column prop="value" label="模型标识" min-width="180" />
                 <el-table-column label="操作" width="100" align="center">
@@ -171,8 +179,29 @@
                     <el-button type="danger" text @click="removeModelOption(scope.$index)">删除</el-button>
                   </template>
                 </el-table-column>
-              </el-table>
+                </template>
+              </AppDataTable>
             </div>
+          </el-form-item>
+        </el-form>
+
+        <el-form v-else-if="isAuditAdmin && currentNodeId === 'ai-dialog-strategy'" label-width="140px">
+          <el-form-item label="报告模式">
+            <el-radio-group v-model="forms.aiStrategy.reportMode">
+              <el-radio value="weekly">标准周报</el-radio>
+              <el-radio value="executive">管理摘要</el-radio>
+              <el-radio value="deep">深度诊断</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="回复方式">
+            <el-switch
+              v-model="forms.aiStrategy.enableStream"
+              active-text="流式回复"
+              inactive-text="普通回复"
+            />
+          </el-form-item>
+          <el-form-item label="说明">
+            <span class="hint-text">该配置将作用于 AI 分析工作台的默认会话行为。</span>
           </el-form-item>
         </el-form>
 
@@ -198,10 +227,13 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAppStore } from '../store/app'
 import { storeToRefs } from 'pinia'
+import AppDataTable from '../components/shared/AppDataTable.vue'
+import { ROLES } from '../constants/rbac'
+import { getCurrentRole } from '../utils/currentUser'
 
 const saving = ref(false)
 const currentNodeId = ref('basic-audit')
@@ -209,6 +241,7 @@ const appStore = useAppStore()
 const { themeMode } = storeToRefs(appStore)
 const GLOBAL_TABLE_LAYOUT_KEY = 'app:table-layout:global'
 const AI_MODEL_SETTINGS_KEY = 'app:ai:model-settings:v1'
+const AI_DIALOG_STRATEGY_KEY = 'app:ai:dialog-strategy:v1'
 
 const modelDialogVisible = ref(false)
 const newModel = reactive({
@@ -216,7 +249,10 @@ const newModel = reactive({
   value: ''
 })
 
-const settingTree = [
+const isAuditAdmin = computed(() => getCurrentRole() === ROLES.AUDIT_ADMIN)
+const BASIC_NODE_IDS = new Set(['basic-audit', 'basic-appearance', 'basic-table'])
+
+const baseSettingTree = [
   {
     id: 'basic',
     label: '基础设置',
@@ -243,10 +279,18 @@ const settingTree = [
     id: 'ai',
     label: 'AI设置',
     children: [
-      { id: 'ai-models', label: '大模型选项管理' }
+      { id: 'ai-models', label: '大模型选项管理' },
+      { id: 'ai-dialog-strategy', label: '对话策略配置' }
     ]
   }
 ]
+
+const settingTree = computed(() => {
+  if (isAuditAdmin.value) {
+    return baseSettingTree
+  }
+  return baseSettingTree.filter((item) => item.id === 'basic')
+})
 
 const titleMap = {
   'basic-audit': '系统与审计基础信息',
@@ -255,7 +299,8 @@ const titleMap = {
   'security-auth': '认证与会话策略',
   'data-source': '数据源接入策略',
   'data-clean': '数据清洗策略',
-  'ai-models': '大模型选项管理'
+  'ai-models': '大模型选项管理',
+  'ai-dialog-strategy': '对话策略配置'
 }
 
 const forms = reactive({
@@ -297,19 +342,38 @@ const forms = reactive({
       { label: 'GPT-4o', value: 'gpt-4o' },
       { label: 'DeepSeek-V3', value: 'deepseek-chat' }
     ]
+  },
+  aiStrategy: {
+    reportMode: 'weekly',
+    enableStream: true
   }
 })
 
 const currentTitle = computed(() => titleMap[currentNodeId.value] || '设置')
 
+watch(
+  () => isAuditAdmin.value,
+  (allowed) => {
+    if (!allowed && !BASIC_NODE_IDS.has(currentNodeId.value)) {
+      currentNodeId.value = 'basic-audit'
+    }
+  },
+  { immediate: true }
+)
+
 function handleNodeClick(node) {
   if (node.children?.length) return
+  if (!isAuditAdmin.value && !BASIC_NODE_IDS.has(node.id)) return
   currentNodeId.value = node.id
 }
 
 async function saveCurrent() {
   saving.value = true
   try {
+    if (!isAuditAdmin.value && !BASIC_NODE_IDS.has(currentNodeId.value)) {
+      ElMessage.warning('当前角色仅可使用基础设置')
+      return
+    }
     if (currentNodeId.value === 'basic-appearance') {
       appStore.setThemeMode(forms.appearance.themeMode)
     }
@@ -322,6 +386,10 @@ async function saveCurrent() {
       window.dispatchEvent(new CustomEvent('table-layout-config-changed', { detail: payload }))
     }
     if (currentNodeId.value === 'ai-models') {
+      if (!isAuditAdmin.value) {
+        ElMessage.warning('只有审计管理员可以保存 AI 设置')
+        return
+      }
       const payload = {
         provider: forms.ai.provider,
         defaultModel: forms.ai.defaultModel,
@@ -332,6 +400,18 @@ async function saveCurrent() {
       }
       localStorage.setItem(AI_MODEL_SETTINGS_KEY, JSON.stringify(payload))
       window.dispatchEvent(new CustomEvent('ai-model-settings-changed', { detail: payload }))
+    }
+    if (currentNodeId.value === 'ai-dialog-strategy') {
+      if (!isAuditAdmin.value) {
+        ElMessage.warning('只有审计管理员可以保存 AI 设置')
+        return
+      }
+      const payload = {
+        reportMode: forms.aiStrategy.reportMode,
+        enableStream: forms.aiStrategy.enableStream
+      }
+      localStorage.setItem(AI_DIALOG_STRATEGY_KEY, JSON.stringify(payload))
+      window.dispatchEvent(new CustomEvent('ai-dialog-strategy-changed', { detail: payload }))
     }
     await new Promise((resolve) => setTimeout(resolve, 400))
     ElMessage.success(`${currentTitle.value}保存成功`)
@@ -426,9 +506,26 @@ function loadAiModelSettings() {
   }
 }
 
+function loadAiDialogStrategy() {
+  try {
+    const cached = localStorage.getItem(AI_DIALOG_STRATEGY_KEY)
+    if (!cached) return
+    const parsed = JSON.parse(cached)
+    if (typeof parsed?.reportMode === 'string' && ['weekly', 'executive', 'deep'].includes(parsed.reportMode)) {
+      forms.aiStrategy.reportMode = parsed.reportMode
+    }
+    if (typeof parsed?.enableStream === 'boolean') {
+      forms.aiStrategy.enableStream = parsed.enableStream
+    }
+  } catch {
+    // ignore invalid cache
+  }
+}
+
 onMounted(() => {
   loadGlobalTableLayout()
   loadAiModelSettings()
+  loadAiDialogStrategy()
 })
 </script>
 

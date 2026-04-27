@@ -1,47 +1,26 @@
 <template>
   <div class="governance-table-wrap">
-    <TableLayoutActions @reset="resetColumnLayout" />
-
-    <el-table
-      ref="tableRef"
-      :data="pagedData"
-      v-loading="loading"
-      border
-      :fit="shouldAutoFit()"
-      show-overflow-tooltip
-      :show-header-overflow-tooltip="false"
-      style="width: 100%"
-      :size="tableLayout.size"
-      :row-style="rowStyle"
-      :header-row-style="headerRowStyle"
-      @header-dragend="handleHeaderDragEnd"
+    <AppDataTable
+      :data="data"
+      :loading="loading"
+      :layout-storage-key="layoutStorageKey"
+      :column-keys="columnKeys"
+      :min-by-key="minByKey"
+      :empty-text="emptyText"
+      :show-empty="true"
+      :with-card="false"
+      card-class="governance-table-inner"
+      :follow-global-table-size="true"
     >
-      <slot :resolveWidth="resolveWidth" :resolveMinWidth="resolveMinWidth" />
-    </el-table>
-
-    <div v-if="showPagination" class="table-pagination">
-      <el-pagination
-        background
-        layout="total, sizes, prev, pager, next, jumper"
-        :total="total"
-        :current-page="currentPage"
-        :page-size="pageSize"
-        :page-sizes="pageSizes"
-        @current-change="handleCurrentChange"
-        @size-change="handleSizeChange"
-      />
-    </div>
-
-    <TableEmptyTip :show="!data.length && !loading && !!emptyText" :text="emptyText" />
+      <template #default="{ resolveWidth, resolveMinWidth }">
+        <slot :resolveWidth="resolveWidth" :resolveMinWidth="resolveMinWidth" />
+      </template>
+    </AppDataTable>
   </div>
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { useTableColumnLayout } from '../../composables/useTableColumnLayout'
-import { useTablePagination } from '../../composables/useTablePagination'
-import TableLayoutActions from '../shared/TableLayoutActions.vue'
-import TableEmptyTip from '../shared/TableEmptyTip.vue'
+import AppDataTable from '../shared/AppDataTable.vue'
 
 const props = defineProps({
   data: {
@@ -60,91 +39,23 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
+  minByKey: {
+    type: Object,
+    default: () => ({})
+  },
   emptyText: {
     type: String,
     default: ''
   }
 })
-
-const TABLE_LAYOUT_KEY = 'app:table-layout:global'
-const tableLayout = reactive({
-  size: 'default'
-})
-const FIXED_ROW_HEIGHT = 44
-const tableRef = ref()
-
-const {
-  loadColumnWidths,
-  resolveWidth,
-  resolveMinWidth,
-  shouldAutoFit,
-  handleHeaderDragEnd,
-  resetColumnLayout,
-  rowStyle,
-  headerRowStyle
-} = useTableColumnLayout({
-  layoutStorageKey: () => props.layoutStorageKey,
-  columnKeys: props.columnKeys,
-  tableRef,
-  fixedRowHeight: FIXED_ROW_HEIGHT
-})
-
-const {
-  currentPage,
-  pageSize,
-  pageSizes,
-  total,
-  pagedData,
-  showPagination,
-  handleCurrentChange,
-  handleSizeChange
-} = useTablePagination(() => props.data)
-
-function loadTableLayout() {
-  try {
-    const cached = localStorage.getItem(TABLE_LAYOUT_KEY)
-    if (!cached) return
-    const parsed = JSON.parse(cached)
-    if (typeof parsed?.size === 'string') {
-      tableLayout.size = parsed.size
-    }
-  } catch {
-    // ignore invalid cache
-  }
-}
-
-function handleTableLayoutChanged(event) {
-  const next = event?.detail || {}
-  if (typeof next?.size === 'string') {
-    tableLayout.size = next.size
-  }
-}
-
-onMounted(() => {
-  loadTableLayout()
-  loadColumnWidths()
-  window.addEventListener('table-layout-config-changed', handleTableLayoutChanged)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('table-layout-config-changed', handleTableLayoutChanged)
-})
 </script>
 
 <style scoped>
-:deep(.governance-table-wrap) {
+.governance-table-wrap {
   width: 100%;
 }
 
-:deep(.el-table th.el-table__cell .cell) {
-  white-space: nowrap;
-  overflow: visible !important;
-  text-overflow: clip !important;
-}
-
-.table-pagination {
-  margin-top: 12px;
-  display: flex;
-  justify-content: flex-end;
+:deep(.governance-table-inner) {
+  width: 100%;
 }
 </style>

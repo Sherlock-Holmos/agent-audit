@@ -22,6 +22,9 @@
     <el-container class="main-fixed">
       <el-header class="header-fixed">
         <span>基于多源数据融合的审计整改智能驾驶舱</span>
+        <div class="header-user-role" v-if="!isAuthPage && userRoleLabel">
+          当前身份：{{ userRoleLabel }}
+        </div>
       </el-header>
       <el-main class="main-scroll" :style="mainStyle">
         <router-view />
@@ -32,11 +35,10 @@
   <UserProfileDialog
     v-model="profileDialogVisible"
     :user="user"
+    :is-admin="isAuditAdmin"
     :submitting="profileSubmitting"
     @submit="saveProfile"
   />
-
-  <FloatingAssistant v-if="!isAuthPage" />
 </template>
 
 <script setup>
@@ -47,12 +49,11 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import CustomMenu from './components/CustomMenu.vue'
 import UserAvatarMenu from './components/user/UserAvatarMenu.vue'
 import UserProfileDialog from './components/user/UserProfileDialog.vue'
-import FloatingAssistant from './components/assistant/FloatingAssistant.vue'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { useAppStore } from './store/app'
 import { storeToRefs } from 'pinia'
 import { deactivateMyAccountApi, getMyProfileApi, updateMyProfileApi } from './api/auth'
-import { normalizeRole } from './constants/rbac'
+import { normalizeRole, roleLabel } from './constants/rbac'
 
 const appStore = useAppStore()
 const { isCollapse, themeMode } = storeToRefs(appStore)
@@ -63,6 +64,7 @@ let systemThemeMediaQuery
 const isAuthPage = computed(() => ['/login', '/register'].includes(route.path))
 const noMainScrollRoutes = ['/datasource/clean', '/datasource/fusion']
 const lockMainScroll = computed(() => noMainScrollRoutes.includes(route.path))
+const userRoleLabel = computed(() => roleLabel(normalizeRole(user.value?.role)))
 
 const mainStyle = computed(() => ({
   padding: '24px',
@@ -83,6 +85,7 @@ function handleSystemThemeChange() {
 const user = ref({})
 const profileDialogVisible = ref(false)
 const profileSubmitting = ref(false)
+const isAuditAdmin = computed(() => normalizeRole(user.value?.role) === 'AUDIT_ADMIN')
 
 try {
   user.value = JSON.parse(localStorage.getItem('user')) || {}
@@ -247,10 +250,21 @@ onBeforeUnmount(() => {
   line-height: 60px;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   flex-shrink: 0;
   z-index: 10;
   padding: 0 20px;
+}
+
+.header-user-role {
+  font-size: 13px;
+  font-weight: 500;
+  color: #245a9c;
+  background: #eef5ff;
+  border: 1px solid #cfe0ff;
+  border-radius: 14px;
+  padding: 4px 10px;
+  line-height: 1.2;
 }
 .main-scroll {
   flex: 1 1 0;

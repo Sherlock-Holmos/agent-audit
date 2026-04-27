@@ -120,7 +120,15 @@
             <div class="code-block">
               <pre><code>动作类型|字段名|值（或来源值）|目标值</code></pre>
             </div>
-            <el-table :data="dslSyntaxRows" border size="small" style="margin: 12px 0">
+            <AppDataTable
+              :data="dslSyntaxRows"
+              layout-storage-key="app:table-layout:help:dsl-syntax"
+              :show-pagination="false"
+              :with-card="false"
+              table-size="small"
+              table-class="help-table mt-12"
+            >
+              <template #default>
               <el-table-column prop="col" label="列" width="90" align="center" />
               <el-table-column prop="name" label="名称" width="100" />
               <el-table-column prop="required" label="必填" width="70" align="center">
@@ -131,7 +139,8 @@
                 </template>
               </el-table-column>
               <el-table-column prop="desc" label="说明" />
-            </el-table>
+              </template>
+            </AppDataTable>
             <el-alert type="warning" :closable="false" show-icon style="margin-bottom: 10px">
               <template #default>
                 <ul class="alert-list">
@@ -165,7 +174,15 @@
   ]
 }</code></pre>
             </div>
-            <el-table :data="jsonFieldRows" border size="small" style="margin: 12px 0">
+            <AppDataTable
+              :data="jsonFieldRows"
+              layout-storage-key="app:table-layout:help:json-field"
+              :show-pagination="false"
+              :with-card="false"
+              table-size="small"
+              table-class="help-table mt-12"
+            >
+              <template #default>
               <el-table-column prop="field" label="字段" width="100" />
               <el-table-column prop="required" label="必填" width="70" align="center">
                 <template #default="scope">
@@ -175,12 +192,21 @@
                 </template>
               </el-table-column>
               <el-table-column prop="desc" label="说明" />
-            </el-table>
+              </template>
+            </AppDataTable>
           </section>
 
           <section id="rules-types" class="help-section">
             <h3 class="sub-title">支持的动作类型</h3>
-            <el-table :data="actionTypeRows" border size="small">
+            <AppDataTable
+              :data="actionTypeRows"
+              layout-storage-key="app:table-layout:help:action-type"
+              :show-pagination="false"
+              :with-card="false"
+              table-size="small"
+              table-class="help-table"
+            >
+              <template #default>
               <el-table-column prop="type" label="type" width="150">
                 <template #default="scope">
                   <el-tag type="primary" size="small">{{ scope.row.type }}</el-tag>
@@ -189,7 +215,8 @@
               <el-table-column prop="desc" label="说明" min-width="200" />
               <el-table-column prop="fieldNote" label="field 说明" width="140" />
               <el-table-column prop="extra" label="额外参数" min-width="160" />
-            </el-table>
+              </template>
+            </AppDataTable>
           </section>
 
           <section id="rules-examples" class="help-section">
@@ -279,7 +306,15 @@ replace|phone|1234|****</code></pre>
 
           <section id="strategies-builtin" class="help-section">
             <h3 class="sub-title">系统内置策略</h3>
-            <el-table :data="builtinStrategyRows" border size="small">
+            <AppDataTable
+              :data="builtinStrategyRows"
+              layout-storage-key="app:table-layout:help:builtin-strategy"
+              :show-pagination="false"
+              :with-card="false"
+              table-size="small"
+              table-class="help-table"
+            >
+              <template #default>
               <el-table-column prop="code" label="策略编码" width="200">
                 <template #default="scope">
                   <el-tag type="info" size="small">{{ scope.row.code }}</el-tag>
@@ -288,7 +323,8 @@ replace|phone|1234|****</code></pre>
               <el-table-column prop="name" label="策略名称" width="150" />
               <el-table-column prop="desc" label="处理逻辑说明" min-width="260" />
               <el-table-column prop="scenario" label="适用场景" min-width="200" />
-            </el-table>
+              </template>
+            </AppDataTable>
             <el-alert type="warning" :closable="false" show-icon style="margin-top: 12px">
               <template #default>
                 系统内置策略不可删除、不可修改编码；可启用/禁用，但禁用后清洗任务将无法选择该策略。
@@ -324,7 +360,15 @@ replace|phone|1234|****</code></pre>
 
           <section id="strategies-naming" class="help-section">
             <h3 class="sub-title">命名规范</h3>
-            <el-table :data="namingRuleRows" border size="small">
+            <AppDataTable
+              :data="namingRuleRows"
+              layout-storage-key="app:table-layout:help:naming-rule"
+              :show-pagination="false"
+              :with-card="false"
+              table-size="small"
+              table-class="help-table"
+            >
+              <template #default>
               <el-table-column prop="item" label="项目" width="150" />
               <el-table-column prop="rule" label="规范要求" min-width="220" />
               <el-table-column prop="good" label="正确示例" min-width="200">
@@ -337,7 +381,8 @@ replace|phone|1234|****</code></pre>
                   <el-tag type="danger" size="small">{{ scope.row.bad }}</el-tag>
                 </template>
               </el-table-column>
-            </el-table>
+              </template>
+            </AppDataTable>
           </section>
 
           <el-divider />
@@ -455,6 +500,7 @@ import {
   Star
 } from '@element-plus/icons-vue'
 import { ref, onMounted } from 'vue'
+import AppDataTable from '../components/shared/AppDataTable.vue'
 
 const activeSection = ref('intro')
 const contentRef = ref(null)
@@ -594,6 +640,14 @@ onMounted(() => {
 
 .help-content {
   padding: 0 4px;
+}
+
+.help-table {
+  width: 100%;
+}
+
+.mt-12 {
+  margin: 12px 0;
 }
 
 .page-title {

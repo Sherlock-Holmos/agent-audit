@@ -8,8 +8,20 @@ const client = axios.create({
 
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
+  let user = {}
+  try {
+    user = JSON.parse(localStorage.getItem('user') || '{}')
+  } catch {
+    user = {}
+  }
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+  if (user?.username) {
+    config.headers['X-User-Name'] = user.username
+  }
+  if (user?.role) {
+    config.headers['X-User-Role'] = user.role
   }
   return config
 })

@@ -8,7 +8,7 @@
       <GovernanceTable
         :data="rules"
         :loading="loading"
-        layout-storage-key="governance-clean-rules-table"
+        layout-storage-key="app:table-layout:governance:clean-rules"
         :column-keys="['name', 'category', 'fileName', 'updatedAt', 'enabled', 'actions']"
       >
         <template #default="{ resolveWidth, resolveMinWidth }">
@@ -80,7 +80,7 @@
       <GovernanceTable
         :data="strategies"
         :loading="loadingStrategies"
-        layout-storage-key="governance-clean-strategy-table"
+        layout-storage-key="app:table-layout:governance:clean-strategy"
         :column-keys="['name', 'code', 'builtIn', 'updatedAt', 'enabled', 'actions']"
       >
         <template #default="{ resolveWidth, resolveMinWidth }">

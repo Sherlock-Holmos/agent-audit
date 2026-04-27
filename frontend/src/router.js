@@ -17,37 +17,108 @@ export const routes = [
   },
   {
     path: '/',
-    redirect: '/workbench/auditor'
+    redirect: '/auditor/issues/new'
   },
   {
     path: '/dashboard',
     name: 'dashboard',
-    component: () => import('./views/DashboardView.vue'),
-    meta: { requiresAuth: true, roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR] }
+    component: () => import('./views/DashboardFusionView.vue'),
+    meta: { requiresAuth: true, roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR, ROLES.ORG_ADMIN] }
   },
   {
-    path: '/workbench/audit-admin',
-    name: 'workbench-audit-admin',
-    component: () => import('./views/AuditAdminWorkbenchView.vue'),
+    path: '/audit-admin/overview',
+    name: 'audit-admin-overview',
+    redirect: '/dashboard'
+  },
+  {
+    path: '/audit-admin/focus-issues',
+    name: 'audit-admin-focus-issues',
+    component: () => import('./views/AuditAdminFocusIssuesView.vue'),
     meta: { requiresAuth: true, roles: [ROLES.AUDIT_ADMIN] }
   },
   {
-    path: '/workbench/auditor',
-    name: 'workbench-auditor',
-    component: () => import('./views/AuditorWorkbenchView.vue'),
+    path: '/audit-admin/rules',
+    name: 'audit-admin-rules',
+    component: () => import('./views/AuditAdminRulesConfigView.vue'),
+    meta: { requiresAuth: true, roles: [ROLES.AUDIT_ADMIN] }
+  },
+  {
+    path: '/audit-admin/user-permissions',
+    name: 'audit-admin-user-permissions',
+    component: () => import('./views/AuditAdminUserPermissionView.vue'),
+    meta: { requiresAuth: true, roles: [ROLES.AUDIT_ADMIN] }
+  },
+  {
+    path: '/auditor/issues/new',
+    name: 'auditor-issue-entry',
+    component: () => import('./views/AuditorIssueEntryView.vue'),
     meta: { requiresAuth: true, roles: [ROLES.AUDITOR] }
   },
   {
-    path: '/workbench/org-admin',
-    name: 'workbench-org-admin',
-    component: () => import('./views/AuditedOrgAdminWorkbenchView.vue'),
+    path: '/auditor/tasks/assign',
+    redirect: '/auditor/issues/new'
+  },
+  {
+    path: '/auditor/tasks/tracking',
+    redirect: '/auditor/issues/new'
+  },
+  {
+    path: '/auditor/issues/share',
+    redirect: '/auditor/issues/new'
+  },
+  {
+    path: '/auditor/review',
+    redirect: '/auditor/issues/new'
+  },
+  {
+    path: '/org-admin/tasks/collaboration',
+    name: 'org-admin-task-collaboration',
+    component: () => import('./views/OrgAdminTaskCollaborationView.vue'),
     meta: { requiresAuth: true, roles: [ROLES.ORG_ADMIN] }
   },
   {
-    path: '/workbench/org-operator',
-    name: 'workbench-org-operator',
-    component: () => import('./views/AuditedOrgOperatorWorkbenchView.vue'),
+    path: '/org-admin/report/submit',
+    name: 'org-admin-report-submit',
+    component: () => import('./views/OrgAdminReportSubmitView.vue'),
+    meta: { requiresAuth: true, roles: [ROLES.ORG_ADMIN] }
+  },
+  {
+    path: '/org-admin/departments',
+    name: 'org-admin-departments',
+    component: () => import('./views/OrgAdminDepartmentManagementView.vue'),
+    meta: { requiresAuth: true, roles: [ROLES.ORG_ADMIN] }
+  },
+  {
+    path: '/org-operator/tasks/claim',
+    name: 'org-operator-task-claim',
+    component: () => import('./views/OrgOperatorTaskClaimView.vue'),
     meta: { requiresAuth: true, roles: [ROLES.ORG_OPERATOR] }
+  },
+  {
+    path: '/org-operator/execution-center',
+    redirect: '/org-operator/tasks/claim'
+  },
+  {
+    path: '/messages',
+    name: 'message-center',
+    component: () => import('./views/MessageCenterView.vue'),
+    meta: { requiresAuth: true, roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR, ROLES.ORG_ADMIN, ROLES.ORG_OPERATOR] }
+  },
+  {
+    path: '/workbench/audit-admin',
+    redirect: '/dashboard'
+  },
+  {
+    path: '/workbench/auditor',
+    redirect: '/auditor/issues/new'
+  },
+  {
+    path: '/workbench/org-admin',
+    redirect: '/org-admin/tasks/collaboration'
+  },
+  {
+    path: '/workbench/org-operator',
+    redirect: '/org-operator/tasks/claim'
   },
   {
     path: '/forbidden',
@@ -105,7 +176,7 @@ export const routes = [
     path: '/settings',
     name: 'settings',
     component:  () => import('./views/ConfigView.vue'),
-    meta: { requiresAuth: true, roles: [ROLES.AUDIT_ADMIN] }
+    meta: { requiresAuth: true }
   },
   {
     path: '/config',

@@ -29,8 +29,11 @@
       <el-form-item label="手机号" prop="phone">
         <el-input v-model="form.phone" placeholder="请输入手机号" />
       </el-form-item>
+      <el-form-item label="单位">
+        <el-input v-model="form.unit" :disabled="!isAdmin" placeholder="请输入单位" />
+      </el-form-item>
       <el-form-item label="部门">
-        <el-input v-model="form.department" placeholder="请输入部门" />
+        <el-input v-model="form.department" :disabled="!isAdmin" placeholder="请输入部门" />
       </el-form-item>
     </el-form>
 
@@ -57,6 +60,10 @@ const props = defineProps({
   submitting: {
     type: Boolean,
     default: false
+  },
+  isAdmin: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -69,6 +76,7 @@ const form = reactive({
   avatarUrl: '',
   email: '',
   phone: '',
+  unit: '',
   department: ''
 })
 
@@ -97,6 +105,7 @@ watch(
     form.avatarUrl = props.user?.avatarUrl || ''
     form.email = props.user?.email || ''
     form.phone = props.user?.phone || ''
+    form.unit = props.user?.unit || ''
     form.department = props.user?.department || ''
   },
   { immediate: true, deep: true }

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:table-governance": "node scripts/check-table-governance.mjs"
   },
   "dependencies": {
     "axios": "^1.8.4",

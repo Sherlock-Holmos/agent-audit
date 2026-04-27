@@ -1,283 +1,288 @@
-const STORAGE_KEY = 'rectification_center_data_v1'
+import {
+  addIssueSupervisionApi,
+  addRuleApi,
+  acceptTaskApi,
+  claimTaskApi,
+  createReminderRuleApi,
+  createIssueApi,
+  createRectificationTaskApi,
+  splitIssueTasksApi,
+  createUserApi,
+  createDepartmentApi,
+  deleteUserApi,
+  deleteDepartmentApi,
+  deleteIssueApi,
+  deleteIssueSupervisionApi,
+  dispatchSubTaskApi,
+  deleteTaskApi,
+  deleteReminderRuleApi,
+  fetchRectificationSnapshotApi,
+  downloadTaskAttachmentApi,
+  listDepartmentsApi,
+  listReminderRulesApi,
+  listDeletedUsersApi,
+  interactNotificationApi,
+  markNotificationReadApi,
+  reviewTaskApi,
+  restoreUserApi,
+  submitOrgReportApi,
+  submitTaskExecutionApi,
+  uploadTaskAttachmentApi,
+  bindUserDepartmentApi,
+  updateDepartmentApi,
+  updateReminderRuleApi,
+  updateRuleApi,
+  updateTaskDeadlineApi,
+  updateUserApi,
+  updateUserRoleApi,
+  updateUserStatusApi,
+  listOrgDepartmentsApi,
+  createOrgDepartmentApi,
+  updateOrgDepartmentApi,
+  deleteOrgDepartmentApi,
+  listOrgMembersApi,
+  createOrgMemberApi,
+  updateOrgMemberApi,
+  deleteOrgMemberApi,
+  runReminderScanApi
+} from '../api/rectification'
 
-function nextId(prefix) {
-  return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+const RECTIFICATION_SNAPSHOT_CACHE_KEY = 'app:rectification:snapshot-cache:v1'
+
+const EMPTY_SNAPSHOT = {
+  issues: [],
+  tasks: [],
+  rules: [],
+  users: [],
+  departments: [],
+  reports: [],
+  notifications: []
 }
 
-function nowText() {
-  return new Date().toLocaleString('zh-CN', { hour12: false })
-}
+let snapshotCache = { ...EMPTY_SNAPSHOT }
 
-function seedData() {
-  return {
-    issues: [
-      {
-        id: 'issue_1001',
-        code: 'WT-2026-001',
-        title: '专项资金报销附件缺失',
-        level: '高',
-        unit: '城建集团',
-        description: '抽查 23 笔报销中 6 笔缺少审批附件。',
-        status: '整改中',
-        createdBy: 'auditor_demo',
-        createdAt: nowText(),
-        taskId: 'task_1001'
-      },
-      {
-        id: 'issue_1002',
-        code: 'WT-2026-002',
-        title: '采购比价流程执行不到位',
-        level: '中',
-        unit: '交通投资公司',
-        description: '5 个采购事项未留存完整比价过程记录。',
-        status: '待派发',
-        createdBy: 'auditor_demo',
-        createdAt: nowText(),
-        taskId: ''
-      }
-    ],
-    tasks: [
-      {
-        id: 'task_1001',
-        issueId: 'issue_1001',
-        title: '资金报销附件补齐与流程补正',
-        unit: '城建集团',
-        assignee: 'org_admin_demo',
-        createdBy: 'auditor_demo',
-        status: '执行中',
-        progress: 45,
-        deadline: '2026-05-15',
-        reviewStatus: '待审核',
-        reviewComment: '',
-        measure: '',
-        attachments: [],
-        feedback: '',
-        parentId: '',
-        claimedBy: '',
-        createdAt: nowText(),
-        updatedAt: nowText()
-      }
-    ],
-    rules: [
-      { id: 'rule_1', name: '重点问题逾期自动预警', enabled: true, updatedAt: nowText() },
-      { id: 'rule_2', name: '证据材料缺失禁止提交审核', enabled: true, updatedAt: nowText() }
-    ],
-    users: [
-      { id: 'u_1', username: 'admin', nickname: '系统管理员', role: 'AUDIT_ADMIN', status: 'ENABLED', department: '审计局' },
-      { id: 'u_2', username: 'auditor_demo', nickname: '审计员-李明', role: 'AUDITOR', status: 'ENABLED', department: '审计一处' },
-      { id: 'u_3', username: 'org_admin_demo', nickname: '城建集团管理员', role: 'ORG_ADMIN', status: 'ENABLED', department: '城建集团' },
-      { id: 'u_4', username: 'org_operator_demo', nickname: '城建集团经办', role: 'ORG_OPERATOR', status: 'ENABLED', department: '城建集团' }
-    ],
-    reports: []
+function loadCachedSnapshot() {
+  if (typeof window === 'undefined') {
+    return { ...EMPTY_SNAPSHOT }
   }
+  try {
+    const raw = window.localStorage.getItem(RECTIFICATION_SNAPSHOT_CACHE_KEY)
+    if (!raw) {
+      return { ...EMPTY_SNAPSHOT }
+    }
+    const parsed = JSON.parse(raw)
+    return normalizeSnapshot(parsed)
+  } catch {
+    return { ...EMPTY_SNAPSHOT }
+  }
+}
+
+function persistSnapshotCache(data) {
+  if (typeof window === 'undefined') {
+    return
+  }
+  try {
+    window.localStorage.setItem(RECTIFICATION_SNAPSHOT_CACHE_KEY, JSON.stringify(normalizeSnapshot(data)))
+  } catch {
+    // ignore cache persistence failures
+  }
+}
+
+snapshotCache = loadCachedSnapshot()
+
+function notifyRectificationSnapshotChanged() {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new Event('rectification-snapshot-updated'))
 }
 
 function clone(data) {
-  return JSON.parse(JSON.stringify(data))
+  return JSON.parse(JSON.stringify(data || {}))
 }
 
-export function loadRectificationData() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
-    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.issues) || !Array.isArray(parsed.tasks)) {
-      const seeded = seedData()
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded))
-      return seeded
-    }
-    return parsed
-  } catch {
-    const seeded = seedData()
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded))
-    return seeded
+function unwrap(response) {
+  return response?.data?.data
+}
+
+function normalizeSnapshot(data) {
+  return {
+    issues: Array.isArray(data?.issues) ? data.issues : [],
+    tasks: Array.isArray(data?.tasks) ? data.tasks : [],
+    rules: Array.isArray(data?.rules) ? data.rules : [],
+    users: Array.isArray(data?.users) ? data.users : [],
+    departments: Array.isArray(data?.departments) ? data.departments : [],
+    reports: Array.isArray(data?.reports) ? data.reports : [],
+    notifications: Array.isArray(data?.notifications) ? data.notifications : []
   }
 }
 
-export function saveRectificationData(data) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+export async function fetchRectificationSnapshot() {
+  const resp = await fetchRectificationSnapshotApi()
+  snapshotCache = normalizeSnapshot(unwrap(resp))
+  persistSnapshotCache(snapshotCache)
+  return clone(snapshotCache)
 }
 
 export function getRectificationSnapshot() {
-  return clone(loadRectificationData())
+  return clone(snapshotCache)
 }
 
-export function createIssue(payload, username) {
-  const data = loadRectificationData()
-  const issue = {
-    id: nextId('issue'),
-    code: `WT-${new Date().getFullYear()}-${String(data.issues.length + 1).padStart(3, '0')}`,
-    title: payload.title,
-    level: payload.level || '中',
-    unit: payload.unit,
-    description: payload.description || '',
-    status: '待派发',
-    createdBy: username,
-    createdAt: nowText(),
-    taskId: ''
-  }
-  data.issues.unshift(issue)
-  saveRectificationData(data)
-  return issue
+export async function createIssue(payload) {
+  const resp = await createIssueApi(payload)
+  return unwrap(resp)
 }
 
-export function createRectificationTask(issueId, payload, username) {
-  const data = loadRectificationData()
-  const issue = data.issues.find((item) => item.id === issueId)
-  if (!issue) throw new Error('问题不存在')
-  const task = {
-    id: nextId('task'),
-    issueId,
-    title: payload.title,
-    unit: issue.unit,
-    assignee: payload.assignee,
-    createdBy: username,
-    status: '待接收',
-    progress: 0,
-    deadline: payload.deadline,
-    reviewStatus: '待审核',
-    reviewComment: '',
-    measure: '',
-    attachments: [],
-    feedback: '',
-    parentId: '',
-    claimedBy: '',
-    createdAt: nowText(),
-    updatedAt: nowText()
-  }
-  data.tasks.unshift(task)
-  issue.taskId = task.id
-  issue.status = '整改中'
-  saveRectificationData(data)
-  return task
+export async function createRectificationTask(issueId, payload) {
+  const resp = await createRectificationTaskApi(issueId, payload)
+  return unwrap(resp)
 }
 
-export function dispatchSubTask(parentTaskId, payload, username) {
-  const data = loadRectificationData()
-  const parent = data.tasks.find((item) => item.id === parentTaskId)
-  if (!parent) throw new Error('主任务不存在')
-  const task = {
-    id: nextId('subtask'),
-    issueId: parent.issueId,
-    title: payload.title,
-    unit: parent.unit,
-    assignee: payload.assignee,
-    createdBy: username,
-    status: '待认领',
-    progress: 0,
-    deadline: payload.deadline || parent.deadline,
-    reviewStatus: '待审核',
-    reviewComment: '',
-    measure: '',
-    attachments: [],
-    feedback: '',
-    parentId: parentTaskId,
-    claimedBy: '',
-    createdAt: nowText(),
-    updatedAt: nowText()
-  }
-  data.tasks.unshift(task)
-  parent.updatedAt = nowText()
-  saveRectificationData(data)
-  return task
+export async function splitIssueTasks(issueId, tasks) {
+  const resp = await splitIssueTasksApi(issueId, { tasks })
+  return unwrap(resp)
 }
 
-export function claimTask(taskId, username) {
-  const data = loadRectificationData()
-  const task = data.tasks.find((item) => item.id === taskId)
-  if (!task) throw new Error('任务不存在')
-  task.claimedBy = username
-  task.status = '执行中'
-  task.updatedAt = nowText()
-  saveRectificationData(data)
-  return task
+export async function dispatchSubTask(parentTaskId, payload) {
+  const resp = await dispatchSubTaskApi(parentTaskId, payload)
+  return unwrap(resp)
 }
 
-export function submitTaskExecution(taskId, payload) {
-  const data = loadRectificationData()
-  const task = data.tasks.find((item) => item.id === taskId)
-  if (!task) throw new Error('任务不存在')
-  task.measure = payload.measure || task.measure
-  task.feedback = payload.feedback || task.feedback
-  task.attachments = Array.isArray(payload.attachments) ? payload.attachments : task.attachments
-  task.progress = Number(payload.progress ?? task.progress)
-  task.status = task.progress >= 100 ? '待审核' : '执行中'
-  task.reviewStatus = '待审核'
-  task.updatedAt = nowText()
-  saveRectificationData(data)
-  return task
+export async function deleteTask(taskId) {
+  await deleteTaskApi(taskId)
+  notifyRectificationSnapshotChanged()
+  return true
 }
 
-export function reviewTask(taskId, payload) {
-  const data = loadRectificationData()
-  const task = data.tasks.find((item) => item.id === taskId)
-  if (!task) throw new Error('任务不存在')
-
-  const passed = Boolean(payload.passed)
-  task.reviewStatus = passed ? '审核通过' : '退回修改'
-  task.reviewComment = payload.comment || ''
-  task.status = passed ? '已完成' : '执行中'
-  task.progress = passed ? 100 : Math.min(task.progress, 95)
-  task.updatedAt = nowText()
-
-  if (!task.parentId) {
-    const issue = data.issues.find((item) => item.id === task.issueId)
-    if (issue) {
-      issue.status = passed ? '已完成' : '整改中'
-    }
-  }
-
-  saveRectificationData(data)
-  return task
+export async function claimTask(taskId) {
+  const resp = await claimTaskApi(taskId)
+  return unwrap(resp)
 }
 
-export function updateRule(ruleId, enabled) {
-  const data = loadRectificationData()
-  const rule = data.rules.find((item) => item.id === ruleId)
-  if (!rule) throw new Error('规则不存在')
-  rule.enabled = Boolean(enabled)
-  rule.updatedAt = nowText()
-  saveRectificationData(data)
-  return rule
+export async function submitTaskExecution(taskId, payload) {
+  const resp = await submitTaskExecutionApi(taskId, payload)
+  notifyRectificationSnapshotChanged()
+  return unwrap(resp)
 }
 
-export function addRule(ruleName) {
-  const data = loadRectificationData()
-  const rule = {
-    id: nextId('rule'),
-    name: ruleName,
-    enabled: true,
-    updatedAt: nowText()
-  }
-  data.rules.unshift(rule)
-  saveRectificationData(data)
-  return rule
+export async function uploadTaskAttachment(taskId, file) {
+  const resp = await uploadTaskAttachmentApi(taskId, file)
+  notifyRectificationSnapshotChanged()
+  return unwrap(resp)
 }
 
-export function updateUserRole(userId, role) {
-  const data = loadRectificationData()
-  const user = data.users.find((item) => item.id === userId)
-  if (!user) throw new Error('用户不存在')
-  user.role = role
-  saveRectificationData(data)
-  return user
+export async function downloadTaskAttachment(taskId, attachmentIndex) {
+  const resp = await downloadTaskAttachmentApi(taskId, attachmentIndex)
+  return resp?.data
 }
 
-export function submitOrgReport(payload) {
-  const data = loadRectificationData()
-  const report = {
-    id: nextId('report'),
-    unit: payload.unit,
-    title: payload.title,
-    summary: payload.summary,
-    submitter: payload.submitter,
-    createdAt: nowText()
-  }
-  data.reports.unshift(report)
-  saveRectificationData(data)
-  return report
+export async function reviewTask(taskId, payload) {
+  const resp = await reviewTaskApi(taskId, payload)
+  return unwrap(resp)
+}
+
+export async function updateRule(ruleId, enabled) {
+  const resp = await updateRuleApi(ruleId, enabled)
+  return unwrap(resp)
+}
+
+export async function addRule(ruleName) {
+  const resp = await addRuleApi(ruleName)
+  return unwrap(resp)
+}
+
+export async function listReminderRules() {
+  const resp = await listReminderRulesApi()
+  const data = unwrap(resp)
+  return Array.isArray(data) ? data : []
+}
+
+export async function createReminderRule(payload) {
+  const resp = await createReminderRuleApi(payload)
+  return unwrap(resp)
+}
+
+export async function updateReminderRule(ruleId, payload) {
+  const resp = await updateReminderRuleApi(ruleId, payload)
+  return unwrap(resp)
+}
+
+export async function deleteReminderRule(ruleId) {
+  await deleteReminderRuleApi(ruleId)
+  return true
+}
+
+export async function runReminderScan() {
+  const resp = await runReminderScanApi()
+  return unwrap(resp)
+}
+
+export async function updateUserRole(userId, role) {
+  const resp = await updateUserRoleApi(userId, role)
+  return unwrap(resp)
+}
+
+export async function updateUserStatus(userId, status) {
+  const resp = await updateUserStatusApi(userId, status)
+  return unwrap(resp)
+}
+
+export async function createUser(payload) {
+  const resp = await createUserApi(payload)
+  return unwrap(resp)
+}
+
+export async function updateUserProfile(userId, payload) {
+  const resp = await updateUserApi(userId, payload)
+  return unwrap(resp)
+}
+
+export async function deleteUser(userId) {
+  await deleteUserApi(userId)
+  return true
+}
+
+export async function bindUserDepartment(userId, department) {
+  const resp = await bindUserDepartmentApi(userId, department)
+  return unwrap(resp)
+}
+
+export async function listDepartments() {
+  const resp = await listDepartmentsApi()
+  const data = unwrap(resp)
+  return Array.isArray(data) ? data : []
+}
+
+export async function createDepartment(name) {
+  const resp = await createDepartmentApi(name)
+  return unwrap(resp)
+}
+
+export async function updateDepartment(departmentId, name) {
+  const resp = await updateDepartmentApi(departmentId, name)
+  return unwrap(resp)
+}
+
+export async function deleteDepartment(departmentId) {
+  await deleteDepartmentApi(departmentId)
+  return true
+}
+
+export async function listDeletedUsers() {
+  const resp = await listDeletedUsersApi()
+  return Array.isArray(unwrap(resp)) ? unwrap(resp) : []
+}
+
+export async function restoreUser(userId) {
+  const resp = await restoreUserApi(userId)
+  return unwrap(resp)
+}
+
+export async function submitOrgReport(payload) {
+  const resp = await submitOrgReportApi(payload)
+  return unwrap(resp)
 }
 
 export function getGlobalOverview() {
-  const data = loadRectificationData()
+  const data = snapshotCache
   const totalIssues = data.issues.length
   const completedIssues = data.issues.filter((item) => item.status === '已完成').length
   const inProgressIssues = data.issues.filter((item) => item.status === '整改中').length
@@ -290,4 +295,102 @@ export function getGlobalOverview() {
     overdueTasks,
     focusIssues: data.issues.filter((item) => ['高', '重大'].includes(item.level) && item.status !== '已完成')
   }
+}
+
+export function acceptTask(taskId) {
+  return acceptTaskApi(taskId).then(unwrap)
+}
+
+export function updateTaskDeadline(taskId, deadline) {
+  return updateTaskDeadlineApi(taskId, deadline).then(unwrap)
+}
+
+export function addIssueSupervision(issueId, payload) {
+  return addIssueSupervisionApi(issueId, payload).then(unwrap)
+}
+
+export function getIssueSupervisions(issueId) {
+  const data = snapshotCache
+  const issue = data.issues.find((item) => item.id === issueId)
+  if (!issue) return []
+  return Array.isArray(issue.supervisions) ? issue.supervisions : []
+}
+
+export function deleteIssue(issueId) {
+  return deleteIssueApi(issueId).then(() => {
+    notifyRectificationSnapshotChanged()
+    return true
+  })
+}
+
+export function deleteIssueSupervision(issueId, supervisionId) {
+  return deleteIssueSupervisionApi(issueId, supervisionId).then(() => true)
+}
+
+export function getUserNotifications(username) {
+  const data = snapshotCache
+  const user = String(username || '').trim()
+  if (!user) return []
+
+  const notifications = Array.isArray(data.notifications) ? data.notifications : []
+  return notifications.map((item) => ({
+    ...item,
+    isRead: Array.isArray(item.readBy) ? item.readBy.includes(user) : false
+  }))
+}
+
+export function markNotificationRead(notificationId) {
+  return markNotificationReadApi(notificationId).then(() => {
+    notifyRectificationSnapshotChanged()
+    return true
+  })
+}
+
+export function interactNotification(notificationId, payload) {
+  return interactNotificationApi(notificationId, payload).then((resp) => {
+    notifyRectificationSnapshotChanged()
+    return unwrap(resp)
+  })
+}
+
+export async function listOrgDepartments() {
+  const resp = await listOrgDepartmentsApi()
+  const data = unwrap(resp)
+  return Array.isArray(data) ? data : []
+}
+
+export async function createOrgDepartment(payload) {
+  const resp = await createOrgDepartmentApi(payload)
+  return unwrap(resp)
+}
+
+export async function updateOrgDepartment(departmentId, payload) {
+  const resp = await updateOrgDepartmentApi(departmentId, payload)
+  return unwrap(resp)
+}
+
+export async function deleteOrgDepartment(departmentId) {
+  await deleteOrgDepartmentApi(departmentId)
+  return true
+}
+
+export async function listOrgMembers(department = '') {
+  const resp = await listOrgMembersApi(department)
+  const data = unwrap(resp)
+  return Array.isArray(data) ? data : []
+}
+
+export async function createOrgMember(payload) {
+  const resp = await createOrgMemberApi(payload)
+  return unwrap(resp)
+}
+
+export async function updateOrgMember(userId, payload) {
+  const resp = await updateOrgMemberApi(userId, payload)
+  return unwrap(resp)
+}
+
+export async function deleteOrgMember(userId) {
+  await deleteOrgMemberApi(userId)
+  return true
 }

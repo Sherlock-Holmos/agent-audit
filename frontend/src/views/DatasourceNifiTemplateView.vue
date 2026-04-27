@@ -16,7 +16,7 @@
       <GovernanceTable
         :data="nifiTemplates"
         :loading="loadingNifiTemplates"
-        layout-storage-key="governance-nifi-template-table"
+        layout-storage-key="app:table-layout:governance:nifi-template"
         :column-keys="['flowType', 'processGroupId', 'versionNo', 'enabled', 'updatedAt', 'parameterSchema', 'actions']"
       >
         <template #default="{ resolveWidth, resolveMinWidth }">
@@ -90,8 +90,8 @@
       <GovernanceTable
         :data="reconcileHistory"
         :loading="loadingReconcileHistory"
-        layout-storage-key="governance-nifi-reconcile-history-table"
-        :column-keys="['createdAt', 'triggerType', 'triggerUser', 'reconcileMode', 'taskType', 'taskId', 'result']"
+        layout-storage-key="app:table-layout:governance:nifi-reconcile-history"
+        :column-keys="['createdAt', 'triggerType', 'triggerUser', 'reconcileMode', 'taskType', 'taskId', 'result', 'actions']"
       >
         <template #default="{ resolveWidth, resolveMinWidth }">
           <el-table-column column-key="createdAt" prop="createdAt" label="时间" :width="resolveWidth('createdAt', 180)" :min-width="resolveMinWidth('createdAt', 180)" />
@@ -110,6 +110,28 @@
                 <el-tag v-if="scope.row.result?.outcome" :type="scope.row.result.outcome === 'COMPLETED' ? 'success' : (scope.row.result.outcome === 'FAILED_TIMEOUT' ? 'danger' : 'info')">{{ scope.row.result.outcome }}</el-tag>
                 <span v-if="scope.row.result?.taskId">#{{ scope.row.result.taskId }}</span>
               </el-space>
+            </template>
+          </el-table-column>
+          <el-table-column column-key="actions" label="操作" :width="resolveWidth('actions', 180)" :min-width="resolveMinWidth('actions', 180)" align="center" fixed="right">
+            <template #default="scope">
+              <el-button
+                v-if="isSingleRunningReconcileRow(scope.row)"
+                type="danger"
+                link
+                :loading="isDeletingReconcileRow(scope.row)"
+                @click="handleDeleteReconcileHistory(scope.row, true)"
+              >
+                停止并删除
+              </el-button>
+              <el-button
+                v-else
+                type="primary"
+                link
+                :loading="isDeletingReconcileRow(scope.row)"
+                @click="handleDeleteReconcileHistory(scope.row, false)"
+              >
+                删除历史
+              </el-button>
             </template>
           </el-table-column>
         </template>
@@ -205,11 +227,11 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import GovernancePageShell from '../components/dataclean/GovernancePageShell.vue'
 import GovernanceCardSection from '../components/dataclean/GovernanceCardSection.vue'
 import GovernanceTable from '../components/dataclean/GovernanceTable.vue'
-import { bootstrapNifiEtlTemplates, listNifiFlowTemplates, listNifiReconcileHistory, provisionNifiFlowBlueprint, reconcileNifiRunningTasks, reconcileNifiTask, saveNifiFlowTemplate, triggerNifiFlow } from '../api/nifi-control-plane'
+import { bootstrapNifiEtlTemplates, deleteNifiReconcileHistory, listNifiFlowTemplates, listNifiReconcileHistory, provisionNifiFlowBlueprint, reconcileNifiRunningTasks, reconcileNifiTask, saveNifiFlowTemplate, triggerNifiFlow } from '../api/nifi-control-plane'
 import { useAsyncTask } from '../composables/useAsyncTask'
 
 const nifiTemplates = ref([])
@@ -247,6 +269,8 @@ const singleReconcile = reactive({
   taskId: 1
 })
 
+const deletingReconcileRecordId = ref(null)
+
 const blueprintForm = reactive({
   preset: 'CLEAN',
   groupName: 'AUDIT_CLEAN',
@@ -256,6 +280,52 @@ const blueprintForm = reactive({
 })
 
 const blueprintJsonPlaceholder = '预设模式下可直接生成默认蓝图；自定义模式下在这里输入完整 JSON'
+
+function isSingleRunningReconcileRow(row) {
+  const outcome = (row?.result?.outcome || '').toString().toUpperCase()
+  const taskType = (row?.taskType || '').toString().toUpperCase()
+  const taskId = Number(row?.taskId)
+  return outcome === 'RUNNING' && (taskType === 'CLEAN' || taskType === 'FUSION') && taskId > 0
+}
+
+function isDeletingReconcileRow(row) {
+  return Number(deletingReconcileRecordId.value) === Number(row?.id)
+}
+
+async function handleDeleteReconcileHistory(row, stopRunningTask) {
+  const recordId = Number(row?.id)
+  if (!recordId || recordId <= 0) {
+    ElMessage.warning('历史记录ID无效，无法删除')
+    return
+  }
+
+  const actionText = stopRunningTask ? '停止任务并删除该历史记录' : '删除该历史记录'
+  const confirmMessage = stopRunningTask
+    ? `该任务仍在运行，确认停止任务并删除历史记录 #${recordId} 吗？`
+    : `确认删除历史记录 #${recordId} 吗？`
+
+  try {
+    await ElMessageBox.confirm(confirmMessage, actionText, {
+      type: stopRunningTask ? 'warning' : 'info',
+      confirmButtonText: '确认',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
+
+  deletingReconcileRecordId.value = recordId
+  try {
+    await deleteNifiReconcileHistory(recordId, stopRunningTask)
+    ElMessage.success(stopRunningTask ? '任务已停止并删除历史记录' : '历史记录已删除')
+    await loadReconcileHistory()
+  } catch (error) {
+    const message = error?.response?.data?.message || error?.message || '删除历史记录失败'
+    ElMessage.error(message)
+  } finally {
+    deletingReconcileRecordId.value = null
+  }
+}
 
 function buildPresetBlueprintJson(preset) {
   if (preset === 'CUSTOM') {

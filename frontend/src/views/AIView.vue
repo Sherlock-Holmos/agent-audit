@@ -14,76 +14,14 @@
     </header>
 
     <div class="analysis-layout">
-      <el-card class="prompt-panel" shadow="never">
-        <template #header>
-          <span>分析配置</span>
-        </template>
-
-        <el-form label-position="top" class="prompt-form">
-          <el-form-item label="分析主题">
-            <el-select v-model="analysisTheme" placeholder="选择分析主题">
-              <el-option label="整改风险优先级" value="risk" />
-              <el-option label="数据质量薄弱点" value="quality" />
-              <el-option label="治理执行效率" value="efficiency" />
-              <el-option label="管理层周报摘要" value="weekly" />
-            </el-select>
-          </el-form-item>
-
-          <el-form-item label="关注范围（可选）">
-            <el-input
-              v-model="focusScope"
-              placeholder="例如：财务条线 / 华东区域 / 本周新增问题"
-              maxlength="80"
-              show-word-limit
-            />
-          </el-form-item>
-
-          <el-form-item label="报告模式">
-            <el-radio-group v-model="reportMode" class="report-mode-group">
-              <el-radio-button label="weekly">标准周报</el-radio-button>
-              <el-radio-button label="executive">管理摘要</el-radio-button>
-              <el-radio-button label="deep">深度诊断</el-radio-button>
-            </el-radio-group>
-          </el-form-item>
-
-          <el-form-item label="回复方式">
-            <el-switch
-              v-model="enableStream"
-              active-text="流式"
-              inactive-text="普通"
-            />
-          </el-form-item>
-
-          <el-form-item label="当前模型">
-            <el-select v-model="selectedModel" style="width: 100%" filterable>
-              <el-option
-                v-for="item in modelOptions"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
-              />
-            </el-select>
-          </el-form-item>
-        </el-form>
-
-        <div class="template-wrap">
-          <div class="template-title">快捷问题模板</div>
-          <el-button
-            v-for="item in quickTemplates"
-            :key="item"
-            class="template-btn"
-            @click="useTemplate(item)"
-          >
-            {{ item }}
-          </el-button>
-        </div>
-      </el-card>
-
       <el-card class="chat-panel" shadow="never">
         <template #header>
           <div class="chat-header">
             <span>分析对话</span>
-            <span class="sub">最近{{ latestHistoryTurns }}轮上下文已自动携带</span>
+            <span class="sub">
+              最近{{ latestHistoryTurns }}轮上下文已自动携带 ·
+              {{ reportModeLabel }} · {{ enableStream ? '流式回复' : '普通回复' }}
+            </span>
           </div>
         </template>
 
@@ -102,9 +40,6 @@
             </div>
           </div>
 
-          <div v-if="loading" class="msg-row assistant">
-            <div class="msg-bubble">正在进行分析，请稍候...</div>
-          </div>
         </div>
 
         <div class="composer">
@@ -149,15 +84,19 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { chatWithAssistant, chatWithAssistantStream } from '../api/assistant'
+import { ROLES, ROLE_HOME_ROUTE, isRoleAllowed, roleLabel } from '../constants/rbac'
+import { getCurrentRole } from '../utils/currentUser'
 
-const analysisTheme = ref('risk')
+const router = useRouter()
+
 const reportMode = ref('weekly')
 const enableStream = ref(true)
 const AI_MODEL_SETTINGS_KEY = 'app:ai:model-settings:v1'
-const focusScope = ref('')
+const AI_DIALOG_STRATEGY_KEY = 'app:ai:dialog-strategy:v1'
 const question = ref('')
 const loading = ref(false)
 const streamController = ref(null)
@@ -178,35 +117,32 @@ const modelOptions = ref([
   { label: 'DeepSeek-V3', value: 'deepseek-chat' }
 ])
 
-const quickTemplates = [
-  '请按风险等级给出本周整改优先级清单。',
-  '请指出导致整改完成率提升缓慢的三个关键因素。',
-  '请输出一个可执行的7天整改行动计划。',
-  '请用管理层摘要格式输出当前整改态势和建议。'
-]
-
 const messages = ref([
   {
     id: 1,
     role: 'assistant',
-    content: '你好，我是 LangChain 驱动的审计整改分析助手。你可以直接提问，或先选择左侧分析主题。',
+    content: '你好，我是 LangChain 驱动的审计整改分析助手。你可以直接提问，或在系统设置中调整对话策略。',
     confidence: '',
     historyTurns: 0
   }
 ])
-
-const themeLabelMap = {
-  risk: '整改风险优先级',
-  quality: '数据质量薄弱点',
-  efficiency: '治理执行效率',
-  weekly: '管理层周报摘要'
-}
 
 const requiredSections = {
   weekly: ['执行摘要', '关键风险点', '根因分析', '整改行动计划', '预期收益与跟踪指标'],
   executive: ['执行摘要', '关键结论', '管理建议', '下周重点'],
   deep: ['问题定义', '证据与现状', '根因分解', '整改路线图', '风险与依赖']
 }
+
+const assistantRouteIntents = [
+  { route: '/dashboard', label: '数据仪表盘', aliases: ['驾驶舱', '总览', '看板', '概览', '仪表盘'], roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR] },
+  { route: '/audit-admin/focus-issues', label: '重点问题督办', aliases: ['重点问题', '督办台账', '问题台账'], roles: [ROLES.AUDIT_ADMIN] },
+  { route: '/org-admin/tasks/collaboration', label: '任务协同中心', aliases: ['任务协同', '协同任务', '任务协作'], roles: [ROLES.ORG_ADMIN] },
+  { route: '/org-admin/report/submit', label: '整改总报告', aliases: ['整改汇报', '整改报告', '总报告'], roles: [ROLES.ORG_ADMIN] },
+  { route: '/org-operator/tasks/claim', label: '子任务认领', aliases: ['任务认领', '认领任务', '领取任务'], roles: [ROLES.ORG_OPERATOR] },
+  { route: '/org-operator/execution-center', label: '执行反馈中心', aliases: ['执行反馈', '整改填写', '整改填报', '反馈中心'], roles: [ROLES.ORG_OPERATOR] },
+  { route: '/messages', label: '消息中心', aliases: ['消息中心', '消息', '通知'], roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR, ROLES.ORG_ADMIN, ROLES.ORG_OPERATOR] },
+  { route: '/ai', label: 'AI分析工作台', aliases: ['ai分析', '分析工作台', '智能分析'], roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR, ROLES.ORG_ADMIN, ROLES.ORG_OPERATOR] }
+]
 
 const latestAnswer = computed(() => {
   for (let i = messages.value.length - 1; i >= 0; i -= 1) {
@@ -223,27 +159,84 @@ const missingReportSections = computed(() => {
   return targets.filter((section) => !markdown.includes(section))
 })
 
-function buildQuestion() {
-  const raw = question.value.trim()
-  if (!raw) return ''
+const reportModeLabel = computed(() => {
+  if (reportMode.value === 'executive') return '管理摘要'
+  if (reportMode.value === 'deep') return '深度诊断'
+  return '标准周报'
+})
 
-  const themeLabel = themeLabelMap[analysisTheme.value]
-
-  const scope = focusScope.value.trim()
-  const prefix = scope
-    ? `分析主题：${themeLabel}；关注范围：${scope}。`
-    : `分析主题：${themeLabel}。`
-
-  return `${prefix}；建议模型：${selectedModel.value || '默认模型'}。\n${raw}`
+function detectRouteIntent(text) {
+  const normalized = String(text || '').toLowerCase()
+  return assistantRouteIntents.find((item) => item.aliases.some((alias) => normalized.includes(alias.toLowerCase())))
 }
 
-function useTemplate(text) {
-  question.value = text
+function shouldHandleWithLocalAction(text) {
+  const q = String(text || '').trim()
+  if (!q) return false
+  const routeIntent = detectRouteIntent(q)
+  if (routeIntent && (q.includes('打开') || q.includes('进入') || q.includes('跳转') || q.includes('去'))) {
+    return true
+  }
+  return false
+}
+
+async function handleLocalAction(text) {
+  const q = String(text || '').trim()
+  const routeIntent = detectRouteIntent(q)
+  if (!routeIntent) return ''
+  await router.push(routeIntent.route)
+  return `已为你打开 ${routeIntent.label}（${routeIntent.route}）`
+}
+
+function getAccessibleRouteIntents() {
+  const currentRole = getCurrentRole()
+  return assistantRouteIntents.filter((item) => isRoleAllowed(currentRole, item.roles))
+}
+
+function buildRouteCapabilityReply() {
+  const currentRole = getCurrentRole()
+  const routes = getAccessibleRouteIntents()
+  const routeText = routes.map((item) => `${item.label}（${item.route}）`).join('、')
+  return `当前账号角色为${roleLabel(currentRole)}，我可以帮你跳转到：${routeText}。你也可以直接说页面名称，我会自动打开。`
+}
+
+function buildCurrentTaskReply() {
+  const currentRole = getCurrentRole()
+  const homeRoute = ROLE_HOME_ROUTE[currentRole] || '/dashboard'
+  return `当前已启用${reportModeLabel.value}，回复方式为${enableStream.value ? '流式' : '普通'}。如果你是想看系统待办，可以直接告诉我页面名称，我也可以直接跳转到${homeRoute}。`
+}
+
+function buildLocalCapabilityReply(text) {
+  const q = String(text || '').trim()
+  if (!q) return ''
+
+  if (/(你可以|能)跳转(哪些|什么|到)?页面|可跳转页面|能去哪些页面|可以去哪些页面/.test(q)) {
+    return buildRouteCapabilityReply()
+  }
+
+  if (/(当前|目前|现在).*(有什么|有哪些)任务|你.*任务|当前有什么任务/.test(q)) {
+    return buildCurrentTaskReply()
+  }
+
+  return ''
 }
 
 function buildLlmConfigPayload() {
+  const provider = (llmProvider.value || 'mock').trim().toLowerCase()
+  const hasExternalConfig = Boolean(
+    (selectedModel.value || '').trim() ||
+    (llmApiKey.value || '').trim() ||
+    (llmBaseUrl.value || '').trim() ||
+    (llmApiVersion.value || '').trim()
+  )
+
   return {
-    provider: llmProvider.value || 'mock',
+    provider:
+      provider === 'azure' || provider === 'openai' || provider === 'custom'
+        ? provider
+        : hasExternalConfig
+          ? 'custom'
+          : 'mock',
     model: selectedModel.value || '',
     apiKey: llmApiKey.value || '',
     baseUrl: llmBaseUrl.value || '',
@@ -251,32 +244,117 @@ function buildLlmConfigPayload() {
   }
 }
 
+function resolveAiError(error) {
+  const errCode = error?.code || ''
+  const rawMessage = String(error?.response?.data?.message || error?.message || '').trim()
+  const lowerMessage = rawMessage.toLowerCase()
+  const isInsufficientBalance =
+    errCode === 'insufficient_balance' ||
+    lowerMessage.includes('account balance is insufficient') ||
+    lowerMessage.includes('code\': 30001') ||
+    lowerMessage.includes('"code": 30001') ||
+    lowerMessage.includes('code: 30001')
+  const isModelNotFound =
+    errCode === 'model_not_found' ||
+    lowerMessage.includes('model does not exist') ||
+    lowerMessage.includes('code\': 20012') ||
+    lowerMessage.includes('"code": 20012') ||
+    lowerMessage.includes('code: 20012')
+
+  if (isInsufficientBalance) {
+    return {
+      toast: '模型平台账号余额不足，请先充值或更换可用账号。',
+      bubble: '模型调用失败：当前模型平台账号余额不足（code: 30001）。\n请在模型平台充值后重试，或切换到有可用余额的 API Key。'
+    }
+  }
+
+  if (isModelNotFound) {
+    return {
+      toast: `模型标识无效：${selectedModel.value || '未选择模型'}，请在系统设置中改为平台支持的 model id。`,
+      bubble: `模型调用失败：当前模型标识“${selectedModel.value || '未选择模型'}”不存在。\n请到“系统设置 > 大模型选项管理”确认模型标识（value）是否为模型平台实际支持的 model id。`
+    }
+  }
+
+  if (errCode === 'rate_limit') {
+    return {
+      toast: '请求过于频繁，请稍后重试',
+      bubble: '请求过于频繁，请稍后重试。'
+    }
+  }
+  if (errCode === 'stream_timeout') {
+    return {
+      toast: '本次生成超时，建议缩小问题范围后重试',
+      bubble: '本次生成超时，请缩小问题范围后重试。'
+    }
+  }
+  if (errCode === 'upstream_error') {
+    return {
+      toast: rawMessage || '模型服务暂时不可用，请稍后重试',
+      bubble: rawMessage || '模型服务暂时不可用，请稍后再试。'
+    }
+  }
+
+  return {
+    toast: rawMessage || 'AI 分析请求失败',
+    bubble: rawMessage || 'AI 服务暂时不可用，请稍后再试。'
+  }
+}
+
 async function sendQuestion() {
-  const finalQuestion = buildQuestion()
+  const rawQuestion = question.value.trim()
+  const finalQuestion = rawQuestion
   if (!finalQuestion || loading.value) return
+
+  const localReply = buildLocalCapabilityReply(rawQuestion)
 
   messages.value.push({
     id: Date.now(),
     role: 'user',
-    content: finalQuestion,
+    content: localReply ? rawQuestion : finalQuestion,
     confidence: '',
     historyTurns: -1
   })
 
   question.value = ''
+
+  if (localReply) {
+    messages.value.push({
+      id: Date.now() + 1,
+      role: 'assistant',
+      content: localReply,
+      confidence: '',
+      historyTurns: -1
+    })
+    await nextTick()
+    scrollToBottom()
+    return
+  }
+
   loading.value = true
   await nextTick()
   scrollToBottom()
 
   try {
+    if (shouldHandleWithLocalAction(rawQuestion)) {
+      const localAnswer = await handleLocalAction(rawQuestion)
+      messages.value.push({
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: String(localAnswer || '已执行页面跳转。'),
+        confidence: '',
+        historyTurns: -1
+      })
+      return
+    }
+
     if (enableStream.value) {
-      const assistantMsg = {
+      const assistantMsg = reactive({
         id: Date.now() + 1,
         role: 'assistant',
         content: '',
         confidence: '',
         historyTurns: -1
-      }
+      })
       messages.value.push(assistantMsg)
       await nextTick()
       scrollToBottom()
@@ -327,16 +405,16 @@ async function sendQuestion() {
     if (isAbort) {
       ElMessage.info('已停止生成')
     } else {
-      const errCode = error?.code || ''
-      if (errCode === 'rate_limit') {
-        ElMessage.warning('请求过于频繁，请稍后重试')
-      } else if (errCode === 'stream_timeout') {
-        ElMessage.warning('本次生成超时，建议缩小问题范围后重试')
-      } else if (errCode === 'upstream_error') {
-        ElMessage.warning('模型服务暂时不可用，请稍后重试')
-      } else {
-        ElMessage.error(error?.response?.data?.message || error?.message || 'AI 分析请求失败')
-      }
+      const resolved = resolveAiError(error)
+      ElMessage.warning(resolved.toast)
+      messages.value.push({
+        id: Date.now() + 2,
+        role: 'assistant',
+        content: resolved.bubble,
+        confidence: '',
+        historyTurns: -1
+      })
+      return
     }
     messages.value.push({
       id: Date.now() + 2,
@@ -404,8 +482,8 @@ async function generateReport() {
 
   reportLoading.value = true
   try {
-    const scope = focusScope.value.trim() || '全局'
-    const theme = themeLabelMap[analysisTheme.value]
+    const scope = '全局'
+    const theme = '通用审计整改分析'
     const sectionRules = requiredSections[reportMode.value] || requiredSections.weekly
     const modeLabel = reportMode.value === 'weekly'
       ? '标准周报'
@@ -455,7 +533,7 @@ async function generateReport() {
 }
 
 function downloadReport(type) {
-  const scopeSlug = (focusScope.value.trim() || 'global').replace(/[\\/:*?"<>|\s]+/g, '-').slice(0, 24)
+  const scopeSlug = 'global'
   const modeSlug = reportMode.value
   const baseName = `ai-analysis-${modeSlug}-${scopeSlug}-${Date.now()}`
 
@@ -527,6 +605,22 @@ function loadAiModelSettings() {
   }
 }
 
+function loadAiDialogStrategy() {
+  try {
+    const cached = localStorage.getItem(AI_DIALOG_STRATEGY_KEY)
+    if (!cached) return
+    const parsed = JSON.parse(cached)
+    if (typeof parsed?.reportMode === 'string' && requiredSections[parsed.reportMode]) {
+      reportMode.value = parsed.reportMode
+    }
+    if (typeof parsed?.enableStream === 'boolean') {
+      enableStream.value = parsed.enableStream
+    }
+  } catch {
+    // ignore invalid cache
+  }
+}
+
 function handleAiModelSettingsChanged(event) {
   const detail = event?.detail
   if (!detail || typeof detail !== 'object') {
@@ -563,13 +657,30 @@ function handleAiModelSettingsChanged(event) {
   }
 }
 
+function handleAiDialogStrategyChanged(event) {
+  const detail = event?.detail
+  if (!detail || typeof detail !== 'object') {
+    loadAiDialogStrategy()
+    return
+  }
+  if (typeof detail.reportMode === 'string' && requiredSections[detail.reportMode]) {
+    reportMode.value = detail.reportMode
+  }
+  if (typeof detail.enableStream === 'boolean') {
+    enableStream.value = detail.enableStream
+  }
+}
+
 onMounted(() => {
+  loadAiDialogStrategy()
   loadAiModelSettings()
   window.addEventListener('ai-model-settings-changed', handleAiModelSettingsChanged)
+  window.addEventListener('ai-dialog-strategy-changed', handleAiDialogStrategyChanged)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('ai-model-settings-changed', handleAiModelSettingsChanged)
+  window.removeEventListener('ai-dialog-strategy-changed', handleAiDialogStrategyChanged)
 })
 </script>
 
@@ -610,36 +721,12 @@ onBeforeUnmount(() => {
 }
 
 .analysis-layout {
-  display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
-  gap: 16px;
   min-height: 620px;
 }
 
-.prompt-panel,
 .chat-panel {
   border-radius: 14px;
   border: 1px solid #e8edf5;
-}
-
-.prompt-form {
-  margin-bottom: 16px;
-}
-
-.template-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.template-title {
-  font-size: 13px;
-  color: #637184;
-}
-
-.template-btn {
-  justify-content: flex-start;
-  margin: 0;
 }
 
 .chat-panel {
@@ -738,10 +825,6 @@ onBeforeUnmount(() => {
   border: 1px solid #f2dea3;
   border-radius: 8px;
   padding: 8px 10px;
-}
-
-.report-mode-group {
-  width: 100%;
 }
 
 .report-preview {

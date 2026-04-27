@@ -30,7 +30,7 @@
       <GovernanceTable
         :data="layerDetails"
         :loading="loadingLayerStats"
-        layout-storage-key="governance-layer-stats-table"
+        layout-storage-key="app:table-layout:governance:layer-stats"
         :column-keys="['taskType', 'taskId', 'bronzeRows', 'silverRows', 'goldRows']"
       >
         <template #default="{ resolveWidth, resolveMinWidth }">

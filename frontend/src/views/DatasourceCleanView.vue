@@ -17,7 +17,7 @@
         :data="tasks"
         :loading="loading"
         :table-size="tableLayout.size"
-        layout-storage-key="clean-view-layout"
+        layout-storage-key="app:table-layout:datasource:clean"
         @preview="handlePreview"
         @edit="handleEdit"
         @run="handleRun"
@@ -67,7 +67,16 @@
           </el-col>
         </el-row>
 
-        <el-table :data="previewRows" stripe border max-height="520">
+        <AppDataTable
+          :data="previewRows"
+          :loading="previewLoading"
+          layout-storage-key="app:table-layout:datasource:clean-preview"
+          :show-pagination="false"
+          :with-card="false"
+          stripe
+          max-height="520"
+        >
+          <template #default>
           <el-table-column prop="rowNo" label="行号" width="80" />
           <el-table-column prop="objectName" label="来源对象" min-width="180" />
           <el-table-column prop="sourceId" label="来源ID" width="120" />
@@ -93,7 +102,8 @@
               </el-popover>
             </template>
           </el-table-column>
-        </el-table>
+          </template>
+        </AppDataTable>
       </div>
     </el-drawer>
   </div>
@@ -112,6 +122,7 @@ import { getErrorMessage } from '../utils/error'
 import CleanToolbar from '../components/dataclean/CleanToolbar.vue'
 import CleanTable from '../components/dataclean/CleanTable.vue'
 import CleanFormDialog from '../components/dataclean/CleanFormDialog.vue'
+import AppDataTable from '../components/shared/AppDataTable.vue'
 
 const router = useRouter()
 const loading = ref(false)

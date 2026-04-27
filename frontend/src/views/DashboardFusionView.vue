@@ -1,23 +1,16 @@
 <template>
-  <DashboardFusionView />
-</template>
-
-<script setup>
-import DashboardFusionView from './DashboardFusionView.vue'
-</script>
-<template>
   <section class="cockpit-page">
     <div class="glow-grid"></div>
 
     <header class="cockpit-header panel-frame">
       <div class="header-title-wrap">
-        <h1 class="header-title">瀹¤鏁存敼鏅鸿兘椹鹃┒鑸?/h1>
-        <p class="header-subtitle">铻嶅悎鍏ㄥ眬浠〃鐩樺唴瀹?路 鏅鸿兘鎬佸娍鎬昏</p>
+        <h1 class="header-title">审计整改智能驾驶舱</h1>
+        <p class="header-subtitle">{{ scopeSubtitle }}</p>
       </div>
 
       <div class="header-actions">
-        <div class="data-badge">鍏ㄥ眬蹇収 路 {{ snapshotSummary }}</div>
-        <el-button class="ghost-btn" :loading="loading" @click="handleManualRefresh">鍚屾蹇収</el-button>
+        <div class="data-badge">{{ scopeBadgeLabel }} · {{ snapshotSummary }}</div>
+        <el-button class="ghost-btn" :loading="loading" @click="handleManualRefresh">同步快照</el-button>
         <div class="clock-wrap">
           <span class="clock-date">{{ timeLabel.date }}</span>
           <span class="clock-time">{{ timeLabel.time }}</span>
@@ -37,7 +30,7 @@ import DashboardFusionView from './DashboardFusionView.vue'
 
     <div class="cockpit-main">
       <aside class="left-zone">
-        <CockpitPanel title="鍗曚綅鏁存敼鎺掑悕锛堟寜瀹屾垚鐜囷級" block-class="ranking-panel">
+        <CockpitPanel :title="rankingTitle" block-class="ranking-panel">
           <el-table
             class="cockpit-table"
             :data="unitRanking"
@@ -48,13 +41,13 @@ import DashboardFusionView from './DashboardFusionView.vue'
             :row-key="(row) => row.unit"
             :header-cell-style="tableHeaderCellStyle"
             :cell-style="tableCellStyle"
-            :empty-text="'鏆傛棤鍗曚綅鏁存敼鏁版嵁'"
+            :empty-text="'暂无单位整改数据'"
           >
-            <el-table-column type="index" label="鎺掑悕" width="72" />
-            <el-table-column prop="unit" label="鍗曚綅" min-width="168" />
-            <el-table-column prop="total" label="浠诲姟鏁? width="96" align="right" />
-            <el-table-column prop="done" label="宸插畬鎴? width="96" align="right" />
-            <el-table-column label="瀹屾垚鐜? min-width="168">
+            <el-table-column type="index" label="排名" width="72" />
+            <el-table-column prop="unit" label="单位" min-width="168" />
+            <el-table-column prop="total" label="任务数" width="96" align="right" />
+            <el-table-column prop="done" label="已完成" width="96" align="right" />
+            <el-table-column label="完成率" min-width="168">
               <template #default="scope">
                 <div class="progress-cell">
                   <el-progress
@@ -69,40 +62,40 @@ import DashboardFusionView from './DashboardFusionView.vue'
           </el-table>
         </CockpitPanel>
 
-        <CockpitPanel title="閲嶇偣鐫ｅ姙娓呭崟" block-class="focus-panel">
+        <CockpitPanel title="重点督办清单" block-class="focus-panel">
           <div v-if="focusIssues.length" class="focus-list">
             <article v-for="issue in focusIssues" :key="issue.id" class="focus-item">
               <div class="focus-top">
-                <span class="focus-title">{{ issue.title || issue.summary || '鏈懡鍚嶉棶棰? }}</span>
-                <el-tag :type="riskTagType(issue.level)" effect="dark" size="small">{{ issue.level || '涓? }}</el-tag>
+                <span class="focus-title">{{ issue.title || issue.summary || '未命名问题' }}</span>
+                <el-tag :type="riskTagType(issue.level)" effect="dark" size="small">{{ issue.level || '中' }}</el-tag>
               </div>
               <div class="focus-meta">
                 <span>{{ resolveIssueUnit(issue) }}</span>
                 <span>{{ formatTime(resolveIssueTime(issue)) }}</span>
               </div>
-              <div class="focus-desc">{{ issue.description || issue.summary || issue.status || '鏆傛棤鎽樿' }}</div>
+              <div class="focus-desc">{{ issue.description || issue.summary || issue.status || '暂无摘要' }}</div>
             </article>
           </div>
-          <el-empty v-else description="鏆傛棤閲嶇偣鐫ｅ姙闂" />
+          <el-empty v-else description="暂无重点督办问题" />
         </CockpitPanel>
       </aside>
 
       <section class="center-zone panel-frame">
-        <div class="panel-title center-title">鍏ㄥ眬鏁存敼瀹屾垚鐜?/div>
+        <div class="panel-title center-title">{{ centerTitle }}</div>
         <GaugeWidget :value="completionRate" />
         <div class="center-footnote">
-          <div>闂鎬绘暟 {{ formatNumber(issueTotal) }}</div>
-          <div>浠诲姟鎬绘暟 {{ formatNumber(taskTotal) }}</div>
-          <div>閫炬湡浠诲姟 {{ formatNumber(overdueTaskTotal) }}</div>
+          <div>问题总数 {{ formatNumber(issueTotal) }}</div>
+          <div>任务总数 {{ formatNumber(taskTotal) }}</div>
+          <div>逾期任务 {{ formatNumber(overdueTaskTotal) }}</div>
         </div>
       </section>
 
       <aside class="right-zone">
-        <CockpitPanel title="椋庨櫓绛夌骇鍒嗗竷" block-class="risk-panel">
+        <CockpitPanel title="风险等级分布" block-class="risk-panel">
           <div v-for="item in riskDistribution" :key="item.level" class="risk-wrap">
             <div class="risk-line">
               <span>{{ item.level }}</span>
-              <span>{{ item.count }} 椤?/span>
+              <span>{{ item.count }} 项</span>
             </div>
             <el-progress
               :percentage="item.percent"
@@ -111,10 +104,10 @@ import DashboardFusionView from './DashboardFusionView.vue'
               :show-text="false"
             />
           </div>
-          <div class="risk-total">鎬婚棶棰樻暟 {{ formatNumber(issueTotal) }}</div>
+          <div class="risk-total">总问题数 {{ formatNumber(issueTotal) }}</div>
         </CockpitPanel>
 
-        <CockpitPanel title="杩戞湡鏁存敼鍔ㄦ€? block-class="timeline-panel">
+        <CockpitPanel title="近期整改动态" block-class="timeline-panel">
           <el-timeline class="cockpit-timeline">
             <el-timeline-item
               v-for="entry in latestTimeline"
@@ -130,8 +123,26 @@ import DashboardFusionView from './DashboardFusionView.vue'
       </aside>
     </div>
 
+    <section class="process-zone panel-frame">
+      <div class="panel-title">流程排名进度</div>
+      <div class="process-grid">
+        <div class="process-card">
+          <div class="process-card-title">{{ processRankingTitle }}</div>
+          <RankWidget
+            :departments="processRankingDepartments"
+            :metrics="processRankingMetrics"
+            :values="processRankingValues"
+          />
+        </div>
+        <div class="process-card">
+          <div class="process-card-title">任务进度结构</div>
+          <MetricProgressWidget :items="processProgressItems" />
+        </div>
+      </div>
+    </section>
+
     <section class="bottom-zone panel-frame">
-      <div class="panel-title">鍏ㄥ眬闂娓呭崟</div>
+      <div class="panel-title">{{ issueListTitle }}</div>
       <el-table
         class="cockpit-table cockpit-table-bottom"
         :data="issueRows"
@@ -142,30 +153,30 @@ import DashboardFusionView from './DashboardFusionView.vue'
         :row-key="(row) => row.id"
         :header-cell-style="tableHeaderCellStyle"
         :cell-style="tableCellStyle"
-        :empty-text="'鏆傛棤闂鏁版嵁'"
+        :empty-text="'暂无问题数据'"
       >
-        <el-table-column prop="title" label="闂 / 浠诲姟" min-width="220">
+        <el-table-column prop="title" label="问题 / 任务" min-width="220">
           <template #default="scope">
             <div class="issue-cell">
-              <span class="issue-title">{{ scope.row.title || scope.row.summary || '鏈懡鍚嶉棶棰? }}</span>
-              <span class="issue-sub">{{ scope.row.issueId ? `鍏宠仈闂 #${scope.row.issueId}` : '鐩存帴闂璁板綍' }}</span>
+              <span class="issue-title">{{ scope.row.title || scope.row.summary || '未命名问题' }}</span>
+              <span class="issue-sub">{{ scope.row.issueId ? `关联问题 #${scope.row.issueId}` : '直接问题记录' }}</span>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="绛夌骇" width="96" align="center">
+        <el-table-column label="等级" width="96" align="center">
           <template #default="scope">
             <el-tag :type="riskTagType(scope.row.level)" effect="dark" size="small">{{ scope.row.level || '-' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="鐘舵€? width="110" align="center">
+        <el-table-column label="状态" width="110" align="center">
           <template #default="scope">
             <el-tag :type="statusTagType(scope.row.status)" effect="plain" size="small">{{ scope.row.status || '-' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="unit" label="鍗曚綅" min-width="150">
+        <el-table-column prop="unit" label="单位" min-width="150">
           <template #default="scope">{{ resolveIssueUnit(scope.row) }}</template>
         </el-table-column>
-        <el-table-column label="鏇存柊鏃堕棿" width="180">
+        <el-table-column label="更新时间" width="180">
           <template #default="scope">{{ formatTime(resolveIssueTime(scope.row)) }}</template>
         </el-table-column>
       </el-table>
@@ -179,10 +190,26 @@ import { ElMessage } from 'element-plus'
 import { useRectificationSnapshot } from '../composables/useRectificationSnapshot'
 import KpiCard from '../components/dashboard/KpiCard.vue'
 import CockpitPanel from '../components/dashboard/CockpitPanel.vue'
+import { ROLES } from '../constants/rbac'
+import { getCurrentRole, getCurrentUnit } from '../utils/currentUser'
 
 const GaugeWidget = defineAsyncComponent(() => import('../components/dashboard/widgets/GaugeWidget.vue'))
+const RankWidget = defineAsyncComponent(() => import('../components/dashboard/widgets/RankWidget.vue'))
+const MetricProgressWidget = defineAsyncComponent(() => import('../components/dashboard/widgets/MetricProgressWidget.vue'))
 
 const { snapshot, refreshSnapshot, loading } = useRectificationSnapshot()
+const currentRole = computed(() => getCurrentRole())
+const currentUnit = computed(() => String(getCurrentUnit() || '').trim())
+const isUnitScopedView = computed(() => currentRole.value === ROLES.ORG_ADMIN)
+
+const scopeSubtitle = computed(() =>
+  isUnitScopedView.value ? `${currentUnit.value} · 整改态势总览` : '融合全局仪表盘内容 · 智能态势总览'
+)
+const scopeBadgeLabel = computed(() => (isUnitScopedView.value ? `${currentUnit.value}快照` : '全局快照'))
+const rankingTitle = computed(() => (isUnitScopedView.value ? '本单位整改进度（按完成率）' : '单位整改排名（按完成率）'))
+const centerTitle = computed(() => (isUnitScopedView.value ? '本单位整改完成率' : '全局整改完成率'))
+const processRankingTitle = computed(() => (isUnitScopedView.value ? '本单位流程完成率' : '单位流程完成率排行'))
+const issueListTitle = computed(() => (isUnitScopedView.value ? '本单位问题清单' : '全局问题清单'))
 
 let clockTimer
 let autoRefreshTimer
@@ -192,14 +219,30 @@ const timeLabel = reactive({
   time: ''
 })
 
-const issueTotal = computed(() => (snapshot.value.issues || []).length)
-const taskTotal = computed(() => (snapshot.value.tasks || []).length)
+const scopedIssues = computed(() => {
+  const issues = snapshot.value.issues || []
+  if (!isUnitScopedView.value || !currentUnit.value) {
+    return issues
+  }
+  return issues.filter((item) => isSameUnit(resolveIssueUnit(item), currentUnit.value))
+})
 
-const completedTaskTotal = computed(() => (snapshot.value.tasks || []).filter((item) => item.status === '宸插畬鎴?).length)
+const scopedTasks = computed(() => {
+  const tasks = snapshot.value.tasks || []
+  if (!isUnitScopedView.value || !currentUnit.value) {
+    return tasks
+  }
+  return tasks.filter((item) => isSameUnit(resolveTaskUnit(item), currentUnit.value))
+})
+
+const issueTotal = computed(() => scopedIssues.value.length)
+const taskTotal = computed(() => scopedTasks.value.length)
+
+const completedTaskTotal = computed(() => scopedTasks.value.filter((item) => item.status === '已完成').length)
 
 const overdueTaskTotal = computed(() =>
-  (snapshot.value.tasks || []).filter((item) => {
-    if (item.status === '宸插畬鎴? || !item.deadline) return false
+  scopedTasks.value.filter((item) => {
+    if (item.status === '已完成' || !item.deadline) return false
     return new Date(item.deadline).getTime() < Date.now()
   }).length
 )
@@ -210,39 +253,39 @@ const completionRate = computed(() => {
 })
 
 const snapshotSummary = computed(() => {
-  return `${formatNumber(issueTotal.value)} 闂 / ${formatNumber(taskTotal.value)} 浠诲姟 / ${completionRate.value}% 瀹屾垚鐜嘸
+  return `${formatNumber(issueTotal.value)} 问题 / ${formatNumber(taskTotal.value)} 任务 / ${completionRate.value}% 完成率`
 })
 
 const statCards = computed(() => [
   {
     key: 'issues',
-    label: '闂鎬绘暟',
+    label: '问题总数',
     value: formatNumber(issueTotal.value),
-    desc: '鏈湡绾冲叆鏁存敼'
+    desc: '本期纳入整改'
   },
   {
     key: 'tasks',
-    label: '浠诲姟鎬绘暟',
+    label: '任务总数',
     value: formatNumber(taskTotal.value),
-    desc: '涓讳换鍔?+ 瀛愪换鍔?
+    desc: '主任务 + 子任务'
   },
   {
     key: 'completed',
-    label: '宸插畬鎴愪换鍔?,
+    label: '已完成任务',
     value: formatNumber(completedTaskTotal.value),
-    desc: `瀹屾垚鐜?${completionRate.value}%`
+    desc: `完成率 ${completionRate.value}%`
   },
   {
     key: 'overdue',
-    label: '閫炬湡浠诲姟',
+    label: '逾期任务',
     value: formatNumber(overdueTaskTotal.value),
-    desc: '闇€閲嶇偣鐫ｅ姙'
+    desc: '需重点督办'
   }
 ])
 
 const unitRanking = computed(() => {
   const grouped = new Map()
-  const tasks = snapshot.value.tasks || []
+  const tasks = scopedTasks.value
 
   tasks.forEach((task) => {
     const unit = resolveTaskUnit(task)
@@ -251,7 +294,7 @@ const unitRanking = computed(() => {
     }
     const row = grouped.get(unit)
     row.total += 1
-    if (task.status === '宸插畬鎴?) {
+    if (task.status === '已完成') {
       row.done += 1
     }
     row.rate = row.total ? Math.round((row.done / row.total) * 100) : 0
@@ -264,23 +307,91 @@ const unitRanking = computed(() => {
   })
 })
 
+const processRanking = computed(() => {
+  const grouped = new Map()
+  const tasks = scopedTasks.value
+
+  tasks.forEach((task) => {
+    const unit = resolveTaskUnit(task)
+    if (!grouped.has(unit)) {
+      grouped.set(unit, { unit, total: 0, done: 0, overdue: 0, progressSum: 0 })
+    }
+    const row = grouped.get(unit)
+    row.total += 1
+    if (task.status === '已完成') {
+      row.done += 1
+    }
+    if (task.status === '已逾期' || (task.deadline && task.status !== '已完成' && new Date(task.deadline).getTime() < Date.now())) {
+      row.overdue += 1
+    }
+    row.progressSum += resolveTaskProgress(task)
+  })
+
+  return Array.from(grouped.values())
+    .map((row) => ({
+      ...row,
+      rate: row.total ? Math.round((row.done / row.total) * 100) : 0,
+      progress: row.total ? Math.round(row.progressSum / row.total) : 0
+    }))
+    .sort((left, right) => {
+      if (right.progress !== left.progress) return right.progress - left.progress
+      if (right.rate !== left.rate) return right.rate - left.rate
+      if (right.total !== left.total) return right.total - left.total
+      return left.unit.localeCompare(right.unit, 'zh-CN')
+    })
+})
+
+const processRankingDepartments = computed(() => processRanking.value.map((row) => row.unit))
+const processRankingMetrics = computed(() => ['完成率'])
+const processRankingValues = computed(() =>
+  processRanking.value.map((row, index) => [index, 0, row.rate])
+)
+
+const processProgressItems = computed(() => {
+  const tasks = scopedTasks.value
+  const total = tasks.length || 1
+  const buckets = [
+    { name: '已完成', count: 0 },
+    { name: '整改中', count: 0 },
+    { name: '待审核', count: 0 },
+    { name: '已逾期', count: 0 }
+  ]
+
+  tasks.forEach((task) => {
+    if (task.status === '已完成') {
+      buckets[0].count += 1
+    } else if (task.status === '待审核') {
+      buckets[2].count += 1
+    } else if (task.status === '已逾期' || (task.deadline && new Date(task.deadline).getTime() < Date.now())) {
+      buckets[3].count += 1
+    } else {
+      buckets[1].count += 1
+    }
+  })
+
+  return buckets.map((item) => ({
+    name: item.name,
+    value: Math.round((item.count / total) * 100)
+  }))
+})
+
 const riskDistribution = computed(() => {
   const total = issueTotal.value || 1
-  const levels = ['閲嶅ぇ', '楂?, '涓?, '浣?]
+  const levels = ['重大', '高', '中', '低']
 
   return levels.map((level) => {
-    const count = (snapshot.value.issues || []).filter((item) => item.level === level).length
+    const count = scopedIssues.value.filter((item) => item.level === level).length
     return {
       level,
       count,
       percent: Math.round((count / total) * 100),
-      status: level === '閲嶅ぇ' || level === '楂? ? 'exception' : level === '涓? ? 'warning' : 'success'
+      status: level === '重大' || level === '高' ? 'exception' : level === '中' ? 'warning' : 'success'
     }
   })
 })
 
 const latestTimeline = computed(() => {
-  const tasks = (snapshot.value.tasks || [])
+  const tasks = scopedTasks.value
     .slice()
     .sort((left, right) => new Date(resolveTaskTime(right)).getTime() - new Date(resolveTaskTime(left)).getTime())
     .slice(0, 8)
@@ -288,14 +399,14 @@ const latestTimeline = computed(() => {
   return tasks.map((task) => ({
     id: task.id,
     time: formatTime(resolveTaskTime(task)),
-    text: `${resolveTaskUnit(task)} 路 ${task.title || '鏈懡鍚嶄换鍔?} 褰撳墠鐘舵€侊細${task.status || '鏈煡'}`,
-    type: task.status === '宸插畬鎴? ? 'success' : task.status === '寰呭鏍? ? 'warning' : 'primary'
+    text: `${resolveTaskUnit(task)} · ${task.title || '未命名任务'} 当前状态：${task.status || '未知'}`,
+    type: task.status === '已完成' ? 'success' : task.status === '待审核' ? 'warning' : 'primary'
   }))
 })
 
 const focusIssues = computed(() => {
-  return (snapshot.value.issues || [])
-    .filter((item) => ['楂?, '閲嶅ぇ'].includes(item.level) && item.status !== '宸插畬鎴?)
+  return scopedIssues.value
+    .filter((item) => ['高', '重大'].includes(item.level) && item.status !== '已完成')
     .slice()
     .sort((left, right) => {
       const levelDiff = severityScore(right.level) - severityScore(left.level)
@@ -306,7 +417,7 @@ const focusIssues = computed(() => {
 })
 
 const issueRows = computed(() => {
-  return (snapshot.value.issues || [])
+  return scopedIssues.value
     .slice()
     .sort((left, right) => {
       const levelDiff = severityScore(right.level) - severityScore(left.level)
@@ -363,49 +474,65 @@ function updateClock() {
 }
 
 function resolveTaskUnit(task) {
-  return task.unit || task.department || task.assignee || '鏈綊灞炲崟浣?
+  return task.unit || task.department || task.assignee || '未归属单位'
 }
 
 function resolveTaskTime(task) {
   return task.updatedAt || task.updated_at || task.createdAt || task.created_at || task.deadline || ''
 }
 
+function resolveTaskProgress(task) {
+  const explicitProgress = Number(task.progress ?? task.percent ?? task.completionRate ?? task.rate)
+  if (Number.isFinite(explicitProgress)) {
+    return Math.max(0, Math.min(100, explicitProgress))
+  }
+  if (task.status === '已完成') return 100
+  if (task.status === '待审核') return 75
+  if (task.status === '整改中') return 55
+  if (task.status === '已逾期') return 25
+  return 0
+}
+
 function resolveIssueUnit(issue) {
-  return issue.unit || issue.department || issue.owner || '鏈綊灞炲崟浣?
+  return issue.unit || issue.department || issue.owner || '未归属单位'
 }
 
 function resolveIssueTime(issue) {
   return issue.updatedAt || issue.updated_at || issue.createdAt || issue.created_at || issue.deadline || ''
 }
 
+function isSameUnit(left, right) {
+  return String(left || '').trim() === String(right || '').trim()
+}
+
 function severityScore(level) {
   const map = {
-    閲嶅ぇ: 4,
-    楂? 3,
-    涓? 2,
-    浣? 1
+    重大: 4,
+    高: 3,
+    中: 2,
+    低: 1
   }
   return map[level] || 0
 }
 
 function riskTagType(level) {
-  if (level === '閲嶅ぇ') return 'danger'
-  if (level === '楂?) return 'warning'
-  if (level === '涓?) return 'info'
+  if (level === '重大') return 'danger'
+  if (level === '高') return 'warning'
+  if (level === '中') return 'info'
   return 'success'
 }
 
 function statusTagType(status) {
-  if (status === '宸插畬鎴?) return 'success'
-  if (status === '鏁存敼涓? || status === '寰呭鏍?) return 'warning'
-  if (status === '宸查€炬湡') return 'danger'
+  if (status === '已完成') return 'success'
+  if (status === '整改中' || status === '待审核') return 'warning'
+  if (status === '已逾期') return 'danger'
   return 'info'
 }
 
 async function handleManualRefresh() {
   const ok = await refreshSnapshot()
   if (!ok) {
-    ElMessage.error('鍏ㄥ眬蹇収鍒锋柊澶辫触')
+    ElMessage.error('快照刷新失败')
   }
 }
 
@@ -782,6 +909,35 @@ onBeforeUnmount(() => {
   text-align: right;
 }
 
+.process-zone {
+  z-index: 1;
+  position: relative;
+  margin-top: 12px;
+  padding: 12px 14px 14px;
+}
+
+.process-grid {
+  display: grid;
+  grid-template-columns: 1.35fr 0.9fr;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.process-card {
+  min-width: 0;
+  padding: 12px 12px 10px;
+  border: 1px solid rgba(80, 170, 255, 0.18);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(10, 28, 59, 0.82), rgba(5, 17, 36, 0.76));
+}
+
+.process-card-title {
+  margin-bottom: 10px;
+  color: #dff2ff;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
 .cockpit-timeline {
   padding-left: 4px;
 }
@@ -831,6 +987,10 @@ onBeforeUnmount(() => {
   .center-zone {
     min-height: 400px;
   }
+
+  .process-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 840px) {
@@ -860,6 +1020,10 @@ onBeforeUnmount(() => {
 
   .center-zone {
     min-height: 320px;
+  }
+
+  .process-zone {
+    padding: 10px;
   }
 }
 </style>

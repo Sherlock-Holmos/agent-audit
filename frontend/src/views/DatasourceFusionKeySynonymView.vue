@@ -11,7 +11,7 @@
       <GovernanceTable
         :data="synonyms"
         :loading="loadingSynonyms"
-        layout-storage-key="governance-synonym-table"
+        layout-storage-key="app:table-layout:governance:synonym"
         :column-keys="['canonicalKey', 'aliases', 'builtIn', 'enabled', 'updatedAt', 'actions']"
       >
         <template #default="{ resolveWidth, resolveMinWidth }">
@@ -99,7 +99,15 @@
           <el-tag v-if="historyCanonicalKey" type="info">标准主键：{{ historyCanonicalKey }}</el-tag>
         </el-space>
       </div>
-      <el-table :data="synonymHistoryRows" v-loading="loadingSynonymHistory" border max-height="520">
+      <AppDataTable
+        :data="synonymHistoryRows"
+        :loading="loadingSynonymHistory"
+        layout-storage-key="app:table-layout:governance:synonym-history"
+        :show-pagination="false"
+        :with-card="false"
+        max-height="520"
+      >
+        <template #default>
         <el-table-column prop="versionNo" label="版本" width="80" align="center" />
         <el-table-column prop="actionType" label="动作" width="110" align="center" />
         <el-table-column prop="actorUsername" label="操作人" width="120" />
@@ -124,7 +132,8 @@
             </el-popover>
           </template>
         </el-table-column>
-      </el-table>
+        </template>
+      </AppDataTable>
     </el-dialog>
   </GovernancePageShell>
 </template>
@@ -135,6 +144,7 @@ import { ElMessage } from 'element-plus'
 import GovernancePageShell from '../components/dataclean/GovernancePageShell.vue'
 import GovernanceCardSection from '../components/dataclean/GovernanceCardSection.vue'
 import GovernanceTable from '../components/dataclean/GovernanceTable.vue'
+import AppDataTable from '../components/shared/AppDataTable.vue'
 import { useAsyncTask } from '../composables/useAsyncTask'
 import {
   createFusionKeySynonym,

@@ -1,21 +1,13 @@
 <template>
-  <el-card shadow="never" class="table-wrap" :style="{ '--row-height': `${FIXED_ROW_HEIGHT}px` }">
-    <TableLayoutActions @reset="resetColumnLayout" />
-
-    <el-table
-      ref="tableRef"
-      :data="pagedData"
-      v-loading="loading"
-      border
-      style="width: 100%"
-      show-overflow-tooltip
-      :show-header-overflow-tooltip="false"
-      :size="tableSize"
-      :row-style="rowStyle"
-      :header-row-style="headerRowStyle"
-      :fit="shouldAutoFit()"
-      @header-dragend="handleHeaderDragEnd"
-    >
+  <AppDataTable
+    :data="data"
+    :loading="loading"
+    :table-size="tableSize"
+    :layout-storage-key="layoutStorageKey"
+    :min-by-key="minByKey"
+    :empty-text="emptyText"
+  >
+    <template #default="{ resolveWidth, resolveMinWidth }">
       <el-table-column
         column-key="taskName"
         prop="taskName"
@@ -103,32 +95,12 @@
           </el-popconfirm>
         </template>
       </el-table-column>
-    </el-table>
-
-    <div v-if="showPagination" class="table-pagination">
-      <el-pagination
-        background
-        layout="total, sizes, prev, pager, next, jumper"
-        :total="total"
-        :current-page="currentPage"
-        :page-size="pageSize"
-        :page-sizes="pageSizes"
-        @current-change="handleCurrentChange"
-        @size-change="handleSizeChange"
-      />
-    </div>
-
-    <TableEmptyTip :show="!data.length && !loading && !!emptyText" :text="emptyText" />
-
-  </el-card>
+    </template>
+  </AppDataTable>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
-import { useTableColumnLayout } from '../../composables/useTableColumnLayout'
-import { useTablePagination } from '../../composables/useTablePagination'
-import TableLayoutActions from '../shared/TableLayoutActions.vue'
-import TableEmptyTip from '../shared/TableEmptyTip.vue'
+import AppDataTable from '../shared/AppDataTable.vue'
 
 const props = defineProps({
   data: {
@@ -145,7 +117,7 @@ const props = defineProps({
   },
   layoutStorageKey: {
     type: String,
-    default: 'fusion-table-layout'
+    default: 'app:table-layout:datafusion:table'
   },
   bottomOffset: {
     type: Number,
@@ -159,65 +131,15 @@ const props = defineProps({
 
 defineEmits(['preview', 'run', 'delete', 'edit'])
 
-const FIXED_ROW_HEIGHT = 44
-const tableRef = ref()
-const {
-  currentPage,
-  pageSize,
-  pageSizes,
-  total,
-  pagedData,
-  showPagination,
-  handleCurrentChange,
-  handleSizeChange
-} = useTablePagination(() => props.data)
-
-const {
-  loadColumnWidths,
-  resolveWidth,
-  resolveMinWidth,
-  shouldAutoFit,
-  handleHeaderDragEnd,
-  resetColumnLayout,
-  rowStyle,
-  headerRowStyle
-} = useTableColumnLayout({
-  layoutStorageKey: () => props.layoutStorageKey,
-  tableRef,
-  fixedRowHeight: FIXED_ROW_HEIGHT,
-  minByKey: {
-    taskName: 180,
-    targetTable: 180,
-    cleanTaskNames: 220,
-    standardTables: 220,
-    strategy: 150,
-    fusionRows: 120,
-    status: 120,
-    updatedAt: 180,
-    actions: 270
-  }
-})
-
-onMounted(() => {
-  loadColumnWidths()
-})
+const minByKey = {
+  taskName: 180,
+  targetTable: 180,
+  cleanTaskNames: 220,
+  standardTables: 220,
+  strategy: 150,
+  fusionRows: 120,
+  status: 120,
+  updatedAt: 180,
+  actions: 270
+}
 </script>
-
-<style scoped>
-.table-wrap :deep(.el-table .cell) {
-  line-height: calc(var(--row-height) - 12px);
-}
-
-.table-wrap :deep(.el-table th.el-table__cell .cell) {
-  white-space: nowrap;
-  overflow: visible !important;
-  text-overflow: clip !important;
-}
-
-.table-pagination {
-  margin-top: 12px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-</style>

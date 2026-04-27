@@ -19,10 +19,10 @@ export const ROLE_OPTIONS = [
 ]
 
 export const ROLE_HOME_ROUTE = {
-  [ROLES.AUDIT_ADMIN]: '/workbench/audit-admin',
-  [ROLES.AUDITOR]: '/workbench/auditor',
-  [ROLES.ORG_ADMIN]: '/workbench/org-admin',
-  [ROLES.ORG_OPERATOR]: '/workbench/org-operator'
+  [ROLES.AUDIT_ADMIN]: '/dashboard',
+  [ROLES.AUDITOR]: '/auditor/issues/new',
+  [ROLES.ORG_ADMIN]: '/org-admin/tasks/collaboration',
+  [ROLES.ORG_OPERATOR]: '/org-operator/tasks/claim'
 }
 
 export function normalizeRole(role) {

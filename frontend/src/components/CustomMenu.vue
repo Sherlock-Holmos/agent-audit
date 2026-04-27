@@ -15,7 +15,12 @@
           >
             <template #reference>
               <div class="menu-item-main" @click.prevent>
-                <el-icon class="icon"><component :is="item.icon" /></el-icon>
+                <template v-if="item.title === '消息中心'">
+                  <el-badge :value="unreadNotificationCount" :hidden="!unreadNotificationCount" :max="99" class="menu-badge">
+                    <el-icon class="icon"><component :is="item.icon" /></el-icon>
+                  </el-badge>
+                </template>
+                <el-icon v-else class="icon"><component :is="item.icon" /></el-icon>
               </div>
             </template>
             <div class="collapsed-submenu-wrap">
@@ -34,7 +39,12 @@
 
         <template v-else>
           <div class="menu-item-main" @click="handleMenuClick(item)">
-            <el-icon class="icon"><component :is="item.icon" /></el-icon>
+            <template v-if="item.title === '消息中心'">
+              <el-badge :value="unreadNotificationCount" :hidden="!unreadNotificationCount" :max="99" class="menu-badge">
+                <el-icon class="icon"><component :is="item.icon" /></el-icon>
+              </el-badge>
+            </template>
+            <el-icon v-else class="icon"><component :is="item.icon" /></el-icon>
             <transition name="fade-slide">
               <span v-if="!isCollapse" class="title">{{ item.title }}</span>
             </transition>
@@ -70,31 +80,87 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import { ArrowRight, Coin, Cpu, DataBoard, DocumentChecked, Operation, Setting } from '@element-plus/icons-vue'
+import { ArrowRight, Bell, Coin, Cpu, DataAnalysis, DataBoard, DocumentChecked, Files, OfficeBuilding, Operation, Setting } from '@element-plus/icons-vue'
 import { useAppStore } from '../store/app'
 import { ROLES, isRoleAllowed } from '../constants/rbac'
-import { getCurrentRole } from '../utils/currentUser'
+import { getCurrentRole, getCurrentUser } from '../utils/currentUser'
+import { useRectificationSnapshot } from '../composables/useRectificationSnapshot'
 
 const appStore = useAppStore()
 const { isCollapse } = storeToRefs(appStore)
 const route = useRoute()
 const router = useRouter()
 const currentRole = computed(() => getCurrentRole())
+const currentUser = getCurrentUser()
+const currentUsername = String(currentUser.username || '').trim()
+const { snapshot } = useRectificationSnapshot()
+
+const unreadNotificationCount = computed(() => {
+  if (!currentUsername) return 0
+  const notifications = Array.isArray(snapshot.value.notifications) ? snapshot.value.notifications : []
+  return notifications.filter((item) => {
+    const readBy = Array.isArray(item.readBy) ? item.readBy : []
+    return !readBy.includes(currentUsername)
+  }).length
+})
 
 const menuList = ref([
   {
-    title: '角色工作台',
-    path: '/workbench',
+    title: '智能驾驶舱',
+    path: '/dashboard',
+    icon: DataBoard,
+    roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR, ROLES.ORG_ADMIN]
+  },
+  {
+    title: '审计管理员中心',
+    path: '/dashboard',
     icon: DocumentChecked,
+    open: false,
+    children: [
+      { title: '重点问题督办', path: '/audit-admin/focus-issues', roles: [ROLES.AUDIT_ADMIN] },
+      { title: '系统规则配置', path: '/audit-admin/rules', roles: [ROLES.AUDIT_ADMIN] },
+      { title: '用户权限管理', path: '/audit-admin/user-permissions', roles: [ROLES.AUDIT_ADMIN] }
+    ],
+    roles: [ROLES.AUDIT_ADMIN]
+  },
+  {
+    title: '审计作业中心',
+    path: '/auditor/issues/new',
+    icon: Files,
     open: true,
     children: [
-      { title: '审计管理员工作台', path: '/workbench/audit-admin', roles: [ROLES.AUDIT_ADMIN] },
-      { title: '审计人员工作台', path: '/workbench/auditor', roles: [ROLES.AUDITOR] },
-      { title: '被审单位管理员工作台', path: '/workbench/org-admin', roles: [ROLES.ORG_ADMIN] },
-      { title: '被审单位经办人工作台', path: '/workbench/org-operator', roles: [ROLES.ORG_OPERATOR] }
-    ]
+      { title: '审计问题整改台账', path: '/auditor/issues/new', roles: [ROLES.AUDITOR] }
+    ],
+    roles: [ROLES.AUDITOR]
   },
-  { title: '数据仪表盘', path: '/dashboard', icon: DataBoard, roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR] },
+  {
+    title: '被审单位管理中心',
+    path: '/org-admin/tasks/collaboration',
+    icon: OfficeBuilding,
+    open: false,
+    children: [
+      { title: '任务协同中心', path: '/org-admin/tasks/collaboration', roles: [ROLES.ORG_ADMIN] },
+      { title: '总报告提交', path: '/org-admin/report/submit', roles: [ROLES.ORG_ADMIN] },
+      { title: '部门与成员管理', path: '/org-admin/departments', roles: [ROLES.ORG_ADMIN] }
+    ],
+    roles: [ROLES.ORG_ADMIN]
+  },
+  {
+    title: '执行经办中心',
+    path: '/org-operator/tasks/claim',
+    icon: Operation,
+    open: false,
+    children: [
+      { title: '经办工作台', path: '/org-operator/tasks/claim', roles: [ROLES.ORG_OPERATOR] }
+    ],
+    roles: [ROLES.ORG_OPERATOR]
+  },
+  {
+    title: '消息中心',
+    path: '/messages',
+    icon: Bell,
+    roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR, ROLES.ORG_ADMIN, ROLES.ORG_OPERATOR]
+  },
   {
     title: '数据源',
     path: '/datasource',
@@ -110,7 +176,7 @@ const menuList = ref([
   {
     title: '治理中心',
     path: '/datasource/clean-rules/rules',
-    icon: Operation,
+    icon: DataAnalysis,
     open: false,
     roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR],
     children: [
@@ -120,14 +186,14 @@ const menuList = ref([
       { title: '分层统计', path: '/datasource/clean-rules/layer-stats', roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR] }
     ]
   },
-  { title: 'AI分析', path: '/ai', icon: Cpu, roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR] },
+  { title: 'AI分析', path: '/ai', icon: Cpu, roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR, ROLES.ORG_ADMIN, ROLES.ORG_OPERATOR] },
   {
     title: '设置',
     path: '/settings',
     icon: Setting,
     open: false,
     children: [
-      { title: '系统设置', path: '/settings', roles: [ROLES.AUDIT_ADMIN] },
+      { title: '系统设置', path: '/settings', roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR, ROLES.ORG_ADMIN, ROLES.ORG_OPERATOR] },
       { title: '帮助中心', path: '/help', roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR, ROLES.ORG_ADMIN, ROLES.ORG_OPERATOR] }
     ],
     roles: [ROLES.AUDIT_ADMIN, ROLES.AUDITOR, ROLES.ORG_ADMIN, ROLES.ORG_OPERATOR]
@@ -175,7 +241,11 @@ function handleMenuClick(item) {
 }
 
 function toggleSub(item) {
-  item.open = !item.open
+  const sourceItem = menuList.value.find((menu) => menu.path === item.path)
+  if (!sourceItem || !sourceItem.children) {
+    return
+  }
+  sourceItem.open = !sourceItem.open
 }
 
 function goToPath(path) {
@@ -256,6 +326,10 @@ watch(
   font-size: 18px;
   color: var(--menu-icon-color);
   flex-shrink: 0;
+}
+
+.menu-badge {
+  display: inline-flex;
 }
 
 .title {

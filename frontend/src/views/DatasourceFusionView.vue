@@ -15,7 +15,7 @@
         :data="tasks"
         :loading="loading"
         :table-size="tableLayout.size"
-        layout-storage-key="fusion-view-layout"
+        layout-storage-key="app:table-layout:datasource:fusion"
         @preview="handlePreview"
         @edit="handleEdit"
         @run="handleRun"
@@ -63,7 +63,16 @@
           </el-col>
         </el-row>
 
-        <el-table :data="previewRows" stripe border max-height="520">
+        <AppDataTable
+          :data="previewRows"
+          :loading="previewLoading"
+          layout-storage-key="app:table-layout:datasource:fusion-preview"
+          :show-pagination="false"
+          :with-card="false"
+          stripe
+          max-height="520"
+        >
+          <template #default>
           <el-table-column prop="rowNo" label="行号" width="80" />
           <el-table-column label="来源标准表" min-width="220">
             <template #default="scope">
@@ -104,7 +113,8 @@
               </el-popover>
             </template>
           </el-table-column>
-        </el-table>
+          </template>
+        </AppDataTable>
       </div>
     </el-drawer>
   </div>
@@ -118,6 +128,7 @@ import { createFusionTask, deleteFusionTask, getFusionTaskPreview, listFusionTas
 import FusionToolbar from '../components/datafusion/FusionToolbar.vue'
 import FusionTable from '../components/datafusion/FusionTable.vue'
 import FusionFormDialog from '../components/datafusion/FusionFormDialog.vue'
+import AppDataTable from '../components/shared/AppDataTable.vue'
 
 const loading = ref(false)
 const submitting = ref(false)

@@ -10,3 +10,5 @@ export const provisionNifiFlowBlueprint = (payload) => client.post('/data/contro
 export const reconcileNifiRunningTasks = (params) => client.post('/data/control-plane/nifi/tasks/reconcile', null, { params })
 export const reconcileNifiTask = (payload) => client.post('/data/control-plane/nifi/tasks/reconcile/one', payload)
 export const listNifiReconcileHistory = (params) => client.get('/data/control-plane/nifi/tasks/reconcile/history', { params })
+export const deleteNifiReconcileHistory = (recordId, stopRunningTask = false) =>
+	client.delete(`/data/control-plane/nifi/tasks/reconcile/history/${recordId}`, { params: { stopRunningTask } })

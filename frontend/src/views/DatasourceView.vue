@@ -15,7 +15,7 @@
         :data="sources"
         :loading="loading"
         :table-size="tableLayout.size"
-        layout-storage-key="datasource-view-layout"
+        layout-storage-key="app:table-layout:datasource:view"
         @status-change="handleStatusChange"
         @edit="handleEdit"
         @delete="handleDelete"
