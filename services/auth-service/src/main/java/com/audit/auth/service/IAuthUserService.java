@@ -37,7 +37,7 @@ public interface IAuthUserService {
     /**
      * 更新用户信息
      * @param username 用户名
-     * @param payload 包含 nickname, avatarUrl, email, phone, department 的 Map
+    * @param payload 包含 nickname, avatarUrl, email, phone, unit, department 的 Map
      * @return 更新后的用户信息
      * @throws IllegalArgumentException 当用户不存在或参数无效时
      */

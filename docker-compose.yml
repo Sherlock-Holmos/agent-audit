@@ -35,7 +35,7 @@ services:
     container_name: audit-auth-service
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/agent_audit?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/agent_audit?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_0900_ai_ci
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: password
     depends_on:
@@ -49,7 +49,7 @@ services:
     container_name: audit-data-service
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/agent_audit?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/agent_audit?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_0900_ai_ci
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: password
       SPRING_DATA_REDIS_HOST: redis
@@ -122,34 +122,7 @@ services:
     image: redis:7-alpine
     container_name: audit-redis
     ports:
-      - "6379:6379"
-    restart: unless-stopped
-
-  prometheus:
-    image: prom/prometheus:v2.54.1
-    container_name: audit-prometheus
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    ports:
-      - "9090:9090"
-    depends_on:
-      - gateway
-      - data-service
-      - agent-service
-    restart: unless-stopped
-
-  grafana:
-    image: grafana/grafana:11.1.4
-    container_name: audit-grafana
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin123
-    ports:
-      - "3000:3000"
-    depends_on:
-      - prometheus
+      - "16379:6379"
     restart: unless-stopped
 
   nifi:
@@ -163,6 +136,15 @@ services:
       - "18090:8080"
     volumes:
       - ./nifi/lib/mysql-connector-j-8.4.0.jar:/opt/nifi/nifi-current/lib/mysql-connector-j-8.4.0.jar:ro
+      - ./nifi/lib/poi-5.2.5.jar:/opt/nifi/nifi-current/lib/poi-5.2.5.jar:ro
+      - ./nifi/lib/poi-ooxml-5.2.5.jar:/opt/nifi/nifi-current/lib/poi-ooxml-5.2.5.jar:ro
+      - ./nifi/lib/poi-ooxml-lite-5.2.5.jar:/opt/nifi/nifi-current/lib/poi-ooxml-lite-5.2.5.jar:ro
+      - ./nifi/lib/xmlbeans-5.2.0.jar:/opt/nifi/nifi-current/lib/xmlbeans-5.2.0.jar:ro
+      - ./nifi/lib/commons-compress-1.26.1.jar:/opt/nifi/nifi-current/lib/commons-compress-1.26.1.jar:ro
+      - ./nifi/lib/commons-io-2.15.1.jar:/opt/nifi/nifi-current/lib/commons-io-2.15.1.jar:ro
+      - ./nifi/lib/commons-collections4-4.4.jar:/opt/nifi/nifi-current/lib/commons-collections4-4.4.jar:ro
+      - ./nifi/lib/curvesapi-1.08.jar:/opt/nifi/nifi-current/lib/curvesapi-1.08.jar:ro
+      - ./nifi/lib/log4j-api-2.22.1.jar:/opt/nifi/nifi-current/lib/log4j-api-2.22.1.jar:ro
       - ./data/uploads:/data/uploads:ro
       - nifi-data:/opt/nifi/nifi-current/database_repository
       - nifi-flowfile:/opt/nifi/nifi-current/flowfile_repository

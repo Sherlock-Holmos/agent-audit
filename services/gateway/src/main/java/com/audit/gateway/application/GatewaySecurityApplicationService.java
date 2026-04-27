@@ -14,8 +14,7 @@ public class GatewaySecurityApplicationService implements IGatewaySecurityApplic
         "/api/auth/login",
         "/api/auth/register",
         "/actuator/health",
-        "/actuator/info",
-        "/actuator/prometheus"
+        "/actuator/info"
     );
 
     private final ITokenProvider tokenProvider;

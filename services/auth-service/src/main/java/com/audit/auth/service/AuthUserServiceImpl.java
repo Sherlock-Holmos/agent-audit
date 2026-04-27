@@ -63,11 +63,13 @@ public class AuthUserServiceImpl implements IAuthUserService {
 
         Timestamp now = now();
         jdbcTemplate.update(
-            "INSERT INTO auth_user(username,password_hash,nickname,role,status,created_at,updated_at) VALUES(?,?,?, ?, 'ENABLED', ?, ?)",
+            "INSERT INTO auth_user(username,password_hash,nickname,role,status,unit,department,created_at,updated_at) VALUES(?, ?, ?, ?, 'ENABLED', ?, ?, ?, ?)",
             username,
             passwordEncoder.encode(password),
             username,
             normalizedRole,
+            "",
+            "",
             now,
             now
         );
@@ -83,7 +85,7 @@ public class AuthUserServiceImpl implements IAuthUserService {
         }
 
         List<Map<String, Object>> rows = jdbcTemplate.query(
-            "SELECT id,username,password_hash,nickname,avatar_url,email,phone,department,role,status,last_login_at FROM auth_user WHERE username=?",
+            "SELECT id,username,password_hash,nickname,avatar_url,email,phone,unit,department,role,status,last_login_at FROM auth_user WHERE username=?",
             (rs, i) -> row(rs),
             username
         );
@@ -111,6 +113,7 @@ public class AuthUserServiceImpl implements IAuthUserService {
         out.put("avatarUrl", user.get("avatarUrl"));
         out.put("email", user.get("email"));
         out.put("phone", user.get("phone"));
+        out.put("unit", user.get("unit"));
         out.put("department", user.get("department"));
         out.put("role", user.get("role"));
         out.put("lastLoginAt", formatDateTime(loginAt));
@@ -120,7 +123,7 @@ public class AuthUserServiceImpl implements IAuthUserService {
     @Override
     public Map<String, Object> getProfileByUsername(String username) {
         List<Map<String, Object>> rows = jdbcTemplate.query(
-            "SELECT id,username,nickname,avatar_url,email,phone,department,role,status,last_login_at FROM auth_user WHERE username=?",
+            "SELECT id,username,nickname,avatar_url,email,phone,unit,department,role,status,last_login_at FROM auth_user WHERE username=?",
             (rs, i) -> {
                 Map<String, Object> map = new HashMap<>();
                 map.put("id", String.valueOf(rs.getLong("id")));
@@ -129,6 +132,7 @@ public class AuthUserServiceImpl implements IAuthUserService {
                 map.put("avatarUrl", nvl(rs.getString("avatar_url")));
                 map.put("email", nvl(rs.getString("email")));
                 map.put("phone", nvl(rs.getString("phone")));
+                map.put("unit", nvl(rs.getString("unit")));
                 map.put("department", nvl(rs.getString("department")));
                 map.put("role", rs.getString("role"));
                 map.put("status", rs.getString("status"));
@@ -154,7 +158,8 @@ public class AuthUserServiceImpl implements IAuthUserService {
         String avatarUrl = text(payload.get("avatarUrl"));
         String email = text(payload.get("email"));
         String phone = text(payload.get("phone"));
-        String department = text(payload.get("department"));
+        String requestedUnit = text(payload.get("unit"));
+        String requestedDepartment = text(payload.get("department"));
 
         if (avatarUrl.length() > 8_000_000) {
             throw new IllegalArgumentException("头像图片过大，请压缩后重试");
@@ -164,14 +169,29 @@ public class AuthUserServiceImpl implements IAuthUserService {
             nickname = username;
         }
 
+        Map<String, Object> current = getProfileByUsername(username);
+        String unit = text(current.get("unit"));
+        String department = text(current.get("department"));
+        String role = text(current.get("role")).toUpperCase();
+        boolean canEditOrgFields = "AUDIT_ADMIN".equals(role);
+        if (canEditOrgFields) {
+            if (!isBlank(requestedUnit)) {
+                unit = requestedUnit;
+            }
+            if (!isBlank(requestedDepartment)) {
+                department = requestedDepartment;
+            }
+        }
+
         int updated;
         try {
             updated = jdbcTemplate.update(
-                "UPDATE auth_user SET nickname=?, avatar_url=?, email=?, phone=?, department=?, updated_at=? WHERE username=?",
+                "UPDATE auth_user SET nickname=?, avatar_url=?, email=?, phone=?, unit=?, department=?, updated_at=? WHERE username=?",
                 nickname,
                 avatarUrl,
                 email,
                 phone,
+                unit,
                 department,
                 now(),
                 username
@@ -220,6 +240,7 @@ public class AuthUserServiceImpl implements IAuthUserService {
         map.put("avatarUrl", nvl(rs.getString("avatar_url")));
         map.put("email", nvl(rs.getString("email")));
         map.put("phone", nvl(rs.getString("phone")));
+        map.put("unit", nvl(rs.getString("unit")));
         map.put("department", nvl(rs.getString("department")));
         map.put("role", rs.getString("role"));
         map.put("status", rs.getString("status"));
@@ -273,6 +294,7 @@ public class AuthUserServiceImpl implements IAuthUserService {
         addColumnIfMissing("ALTER TABLE auth_user ADD COLUMN avatar_url TEXT");
         addColumnIfMissing("ALTER TABLE auth_user ADD COLUMN email VARCHAR(255)");
         addColumnIfMissing("ALTER TABLE auth_user ADD COLUMN phone VARCHAR(64)");
+        addColumnIfMissing("ALTER TABLE auth_user ADD COLUMN unit VARCHAR(128)");
         addColumnIfMissing("ALTER TABLE auth_user ADD COLUMN department VARCHAR(128)");
         ensureAvatarColumnLongText();
     }

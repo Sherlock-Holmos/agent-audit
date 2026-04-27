@@ -5,9 +5,13 @@ frontend/dist/
 
 # 测试数据
 /data/
+/nifi
 
 # Java
 **/target/
+
+# Reports
+/reports/
 
 # OS / IDE
 .vscode/

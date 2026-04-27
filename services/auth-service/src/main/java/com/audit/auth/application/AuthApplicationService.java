@@ -24,7 +24,7 @@ public class AuthApplicationService implements IAuthApplicationService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public Map<String, Object> login(String username, String password) {
         Map<String, Object> userInfo = authUserService.authenticate(username, password);
         String token = jwtService.generateToken(username, String.valueOf(userInfo.get("role")));
